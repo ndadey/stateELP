@@ -1,6 +1,6 @@
 # Session 1 — foundation (no stages)
 
-Read `CLAUDE.md` in full, then `sim_contract.md` (v0.2.0) in full, then
+Read `CLAUDE.md` in full, then `sim_contract.md` (v0.4.0) in full, then
 `internal_docs/source/process_overview.md` in full, before writing anything.
 This session builds the shared infrastructure every stage session depends on
 — and **no `.qmd` files, no stage code**. Stages are built afterward, one
@@ -45,7 +45,7 @@ Views, deck extractions, original `NJ_elp_2023.R`),
 3. **Data.** `Rscript data-raw/el_long_sim.R`. Every guardrail must print
    PASS; on any FAIL, stop and report — never relax a threshold. Fill
    `sim_contract.md`'s `[FILL IN after regeneration]` placeholders from the
-   run output; confirm version 0.2.0. Write `R/data.R` against the
+   run output; confirm version 0.4.0. Write `R/data.R` against the
    contract's §3.5/§4.2/§5.1 tables, with the column-agreement test. Commit.
 
 4. **Bundle and adapters.** `R/el_data.R`: `as_el_data(el_long_sim, roster = el_roster_sim, academic = ...)` (key
@@ -66,7 +66,7 @@ Views, deck extractions, original `NJ_elp_2023.R`),
 5. **Shared derivations.** In `R/utils.R`: suppression (`NA`, never dropped
    rows; `min_cell` from `policy$suppression` only), banding from
    `spec$elp$bands`, weighting helpers, and the status-transition
-   derivations both cohort checks consume — `YEAR_IN_STATUS`, `censored`,
+   derivations both cohort checks consume — `YEAR_IN_STATUS`, `CENSORED`,
    exit dating (**first former year**, absorbing), cohort keys (excluding
    `LEFT_TRUNCATED`), the nested exit flags, on-time/prolonged. Include the
    sim-vs-package exit-year `+1` test and the last-current-dating

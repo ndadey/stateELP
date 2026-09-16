@@ -16,8 +16,8 @@ students are their own column, never silently folded into either group
 `SPED_CLASSIFICATION`, `SERVICE_MODEL`, `INITIAL_ELP`). Academic table for
 the descriptive summary — `NULL` without it. Spec: `policy$timelines`,
 `policy$district_size_bands`, `policy$suppression`, `elp$bands`. Shared
-flags from `R/utils.R` (`exit_ever ⊇ exit_max ⊇ exit_ontime`, `no_exit`,
-on-time/prolonged) — call, never re-derive.
+flags from `R/utils.R` (`EXIT_EVER ⊇ EXIT_MAX ⊇ EXIT_ONTIME`, `NO_EXIT`,
+`DISAPPEARED`, `ON_TIME` / `PROLONGED`) — call, never re-derive.
 
 **Method.** The slide-63/64 crosstab: columns All / Exit_Ever / Exit_Max /
 Exit_OnTime / No_Exit / Disappeared; rows Total, % of all, then

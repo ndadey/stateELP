@@ -76,19 +76,57 @@ Maintain this table. It starts as the shell inventory.
 
 | Piece | Status | Notes |
 |---|---|---|
-| Package skeleton, `DESCRIPTION`, `renv` | not built | renv::init() at creation |
-| `data-raw/el_long_sim.R` + `sim_contract.md` | **written, unexecuted** | contract v0.2.0; first run fills its `[FILL IN]` placeholders |
-| `data/` (three `.rda`) | not built | regenerate, don't hand-edit |
-| `R/spec.R` + three specs | not built | SIM (Type 1) / NJ / ELPA21 (Type 6) |
-| `R/el_data.R` (bundle, adapter, coverage) | not built | |
+| Package skeleton, `DESCRIPTION`, `renv` | **built** | `renv::init()`, explicit snapshot; `NAMESPACE`/`man` generated |
+| `data-raw/el_long_sim.R` + `sim_contract.md` | **written, RUN** | contract **v0.4.0**; every `[FILL IN]` filled from the 2026-09-16 build; values verified identical to the 0.2.0 build after renaming (§2.1) |
+| `data/` (three `.rda`) | **built** | `el_long_sim` (base) / `el_roster_sim` / `academic_long_sim`, 6.84 MB, `sim_contract_version` 0.4.0; `elp_components_sim` retired; regenerate, don't hand-edit |
+| `R/spec.R` + three specs | **built** | SIM (Type 1) / NJ / ELPA21 (Type 6) + demographics lookups; ALL-CAPS `data$columns` crosswalks + `value_maps` |
+| `R/el_data.R` (bundle, adapter, coverage) | **built** | `as_el_data()` (separate objects, merged single file), `as_el_data_sgp()`, `as_academic_long()`, `elp_headline()`, coverage table |
+| `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
+| `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below |
 | `internal_docs/steps/` (8 files) + `dev/prompts/` | **written** | numbered `1_`–`9_` in run order; binding per-stage contracts; refine as stages evolve |
 | Eight `.qmd` shells | not built | one stage session each (§15) |
-| Fixtures: A–J, slide-52, J-vs-consistency | not built | see §10; A–J + slide-52 land in the foundation session / Check 1 |
+| Fixtures: A–J, slide-52, J-vs-consistency | **A–J built** | A–J + last-current counter-test in `test-utils.R`; ELPA21 base + roster pair and SGP / summative fixtures in `helper-el_data.R`; slide-52 lands with Check 1, J-vs-consistency with Check 4 |
 | Stage analyses (all) | not built | later passes per instruction file |
+
+**Test count at the end of the foundation session (2026-09-16 rebuild):** 301
+expectations passing, 58 `skip()`ped (the eight per-stage files), 0 failures.
+`devtools::check()` on a clean export of HEAD: **0 errors, 0 warnings**, 1 NOTE —
+the 6.5 MB `data/` directory (expected; `sim_contract.md` §9). The
+`as_el_data()` example takes ~9 s on the full sim (reported, not a NOTE).
+
+**Column naming.** Every column the package reads *or creates* is ALL CAPS —
+delivered, derived (`CENSORED`, `EXIT_EVER`, …) and summary (`N`,
+`SUPPRESSED`, `N_NEVER_WEIGHTED`) alike. Values keep their case (`current`,
+`annual`, component and subject keys). `[PROPOSED — CONFIRM]` for the derived
+and summary columns, which §4's prose previously wrote in lowercase.
+
+**Three environment facts a later session will otherwise rediscover the hard
+way** (first recorded 2026-09-15, still true):
+
+1. **R 4.3.3 is not installed on this machine** (4.2.1 / 4.4.2 / 4.5.3 are).
+   The shipped data is built on **4.4.2** (`sim_contract.md` §2.1 records the
+   cross-version verification). Only R 4.4.2 has a working dev toolchain,
+   through the renv project library; on a fresh clone run
+   `renv::hydrate(c("devtools", "roxygen2"))` after `renv::restore()`. The
+   generator's `tidyr` is not in the project library, so it runs as
+   `Rscript --vanilla data-raw/el_long_sim.R` against the user library.
+2. **`devtools::check()` cannot run from the repo root while any file in
+   `internal_docs/working/` is open in another application.** `R CMD build`
+   copies the whole package directory *before* applying `.Rbuildignore`, so a
+   single locked file anywhere in the tree aborts the copy. Check a clean
+   export of the tracked files instead —
+   `git archive --format=tar HEAD | tar -x -C <staging>`, drop `.Rprofile`,
+   `renv.lock` and `renv/` from the staging copy, then
+   `devtools::check("<staging>")`.
+3. **This repository is inside a Dropbox tree, and Quarto cannot clean up
+   after itself there** (the sync client holds `<name>_files`, os error 32).
+   `render_step()` therefore renders in `tempdir()` and moves the finished
+   documents into `out_dir` — a deviation from §9's "render there"
+   `[PROPOSED — CONFIRM]`; no `_files/` ever reaches the source tree.
 
 ## 4. Data contract — three long tables
 
-**The authority on the shipped data is `sim_contract.md` (repo root), v0.2.0.**
+**The authority on the shipped data is `sim_contract.md` (repo root), v0.4.0.**
 Its §3.5 / §4.2 / §5.1 column tables are the codebook; `R/data.R` mirrors them
 and a test asserts agreement. Bump the contract version and this citation
 together. What follows is the working summary; read the contract for detail.
@@ -144,12 +182,12 @@ Rules a session must not break (each is a test):
   Monitoring years are sub-states of `former`; sim formers leave the panel
   after monitoring year 4, so "Former ELs" means former-within-four-years and
   captions say so. **"English-only (EO)"** in Checks 3–4 maps to
-  `el_status == "never"`; former ELs are never in the EO group.
+  `EL_STATUS == "never"`; former ELs are never in the EO group.
 - **Exit observation.** The sim flags exit on the **last current** row; the
   package's decided convention dates exit to the **first former** year. The
-  package recomputes `YEAR_IN_STATUS`, `censored`, and the exit indicators
+  package recomputes `YEAR_IN_STATUS`, `CENSORED`, and the exit indicators
   from `EL_STATUS` transitions; the sim's D-tier columns are validation inputs
-  only; a test asserts package exit year = flagged row's `school_year + 1`.
+  only; a test asserts package exit year = flagged row's `YEAR + 1`.
 - **Formers and never-ELs carry no ELP.** They have no base-table rows at
   all (contract §4.4). Alternate-form students never enter the headline, are
   excluded from the exit rule and from band distributions unless the spec
@@ -185,11 +223,12 @@ Rules a session must not break (each is a test):
 - If `data-raw/el_long_sim.R` is missing, stop and say so; never re-simulate.
 
 **Derived variables the package adds** (recomputed, never trusted from a
-delivery): `YEAR_IN_STATUS`, cohort key (`NA` when `LEFT_TRUNCATED`),
-`censored`, `exit_ever` ⊇ `exit_max` ⊇ `exit_ontime` + `no_exit`, `on_time` /
-`prolonged` (Check 2's headline split, from `policy$timelines`), `lt_el`,
-the banded headline (via `elp_headline()` and `elp$bands`), person-period
-frames for Check 1.
+delivery; ALL CAPS like every other column): `YEAR_IN_STATUS`, cohort key
+`COHORT_LABEL` (excluded when `LEFT_TRUNCATED`), `CENSORED` / `CENSOR_TYPE`,
+`EXIT_EVER` ⊇ `EXIT_MAX` ⊇ `EXIT_ONTIME` + `NO_EXIT` + `DISAPPEARED`,
+`ON_TIME` / `PROLONGED` (Check 2's headline split, from `policy$timelines`),
+`LT_EL` (from `policy$timelines$lt_el_years`), the banded headline `ELP_BAND`
+(via `elp_headline()` and `elp$bands`), person-period frames for Check 1.
 
 ## 5. `el_spec`
 
@@ -244,7 +283,8 @@ consume): `exit` (pathways with display `rule` + structured `terms`
 **never evaluated** `[PROPOSED — CONFIRM]`; plus **`types`** — an integer
 vector from the Process Overview's typology, below), `timelines`
 (`max_years_to_exit`, the ESSA timeline that defines Check 2's on-time split,
-`on_time_rule` keyed by start grade and/or initial band, `lt_el_definition`,
+`on_time_rule` keyed by start grade and/or initial band, `lt_el_definition`
+plus its structured `lt_el_years`,
 `exit_dating = "first_former_year"` `[DERIVED — VERIFY]`,
 `initial_elp_source`), `growth` (targets + `how_set`),
 `accountability_indicator`, `suppression` (`min_cell`), `academic_benchmark`,
@@ -552,8 +592,11 @@ decides it silently.
 
 ## 7. `as_el_data()` and delivery forms
 
-`as_el_data(elp, roster, academic = NULL)` returns a validated
-bundle — the base table first, the roster as the counting frame; every data-taking `run_<stage>()` takes the bundle, never raw tables.
+`as_el_data(elp, roster = NULL, academic = NULL, spec = NULL)` returns a
+validated bundle — the base table first, the roster as the counting frame, the
+spec carried when given (so `elp_headline(data)` resolves without it being
+passed again); every data-taking `run_<stage>()` takes the bundle, never raw
+tables. `roster = NULL` is the merged-single-file form.
 The three tables are the analysis model; the delivered form is whatever a
 state hands over, and `as_el_data()` is the adapter.
 
@@ -574,8 +617,8 @@ Accepted forms in the shell:
    `[PROPOSED — CONFIRM]`.
 
 Validator: key `STUDENT_ID × YEAR`; academic `GRADE` present and equal
-to the roster's; base-table `ELP_FORM` equal to the roster's (same name on both tables) (sixth column,
-redundant on purpose `[PROPOSED — CONFIRM]`; consider naming both `ELP_FORM`);
+to the roster's; base-table `ELP_FORM` equal to the roster's (same name on
+both tables since contract 0.4.0; sixth column, redundant on purpose);
 the **coverage table** by year × grade (academic-scored; current ELs with
 same-year ELP; former; never; alternate takers) — Check 3's
 data-considerations block. `as_academic_long()` is now the
@@ -625,8 +668,8 @@ GitHub repo, `renv::init()` at shell creation.
 
 **Sibling conventions that do NOT apply** (convention bleed is the risk):
 ReportR's domain (four lines of analysis, `assessment_spec`,
-`student_results_long`, uppercase columns, scale-score/EOC lookups); its
-`summarize_*()` auto-narrative; ELReportR's modules, report templates, ingest
+scale-score/EOC lookups) — its `student_results_long` column naming, ALL CAPS,
+*does* apply (§4); its `summarize_*()` auto-narrative; ELReportR's modules, report templates, ingest
 protocol, wide `elp_*` columns, `el_results$…` slots; stateSpecs'
 `as_assessment_spec()` (shape-compatible, not called).
 
@@ -674,7 +717,7 @@ The shell is built across **nine scoped sessions** — the foundation session (`
    `dev/render_step.R`, `.Rbuildignore`/`.gitignore` in the ReportR pattern,
    `renv::init()`.
 2. Data: `Rscript data-raw/el_long_sim.R` runs, all guardrails PASS, three
-   `.rda` in `data/`, `sim_contract.md` placeholders filled, version 0.2.0;
+   `.rda` in `data/`, `sim_contract.md` placeholders filled, version 0.4.0;
    `R/data.R` documents the actual columns.
 3. `as_el_data()` + validator + coverage table, tested against the
    separate-objects form and the SGP-long fixture with identical output;
@@ -780,7 +823,7 @@ session summary.
 
 ## 15. Getting started for Claude Code
 
-1. Read this file, then `sim_contract.md` v0.2.0, then
+1. Read this file, then `sim_contract.md` v0.4.0, then
    `internal_docs/source/process_overview.md` end to end.
 2. **Session 1 — foundation** — paste `dev/prompts/1_foundation.md`: skeleton,
    spec layer + three specs, data generation (contract placeholders filled),

@@ -9,7 +9,7 @@ all ELs per grade × year (not the K cohort), restricted to grades with
 summative academic data (`spec$academic$<subject>$grades`; 3–11 in sim; EOC
 panels by subject when `grades = NULL`). **Each grade analyzed separately,
 never pooled** (structure-tested). Plus two EO comparison groups
-(EO = `el_status == "never"`; former ELs are never EO): SES-filtered or
+(EO = `EL_STATUS == "never"`; former ELs are never EO): SES-filtered or
 matched EO for the fairness box plots; full EO for the average-score
 benchmark.
 
@@ -29,7 +29,8 @@ Spec: `academic` cuts + `policy$academic_benchmark`, `elp$bands`,
   weighted EO n; spec-gated "screened but not classified" slot (`NULL` in
   sim).
 - *Logistic regression* (core): P(academic proficiency) as a function of
-  headline `elp_scale`; report the 50%-crossing scale score.
+  headline `SCALE_SCORE` from `elp_headline()`; report the 50%-crossing
+  scale score.
 - *Landing statistics per grade, examined together across grades*: the band
   where the share at/above the cut first reaches 50% (equivalently the
   first band whose median clears the cut); the logistic 50%-crossing.

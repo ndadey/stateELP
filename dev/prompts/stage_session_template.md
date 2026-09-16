@@ -1,6 +1,6 @@
 # Stage session — <STAGE>            (copy, fill <>, paste into Claude Code)
 
-Read `CLAUDE.md`, `sim_contract.md` (v0.2.0), and this stage's instruction
+Read `CLAUDE.md`, `sim_contract.md` (v0.4.0), and this stage's instruction
 file — the numbered file in `internal_docs/steps/` ending `_<STAGE>.md`
 (numbers give run order) — before writing anything. The instruction
 file is binding: its Sample, slots, figure list, and guardrails define this
