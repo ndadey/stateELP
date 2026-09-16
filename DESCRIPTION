@@ -21,7 +21,9 @@ Imports:
     tibble,
     utils
 Suggests:
+    devtools,
     quarto,
+    roxygen2,
     testthat (>= 3.0.0),
     withr
 Config/testthat/edition: 3
