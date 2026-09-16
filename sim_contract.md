@@ -54,9 +54,10 @@ components table is stored long, not materialized from wide columns. The
 previous version's item 5 ("the generator is the one that is wrong") is
 reversed: the three-table generator is the target, and this document now
 describes it. One generator bug is fixed on the way (§4.4). Reference values
-that the fix or the version's other edits change are marked
-`[FILL IN after regeneration]`; the rest are carried from the 0.1.0 run and are
-expected to reproduce bit for bit (§2.1).
+that the fix or the version's other edits change were marked
+`[FILL IN after regeneration]` and **have now been filled from the 2026-09-16
+0.4.0 build** (§1, §2.2, §4.5, §9); the rest were carried from the 0.1.0 run and
+reproduced bit for bit, which §2.1 records.
 
 ---
 
@@ -64,7 +65,7 @@ expected to reproduce bit for bit (§2.1).
 
 This contract governs the synthetic data that ships with `stateELP`. It exists so
 that a session can answer "what is actually in this data" without reading the
-generator, and so that the five walkthrough `.qmd` files render against a known
+generator, and so that the eight stage `.qmd` files render against a known
 shape on day one. Its column tables (§3.5, §4.2, §5.1) are the codebook; there is
 no separate codebook document to keep in sync. `R/data.R` documents the three
 objects against these tables and a test asserts the column sets agree.
@@ -94,9 +95,9 @@ three dataframes emitted.
 
 Three clean R dataframes from one simulated population. All ship in `data/`.
 
-| Object | Grain | Rows (0.1.0 run) | Cols | Contents |
+| Object | Grain | Rows | Cols | Contents |
 |---|---|---|---|---|
-| `el_long_sim` | one row per `STUDENT_ID × YEAR × COMPONENT` | `[FILL IN after regeneration]` (annual rows shrink under §4.4; alternate rows stay at 6,595) | 6 | **the base table for all analysis**: every reported ELP component as a row |
+| `el_long_sim` | one row per `STUDENT_ID × YEAR × COMPONENT` | 1,824,716 (annual rows shrank under §4.4; alternate rows stayed at 6,595, as predicted) | 6 | **the base table for all analysis**: every reported ELP component as a row |
 | `el_roster_sim` | one row per `STUDENT_ID × YEAR` | 461,040 | 52 | the **roster / enrollment frame**: grade, EL status, demographics, program fields, outcomes — no measurement columns |
 | `academic_long_sim` | one row per `STUDENT_ID × YEAR × SUBJECT` | 568,202 | 7 | content-assessment scores |
 
@@ -126,9 +127,9 @@ This is the three-table analysis model the package is built on:
   question). `COMPONENT` is a row key over a controlled vocabulary (§4.1):
   WIDA fills eight rows per tested student-year; an instrument reporting four
   domains and a determination fills five; the table's shape never changes.
-- **Academic.** `student_results_long` in stateSummative's sense — one row per
-  student-year-subject — in this package's lowercase naming. Consumed by Check 3
-  only.
+- **Academic.** ReportR's `student_results_long` — one row per
+  student-year-subject — plus `ACHIEVEMENT_LEVEL_ALT`, in the ALL-CAPS naming of
+  0.4.0. Consumed by Check 1's Model 2, Check 3 and Check 4.
 
 This is the same atomic-layer-plus-resolver split as `stateSpecs`' `tests` +
 `map`, and the same move `stateSummative` made with `SUBJECT`: the thing that
@@ -167,6 +168,23 @@ varies across instruments is a row key, not a set of columns.
 `Rscript data-raw/el_long_sim.R` on R 4.3.3 reproduces all three objects bit for
 bit. Anyone can rebuild the shipped data; the generator is the artifact of
 record, not the `.rda`.
+
+**Verified across R versions and contract versions.** No R 4.3.3 is installed on
+the build machine; the shipped builds were produced on **R 4.4.2**. The
+2026-09-15 0.2.0 build checked every 0.1.0-era reference value against the
+4.4.2 run and all reproduced exactly (roster 461,040 rows, academic 568,202
+rows, 6,595 alternate component rows, the SY2023 24,762 / 11,995 / 10,265
+status split with its 52.7% unweighted and 17.8% weighted EL shares, and all
+five rows of the §4.7 duration table). The 2026-09-16 **0.4.0 build** was then
+compared value for value against that 0.2.0 build: after renaming, every one of
+the roster's 50 carried columns equals the old spine's, the base table equals
+the old components table on all six columns, the academic table equals the old
+academic table on all seven, and the headline resolved from the base table
+equals the spine's old `elp_level` / `elp_scale` on all 224,071 rows. The two
+columns new in 0.4.0 are deterministic (`EL`, `RACE_ETHNICITY`). So the 0.3.0 and
+0.4.0 "RNG-neutral" claims are empirical, not assumed. R's RNG has not changed
+since 3.6.0; a future build on a version where these values *do* move has found
+a real break and must not be shipped.
 
 Two things break determinism and must not be introduced: sampling before the
 seed is set, and any use of `parallel::` or a hash-ordered structure in the
@@ -212,16 +230,20 @@ fixture shrinks by roughly a factor of four. `[PROPOSED — CONFIRM]`
 
 **Fixture-sized build.** `STATEELP_K_COHORT_N=300 STATEELP_NEVER_EL_N=4250`
 keeps the never/ever ratio (and so the implied EL share) and yields a roster of
-roughly 60k rows `[FILL IN after regeneration]`. It will not populate every
-disaggregation, and it is not supposed to. **A session must not lower `min_cell`
+57,965 rows (228,766 base-table and 71,524 academic rows). Confirmed
+2026-09-16: that build fails generator guardrail 9 on five of the seven
+disaggregations (`INITIAL_ELP`, `HOME_LANGUAGE`, `SERVICE_MODEL`,
+`DISTRICT_SIZE_BAND`, `SPED_CLASSIFICATION`), the documented consequence of
+`k_cohort_n = 300` rather than a defect, and passes the other eighteen. It will
+not populate every disaggregation, and it is not supposed to. **A session must not lower `min_cell`
 or pool grades to make cells appear in the fixture build.**
 
 ### 2.3 The never-EL decision — weighted sample, not full population
 
 `el_roster_sim` carries **a 10% weighted sample of never-EL students**, not the
 full non-EL population. 34,000 distinct never-EL students, ~10,300 enrolled in
-any given year, each row carrying `sample_weight = 1 / never_sample_frac = 10`.
-Ever-EL rows carry `sample_weight = 1`.
+any given year, each row carrying `SAMPLE_WEIGHT = 1 / never_sample_frac = 10`.
+Ever-EL rows carry `SAMPLE_WEIGHT = 1`.
 
 Carrying the full non-EL population would multiply the fixture several times over
 for what is only a reference distribution in Prep 2 and Check 3.
@@ -275,8 +297,8 @@ Three sub-populations, one roster:
 1. **Standing stock.** Ever-EL students already in status when the panel opens,
    with entry years 2009–2014. Their trajectories are simulated from their true
    entry year and then clipped to the panel window, so their exits fall where
-   they actually fall. **Rule: pre-panel entrants carry `left_truncated = TRUE`
-   and `cohort_label = NA`.** Cohort analyses filter on `!left_truncated`. A
+   they actually fall. **Rule: pre-panel entrants carry `LEFT_TRUNCATED = TRUE`
+   and `COHORT_LABEL = NA`.** Cohort analyses filter on `!LEFT_TRUNCATED`. A
    session that includes them in a K cohort measures duration from an
    unobserved start and understates it by up to six years. Some of them exited
    before 2015 and appear only as `former` monitoring rows; `EXIT_OBSERVED` is
@@ -304,16 +326,16 @@ here "Former ELs" as a Check 3 reference group means former-within-four-years,
 and Check 3's caption states it.
 
 **The exit-year row is still `current`.** A student observed to meet the exit
-criterion in year *t* has `el_status == "current"` and `exit_observed == 1L` in
+criterion in year *t* has `EL_STATUS == "current"` and `EXIT_OBSERVED == 1L` in
 year *t*, and `former` from *t+1*. This is the sim's convention and it is
 **not** the package's: the package dates exit to the first year observed as
 `former` (the deck's A–J convention, in which student E exits in year 4), so the
-package's exit year equals the flagged row's `school_year + 1`. A test asserts
+package's exit year equals the flagged row's `YEAR + 1`. A test asserts
 that relationship so the off-by-one is visible rather than silent. The sim's
 `YEAR_IN_STATUS` and `EXIT_OBSERVED` are validation inputs for the package's own
 derivations, never the source of them.
 
-**Exit is absorbing.** Once `exit_observed == 1`, a student is an exiter in every
+**Exit is absorbing.** Once `EXIT_OBSERVED == 1`, a student is an exiter in every
 subsequent year regardless of later absence. Without this the cumulative exit
 curve in Check 1 can decrease.
 
@@ -326,14 +348,14 @@ read that as a finding.
 
 | Column | Derivation | Package treatment |
 |---|---|---|
-| `YEAR_IN_STATUS` | years since entry, `NA` unless `el_status == "current"`; for `LEFT_TRUNCATED` students this counts from the true pre-panel entry, which is **unobservable** in a real delivery | recomputed from observed transitions under the deck convention; sim value used to validate on `!left_truncated` rows only |
+| `YEAR_IN_STATUS` | years since entry, `NA` unless `EL_STATUS == "current"`; for `LEFT_TRUNCATED` students this counts from the true pre-panel entry, which is **unobservable** in a real delivery | recomputed from observed transitions under the deck convention; sim value used to validate on `!LEFT_TRUNCATED` rows only |
 | `COHORT_START_YEAR` | entry year; `NA` for never-EL; populated for `LEFT_TRUNCATED` students with their true pre-panel entry year | never used to build cohorts — use `COHORT_LABEL` |
 | `COHORT_LABEL` | `<entry_grade>-<entry_year>`, e.g. `K-2017`; `NA` when `LEFT_TRUNCATED` or never-EL | the cohort key |
 | `ENTRY_GRADE` | grade of first EL year; for `LEFT_TRUNCATED` students the true pre-panel grade | used with `COHORT_LABEL`; the package's own "first observed grade" differs for left-truncated rows by design |
 | `LEFT_TRUNCATED` | entry year precedes the panel; `FALSE` for never-EL | Check 1 cohorts exclude by construction; Check 2's initial-ELP rows label them |
 | `EXIT_OBSERVED` | 1 in the year the exit criterion is first met (still a `current` row) | validation input; see §3.3 |
 | `INITIAL_ELP` | banded headline at the first `current` year with a valid value; source `first_annual` per spec; `NA` for alternate-form students and for never-EL | "first observed" is the operable definition for left-truncated students too |
-| `FRL` | `frpl_status %in% c("F","R")` | |
+| `FRL` | `FRL_DETAIL %in% c("F","R")` | |
 | `DISTRICT_SIZE_BAND` | tertiles (`small` / `medium` / `large`) of mean annual current-EL count per district | validation input only; the package bands districts from `spec$policy$district_size_bands` (deck default: `<100`, `101–999`, `1,000+`) or an empirical method, never from this column `[PROPOSED — CONFIRM]` |
 | `NEWCOMER_FLAG` | immigrant and within two years of EL entry | |
 | `SAMPLE_WEIGHT` | §2.3 | |
@@ -414,8 +436,8 @@ them.
 
 | Pattern | Rule |
 |---|---|
-| Never-EL rows | every EL-program field is `NA` (`ENTRY_GRADE`, `cohort_*`, `YEAR_IN_STATUS`, `INITIAL_ELP`, `SERVICE_MODEL`, LEP dates, `ELP_FORM`, `elp_*`); `left_truncated = FALSE`; `exit_observed = 0`; `ever_el = "N"` |
-| Former rows | no base-table rows exist — formers do not test (§4.4); `YEAR_IN_STATUS` is `NA`; `exit_observed = 0` |
+| Never-EL rows | every EL-program field is `NA` (`ENTRY_GRADE`, `COHORT_*`, `YEAR_IN_STATUS`, `INITIAL_ELP`, `SERVICE_MODEL`, LEP dates, `ELP_FORM`); no base-table rows; `LEFT_TRUNCATED = FALSE`; `EXIT_OBSERVED = 0`; `EVER_EL = "N"` |
+| Former rows | no base-table rows exist — formers do not test (§4.4); `YEAR_IN_STATUS` is `NA`; `EXIT_OBSERVED = 0` |
 | Current untested rows | no annual base-table rows when the student was not tested that year (participation, §6); the student-year exists on the roster only |
 | Outcome columns | grade-12 rows only; `GRAD_5YR_STATUS` `NA` where not yet observable |
 | `ELP_GROWTH_TARGET_MET` | `NA` unless current with a valid headline this year and last |
@@ -428,7 +450,7 @@ them.
 ### 4.1 Vocabulary and shape
 
 ```
-student_id | school_year | component | form | scale_score | level
+STUDENT_ID | YEAR | COMPONENT | ELP_FORM | SCALE_SCORE | ACHIEVEMENT_LEVEL
 ```
 
 `COMPONENT` is a **row key over a controlled vocabulary**, not a set of
@@ -477,7 +499,7 @@ base-table read through `roster$ELP_FORM`.
 | `ACHIEVEMENT_LEVEL` | dbl | annual: 1.0–6.0 in tenths; alternate: ordinal 1–6 | numeric always: the instrument's native value where one exists, an ordinal index otherwise, with labels in the spec |
 
 **Row population.** A row exists for (ever-EL student) × (year with
-`el_status == "current"`) × (tested that year) × (component with a non-`NA`
+`EL_STATUS == "current"`) × (tested that year) × (component with a non-`NA`
 value). So a student-year may carry fewer than eight rows: waived domains are
 absent rows and every composite drawing on them is absent (§4.4); alternate
 takers carry the four domains and the headline only. There are no rows for
@@ -540,7 +562,7 @@ a component row.
 **Alternate levels never enter the headline.** They are a different scale;
 banding them on the annual `1.0–1.9 … 5.0+` scheme silently mixes two
 measurement systems. Alternate student-years never resolve through
-`elp_headline()` (its annual-form filter), carry `initial_elp = NA` with the
+`elp_headline()` (its annual-form filter), carry `INITIAL_ELP = NA` with the
 roster's `ELP_FORM` saying why, and are excluded from the exit rule. Check 3
 reports them as a group (counted in `n`) and excludes them from band
 distributions unless the spec declares an alternate `level_scale`. This is
@@ -558,10 +580,25 @@ students in their exit year. For K entrants, any band at 4.0 or above is
 near-empty by construction (`theta_1 ≤ 3.9`); suppression there is expected, not
 a sizing failure.
 
-Headline distribution across the six bands (via `elp_headline()`): `[FILL IN after regeneration]` (the
-0.1.0 values 31,480 / 58,860 / 67,380 / 35,360 / 40,907 / 86,258 included
-`former` rows and are wrong under §4.4; the top two bands will shrink to
-exit-year rows).
+Headline distribution across the six bands via `elp_headline()`, 224,071
+annual-form current student-years (2026-09-16 build; asserted in
+`test-el_data.R`):
+
+| Band | 0.4.0 (via `elp_headline()`) | 0.1.0 |
+|---|---|---|
+| `1.0-1.9` | 31,480 | 31,480 |
+| `2.0-2.9` | 58,860 | 58,860 |
+| `3.0-3.9` | 67,186 | 67,380 |
+| `4.0-4.4` | 32,666 | 35,360 |
+| `4.5-4.9` | 24,136 | 40,907 |
+| `5.0+` | 9,743 | 86,258 |
+
+The 0.1.0 values included `former` rows and are wrong under §4.4. The fix
+behaved exactly as predicted: the two lowest bands are untouched, while `5.0+`
+collapses by 89% — under 0.1.0 it was mostly former ELs whose acquisition curve
+kept running through the four monitoring years — so the top two bands now hold
+only students in their exit year. These counts first appeared in the 0.2.0
+build and are unchanged by 0.3.0 and 0.4.0.
 
 ### 4.6 Acquisition model
 
@@ -612,7 +649,7 @@ fixture tests that shift explicitly.
 ### 5.1 Columns and coverage
 
 ```
-student_id | school_year | grade | subject | scale_score | perf_level | alt_perf_level
+STUDENT_ID | YEAR | GRADE | SUBJECT | SCALE_SCORE | ACHIEVEMENT_LEVEL | ACHIEVEMENT_LEVEL_ALT
 ```
 
 | Column | Type | Values | Notes |
@@ -630,7 +667,7 @@ untested and have no rows. **Check 3 must drive its grade loop from
 `spec$academic$<subject>$grades`, not from the observed grade span**, or it
 renders empty panels for K, 1, 2, and 12. Never-EL and former students have
 academic rows (they are the reference groups); alternate ELP-form students have
-rows with `scale_score = NA` and `ACHIEVEMENT_LEVEL_ALT` populated. Alternate academic
+rows with `SCALE_SCORE = NA` and `ACHIEVEMENT_LEVEL_ALT` populated. Alternate academic
 participation is tied to the ELP alternate form — never-EL SWDs do not take the
 alternate academic assessment in this data.
 
@@ -670,7 +707,7 @@ causes academic gains**, because the answer is a parameter.
 ### 5.4 The cut convention
 
 `academic_cuts = c(700, 735, 750, 790)` are the **minimum** scale scores of
-levels 2–5, so `perf_level = findInterval(scale_score, academic_cuts) + 1L` and a
+levels 2–5, so `ACHIEVEMENT_LEVEL = findInterval(SCALE_SCORE, academic_cuts) + 1L` and a
 score of exactly 750 is level 4 (proficient). The 0.1.0 generator used
 `cut(..., right = TRUE)`, under which 750 was level 3 and `prof_cut` was the
 *highest failing* score, contradicting its role as Check 3's reference line ("the
@@ -772,8 +809,12 @@ Writes `data/el_long_sim.rda` (the base table), `data/el_roster_sim.rda`, and
 `k_cohort_n = 2400`. Each object carries `attr(, "sim_contract_version")`, and
 `as_el_data()` reads it to label outputs.
 
-Size: roughly 9 MB across the shipped objects at full scale
-`[FILL IN after regeneration]`. That is above CRAN's 5 MB guidance, which is a
+The generator's dependencies (`dplyr`, `tidyr`) are not package imports and are
+not in the renv project library; on the build machine it runs as
+`Rscript --vanilla data-raw/el_long_sim.R` against the user library.
+
+Size: 6.84 MB across the shipped objects at full scale (2026-09-16 build: base
+3.06, roster 2.69, academic 1.09). That is above CRAN's 5 MB guidance, which is a
 non-issue for a private GitHub repo and a blocker for submission. **Default:
 ship full scale in the private repo**, because developing the steps against
 suppressed cells hides rendering bugs behind blank tables; ship the fixture

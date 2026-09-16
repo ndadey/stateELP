@@ -7,29 +7,29 @@
 \format{
 A data frame with 568,202 rows and 7 columns:
 \describe{
-\item{student_id}{Character; key.}
-\item{school_year}{Integer; key. No 2020 rows.}
-\item{grade}{Character \code{"3"}-\code{"11"}; equals the spine's grade for the
-student-year, asserted. Required in a delivery, with no fill-from-spine
+\item{STUDENT_ID}{Character; key.}
+\item{YEAR}{Integer; key. No 2020 rows.}
+\item{GRADE}{Character \code{"3"}-\code{"11"}; equals the roster's grade for the
+student-year, asserted. Required in a delivery, with no fill-from-roster
 fallback.}
-\item{subject}{Character ELA / Math; key; matches \code{spec$academic} names.}
-\item{scale_score}{Numeric, about 650-850; \code{NA} on alternate rows.}
-\item{perf_level}{Integer 1-5; \code{NA} on alternate rows. Cuts are level
-\strong{minimums} read with \code{>=}, so a score exactly at the proficiency cut
-is level 4 (proficient).}
-\item{alt_perf_level}{Integer 1-4; \code{NA} otherwise. Alternate academic
-participation is tied to the alternate ELP form.}
+\item{SUBJECT}{Character ELA / Math; key; matches \code{spec$academic} names.}
+\item{SCALE_SCORE}{Numeric, about 650-850; \code{NA} on alternate rows.}
+\item{ACHIEVEMENT_LEVEL}{Integer 1-5; \code{NA} on alternate rows. Cuts are
+level \strong{minimums} read with \code{>=}, so a score exactly at the proficiency
+cut is level 4 (proficient). Labels live in the spec.}
+\item{ACHIEVEMENT_LEVEL_ALT}{Integer 1-4; \code{NA} otherwise. Alternate
+academic participation is tied to the alternate ELP form.}
 }
 }
 \source{
-\code{data-raw/el_long_sim.R} under \code{sim_contract.md} v0.2.0.
+\code{data-raw/el_long_sim.R} under \code{sim_contract.md} v0.4.0.
 }
 \usage{
 academic_long_sim
 }
 \description{
-\code{student_results_long} in stateSummative's sense, in this package's
-lowercase naming. Consumed by Check 1's Model 2, Check 3 and Check 4.
+ReportR's \code{student_results_long} plus \code{ACHIEVEMENT_LEVEL_ALT}. Consumed by
+Check 1's Model 2, Check 3 and Check 4.
 }
 \section{Coverage}{
 
@@ -42,12 +42,12 @@ Check 3 must drive its grade loop from \verb{spec$academic$<subject>$grades}, no
 from the observed grade span, or it renders empty panels for K, 1, 2 and 12.
 
 Never-EL and former students have rows -- they are the reference groups.
-Check 3's universe is therefore this table joined to spine status
-(academic left-joined to spine); joining the other way silently drops them,
-because they have no ELP rows.
+Check 3's universe is therefore this table joined to roster status
+(academic left-joined to roster); joining the other way silently drops
+them, because they have no ELP rows.
 }
 
 \seealso{
-\link{el_long_sim}, \link{elp_components_sim}
+\link{el_long_sim}, \link{el_roster_sim}
 }
 \keyword{datasets}

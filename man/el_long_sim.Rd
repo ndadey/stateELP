@@ -3,145 +3,73 @@
 \docType{data}
 \name{el_long_sim}
 \alias{el_long_sim}
-\title{Simulated EL spine: one row per student-year}
+\title{Simulated ELP base table: one row per student-year-component}
 \format{
-A data frame with 461,040 rows and 54 columns:
+A data frame with 1,824,716 rows and 6 columns:
 \describe{
-\item{student_id}{Character. \code{S######} ever-EL, \code{N######} never-EL. Never
-parse the prefix -- use \code{ever_el}; the prefix will not survive contact
-with real data.}
-\item{school_year}{Integer spring year, 2015-2025.}
-\item{grade}{Character \code{"K"}, \code{"1"}-\code{"12"}. High school grades are
-individual, not a bucket.}
-\item{district_id}{Character \code{D01}-\code{D12}.}
-\item{school_code}{Character within-district school code.}
-\item{school_id}{Character \code{D01-S03}; static per student.}
-\item{sex}{Character M / F / X. X is about 0.3\% and is expected to
-suppress.}
-\item{hispanic}{Character Y / N.}
-\item{race_american_indian}{Character Y / N; more than one race may be Y.}
-\item{race_asian}{Character Y / N.}
-\item{race_black}{Character Y / N.}
-\item{race_pacific}{Character Y / N.}
-\item{race_white}{Character Y / N.}
-\item{country_of_birth}{Character three-letter code; \code{USA}; \code{XXX} for
-other.}
-\item{immigrant_status}{Character Y / N; the newcomer proxy.}
-\item{first_entry_us_school_date}{Date; ever-EL only.}
-\item{frpl_status}{Character F / R / N.}
-\item{econ_disadv}{Character Y / N; derived as \code{frpl_status} in F or R.}
-\item{sped_classification}{Character SLD, SLI, OHI, AUT, MD, OTH or \code{NA};
-\code{NA} means not classified.}
-\item{swd_flag}{Character Y / N.}
-\item{gifted_flag}{Character Y / N; sparse.}
-\item{migrant_status}{Character Y / N; sparse.}
-\item{home_language}{Character lowercase three-character code: spa, por,
-ara, guj, hat, cmn, kor, urd, tgl, oth; never-EL eng, spa, oth.}
-\item{service_model}{Character esl_pullout, esl_pushin, sheltered,
-bilingual_tw, bilingual_trans, newcomer_program, refused_services;
-\code{NA} for never-EL. Static per student.}
-\item{lep_program_start_date}{Date, 15 September of the entry year.}
-\item{lep_program_completion_date}{Date, 15 June of the \code{exit_observed}
-year. \strong{Static per student}: present on every row of an exiter,
-including rows before the exit. Validates timing; never the source of
-it.}
-\item{title3_lep_flag}{Character Y / N; Y if and only if current and not
-refused services.}
-\item{ever_el}{Character Y / N.}
-\item{el_status}{Character current / former / never. Three values, kept,
-because every reference-group filter depends on it. "English-only (EO)"
-in Checks 3-4 means \code{never}; former ELs are never in the EO group.}
-\item{el_status_detail}{Character current / never / monitoring_1-4.
-Monitoring years are sub-states of former, not a fourth status. Students
-leave the panel after monitoring year 4, so "Former ELs" here means
-former-within-four-years and captions must say so.}
-\item{el_monitor_year}{Integer 1-4, else \code{NA}.}
-\item{exit_observed}{Integer 0 / 1 on the last current row; see the Exit
-dating section.}
-\item{year_in_status}{Integer; \code{NA} unless current. Validation input; the
-package recomputes it.}
-\item{entry_grade}{Character \code{"K"}-\code{"11"}, else \code{NA}.}
-\item{cohort_start_year}{Integer entry year; \code{NA} for never-EL. Never used
-to build cohorts -- use \code{cohort_label}.}
-\item{cohort_label}{Character \code{K-2017} etc.; \code{NA} when \code{left_truncated} or
-never-EL. This is the cohort key.}
-\item{left_truncated}{Logical; entry precedes the panel. Check 1 cohorts
-exclude these by construction: their duration is measured from an entry
-nobody observed.}
-\item{initial_elp}{Character band label, else \code{NA}; the band at the first
-current year with a valid band.}
-\item{newcomer_flag}{Character Y / N; immigrant and within two years of
-entry.}
-\item{sife_flag}{Character Y / N.}
-\item{elp_form}{Character annual / alternate / \code{NA}. Gates the headline.}
-\item{elp_level}{Numeric 1.0-6.0 in tenths, else \code{NA}. \strong{The headline.}}
-\item{elp_scale}{Numeric, about 100-600, else \code{NA}. The headline scale
-score; Check 3's logistic regression and Check 4's consistency and
-Youden's J run on it.}
-\item{elp_band}{Character spec band label, else \code{NA}.}
-\item{elp_growth_target_met}{Character Y / N / \code{NA}.}
-\item{grad_4yr_status}{Character Y / N / \code{NA}; grade-12 rows only.}
-\item{grad_5yr_status}{Character Y / N / \code{NA}; grade-12 rows only.}
-\item{ela_grad_pathway}{Character assessment / portfolio / substitute;
-grade-12 rows only.}
-\item{math_grad_pathway}{Character assessment / portfolio / substitute;
-grade-12 rows only.}
-\item{school_exit_date}{Date, 20 June; grade-12 rows only.}
-\item{seal_of_biliteracy}{Character Y / N; grade-12 rows only.}
-\item{seal_languages}{Character home-language code; awardees only.}
-\item{district_size_band}{Character small / medium / large, from tertiles
-of mean annual current-EL count. \strong{Validation input only}: the package
-bands districts from \code{spec$policy$district_size_bands}, never from this
-column.}
-\item{sample_weight}{Numeric 1 or 10; see the Weighting section.}
+\item{STUDENT_ID}{Character; key.}
+\item{YEAR}{Integer spring year; key.}
+\item{COMPONENT}{Character; key. One of the controlled vocabulary; the sim
+carries the eight WIDA components. Stored as character, never a factor:
+the spec supplies display order, and a factor would coerce on
+\code{bind_rows()} with a real delivery. The academic table's key is
+\code{SUBJECT} -- the two must never share a key name, or a \code{reading} domain
+and a Reading subject conflate in a join.}
+\item{ELP_FORM}{Character annual / alternate; equals the roster's
+\code{ELP_FORM} for the student-year, asserted. Redundant on purpose, so a
+domain-level analysis that forgot the roster cannot average alternate
+ordinals with annual decimals.}
+\item{SCALE_SCORE}{Numeric, about 100-600; \code{NA} on alternate rows. A
+component reporting a level but no scale score is a legitimate row.}
+\item{ACHIEVEMENT_LEVEL}{Numeric always. Annual 1.0-6.0 in tenths;
+alternate an ordinal 1-6 on a different scale, with labels in the spec.
+6,595 alternate rows carry a level and no scale score. Vendor-reported:
+no level is ever derived from a scale score.}
 }
 }
 \source{
-\code{data-raw/el_long_sim.R} under \code{sim_contract.md} v0.2.0, seed
+\code{data-raw/el_long_sim.R} under \code{sim_contract.md} v0.4.0, seed
 20260727. Synthetic: no figure from it describes any real state.
 }
 \usage{
 el_long_sim
 }
 \description{
-The \strong{spine} and the only place students are counted. It carries the
-headline ELP columns and nothing else about ELP measurement; which component
-feeds the headline is one spec field (\code{spec$elp$headline}).
+\strong{The base table for all analysis.} Every ELP measurement is a row here and
+nowhere else. \code{COMPONENT} is a row key over a controlled vocabulary, not a
+set of instrument-named columns, so an instrument reporting four domains and
+a categorical determination fills the same table shape as WIDA's eight. See
+\code{\link[=el_component_vocabulary]{el_component_vocabulary()}}.
 }
+\section{The headline}{
+
+Which component is the headline is one spec field (\code{spec$elp$headline}).
+Every stage reads it through \code{\link[=elp_headline]{elp_headline()}} -- this table filtered to the
+headline component on the annual form, joined to the roster keys, and
+banded per \code{spec$elp$bands}. No \verb{compute_*()} behind Prep 2 or Checks 1-4
+names a component; only Prep 1, exit-rule work, and the Type-gated
+Additional checks read below the headline.
+}
+
 \section{Counting}{
 
-This is the denominator for anything counted per student-year. Never count
-students from \code{academic_long_sim} (it double-counts, once per subject) or
-from \code{elp_components_sim} (it counts a student up to eight times).
+Never count students here: it counts a WIDA-tested student eight times.
+\link{el_roster_sim} is the only counting frame.
 }
 
-\section{Weighting}{
+\section{Row population}{
 
-Never-EL rows are a 10\% sample carrying \code{sample_weight = 10}; ever-EL rows
-carry 1. Every statewide share must weight and every within-EL statistic
-must not. Unweighted, current ELs are 52.7\% of SY2023 enrollment; weighted,
-17.8\%.
-}
-
-\section{Structural missingness}{
-
-By design, not a data problem (contract 3.6). Never-EL rows have every
-EL-program field \code{NA}. Former rows have \code{elp_level}, \code{elp_scale} and
-\code{elp_band} \code{NA} -- formers do not test. Current rows are \code{NA} when the
-student was not tested that year or took the alternate form. Outcome columns
-are grade-12 only.
-}
-
-\section{Exit dating}{
-
-\code{exit_observed} is 1 on the \strong{last current} row, which is the simulator's
-convention and \strong{not} the package's. The package dates exit to the first
-year observed as \code{former}, so the package's exit year is this row's
-\code{school_year + 1}. The sim's \code{year_in_status} and \code{exit_observed} are
-validation inputs, never the source of the package's own derivations.
+A row exists for an ever-EL student, in a year they were \code{current}, if they
+were tested and the component has a non-\code{NA} value. So a student-year may
+carry fewer than eight rows: a waived domain is an \strong{absent row}, and every
+composite drawing on it is absent too. Absence \emph{is} the signal; there is no
+waived column, and a validator must not read a missing domain row as a
+data problem. There are no rows for former or never student-years, and none
+for untested years.
 }
 
 \seealso{
-\link{elp_components_sim}, \link{academic_long_sim}, \code{\link[=as_el_data]{as_el_data()}}
+\link{el_roster_sim}, \link{academic_long_sim}, \code{\link[=as_el_data]{as_el_data()}},
+\code{\link[=elp_headline]{elp_headline()}}
 }
 \keyword{datasets}

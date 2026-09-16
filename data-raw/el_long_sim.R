@@ -1,7 +1,7 @@
 # ==============================================================================
 # data-raw/el_long_sim.R  --  stateELP
 #
-# Contract: sim_contract.md v0.3.0. Bump the contract when a column, a grain,
+# Contract: sim_contract.md v0.4.0. Bump the contract when a column, a grain,
 # or a distribution changes here.
 #
 # Synthetic EL data in the THREE-TABLE component form.
@@ -9,24 +9,28 @@
 # COMPONENT is a row key, not a set of columns. Domains, composites, and the
 # overall score are rows in one long table; which of them is the *headline* is a
 # single spec field. Same atomic-layer-plus-resolver split as stateSpecs'
-# tests + map, and the same move stateSummative made with subject.
+# tests + map, and the same move stateSummative made with SUBJECT.
 #
-# Produces three tables, all keyed on student_id x school_year:
+# Produces three tables, all keyed on STUDENT_ID x YEAR. Shipped column names
+# are ALL CAPS per ReportR's student_results_long conventions; generator
+# internals stay lowercase and are renamed once, at the output boundary.
 #
 #   el_roster_sim       ROSTER      one row per student-year: the enrollment /
-#                                   status frame (grade, el_status, demographics,
-#                                   elp_form). Counts students; carries NO
+#                                   status frame (GRADE, EL_STATUS, demographics,
+#                                   ELP_FORM). Counts students; carries NO
 #                                   measurement columns. Untested years and
 #                                   former / never students exist ONLY here.
 #   el_long_sim         BASE        the base table for all analysis. One row per
-#                                   student-year-component: component, form,
-#                                   scale_score, level. WIDA fills eight rows per
-#                                   tested student-year. The headline is resolved
-#                                   FROM this table via spec$elp$headline; the
-#                                   roster caches nothing. Rows exist only for
-#                                   CURRENT student-years: formers do not test.
-#   academic_long_sim   ACADEMIC    one row per student-year-subject:
-#                                   scale_score, perf_level.
+#                                   student-year-component: COMPONENT, ELP_FORM,
+#                                   SCALE_SCORE, ACHIEVEMENT_LEVEL. WIDA fills
+#                                   eight rows per tested student-year. The
+#                                   headline is resolved FROM this table via
+#                                   spec$elp$headline; the roster caches nothing.
+#                                   Rows exist only for CURRENT student-years:
+#                                   formers do not test.
+#   academic_long_sim   ACADEMIC    one row per student-year-subject: GRADE,
+#                                   SCALE_SCORE, ACHIEVEMENT_LEVEL,
+#                                   ACHIEVEMENT_LEVEL_ALT.
 #
 # Nothing below hardcodes a component name outside `elp_spec$components`.
 # Composites are computed by iterating each component's `from` weights, so
@@ -466,7 +470,10 @@ el_long_sim <- bind_rows(comp_annual, comp_alt) %>%
   arrange(STUDENT_ID, YEAR, match(COMPONENT, COMPONENTS))
 
 # ---- Headline resolution -----------------------------------------------------
-# The spine's elp_* columns ARE the headline component. One join, one spec field.
+# The generator's working headline (elp_level / elp_scale / elp_band) IS the
+# headline component row of the base table: one filter, one join, one spec
+# field. It drives growth, INITIAL_ELP and the academic model below, and it is
+# NOT shipped on the roster (contract 4.3; guardrail 5).
 headline <- el_long_sim %>%
   filter(COMPONENT == HEADLINE, ELP_FORM == "annual") %>%
   transmute(student_id = STUDENT_ID, school_year = YEAR,
@@ -630,7 +637,7 @@ cat(sprintf("students %s | years %d-%d\n",
 ck <- function(label, ok) cat(sprintf("  %-52s %s\n", label, ifelse(ok, "PASS", "FAIL")))
 
 cat("\n-- Key uniqueness --\n")
-ck("spine unique on student x year",
+ck("roster unique on STUDENT_ID x YEAR",
    !any(duplicated(el_roster_sim[c("STUDENT_ID","YEAR")])))
 ck("components unique on student x year x component",
    !any(duplicated(el_long_sim[c("STUDENT_ID","YEAR","COMPONENT")])))
@@ -671,7 +678,7 @@ cat("\n-- Form separation (alternate levels never enter the headline) --\n")
 ck("no alternate-form student has an internal headline",
    !any(spine$elp_form == "alternate" & !is.na(spine$elp_level),
         na.rm = TRUE))
-print(el_long_sim %>% count(form) %>% as.data.frame())
+print(el_long_sim %>% count(ELP_FORM) %>% as.data.frame())
 
 cat("\n-- Level-only components --\n")
 cat(sprintf("  rows with level and no scale_score: %s\n",
@@ -801,7 +808,7 @@ cat("======================================================\n")
 # ==============================================================================
 # 11. Save
 # ==============================================================================
-SIM_CONTRACT_VERSION <- "0.3.0"
+SIM_CONTRACT_VERSION <- "0.4.0"
 attr(el_roster_sim,        "sim_contract_version") <- SIM_CONTRACT_VERSION
 attr(el_long_sim, "sim_contract_version") <- SIM_CONTRACT_VERSION
 attr(academic_long_sim,  "sim_contract_version") <- SIM_CONTRACT_VERSION
