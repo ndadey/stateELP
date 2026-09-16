@@ -4,17 +4,28 @@
 \alias{as_academic_long}
 \title{Adapt an academic results table}
 \usage{
-as_academic_long(x)
+as_academic_long(x, spec = NULL)
 }
 \arguments{
 \item{x}{A data frame of academic results.}
+
+\item{spec}{Optional \code{el_spec}.}
 }
 \value{
-A tibble with canonical names.
+A tibble with canonical ALL-CAPS names, canonical columns first.
 }
 \description{
-Accepts a stateSummative-shaped or SGP-long academic table and renames it to
-this package's lowercase canonical names. \code{stateELP} does not import
-\code{stateSummative}; a handoff between the two is a rename at the boundary --
-data crosses, code does not.
+The \code{standardize_student_results()} equivalent. For ReportR-shaped input
+-- \code{student_results_long} plus \code{ACHIEVEMENT_LEVEL_ALT} -- it is a
+near-identity: types are coerced and nothing is renamed. For SGP-long input
+it applies the alias map: \code{ID} to \code{STUDENT_ID}, \code{CONTENT_AREA} to
+\code{SUBJECT}, \code{"YYYY_YYYY"} to the spring year, \code{VALID_CASE} filtered. With a
+spec, \code{CONTENT_AREA} values recode to subject keys through
+\code{spec$data$columns$value_maps$CONTENT_AREA$academic}, and labeled
+\code{ACHIEVEMENT_LEVEL}s map to integers through each subject's
+\code{level_labels}.
+}
+\details{
+\code{stateELP} does not import \code{stateSummative} or ReportR; a handoff between
+them is a rename at the boundary -- data crosses, code does not.
 }

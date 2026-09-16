@@ -4,20 +4,33 @@
 \alias{el_coverage_table}
 \title{Coverage of the academic-by-ELP pairing}
 \usage{
-el_coverage_table(spine, academic = NULL)
+el_coverage_table(roster, elp = NULL, academic = NULL, spec = NULL)
 }
 \arguments{
-\item{spine}{A spine data frame.}
+\item{roster}{A roster data frame.}
 
-\item{academic}{An academic data frame, or \code{NULL}.}
+\item{elp}{Optional base table; with \code{spec}, fills \code{N_CURRENT_ELP}.}
+
+\item{academic}{Optional academic table; fills \code{N_ACADEMIC_SCORED}.}
+
+\item{spec}{Optional \code{el_spec}, needed to resolve the headline.}
 }
 \value{
-A tibble by \code{school_year} and \code{grade}.
+A tibble by \code{YEAR} and \code{GRADE}: \code{N_CURRENT}, \code{N_CURRENT_ELP},
+\code{N_ALTERNATE}, \code{N_FORMER}, \code{N_NEVER_SAMPLE}, \code{N_NEVER_WEIGHTED},
+\code{N_ACADEMIC_SCORED}. Unavailable counts are \code{NA}, never \code{0}.
 }
 \description{
-Check 3's data-considerations block. Reports, per year and grade, how many
-students are academically scored, how many current ELs have a same-year ELP
-headline, and how large the former and never-EL reference groups are. No
-filter anywhere decides the pairing silently; this table is where the
-overlap is visible.
+Check 3's data-considerations block. Per year and grade, counted from the
+roster -- the only counting frame -- how many current ELs there are, how
+many have a same-year headline, how many took the alternate form, how large
+the former and never-EL reference groups are, and how many student-years
+are academically scored. No filter anywhere decides the pairing silently;
+this table is where the overlap is visible.
+}
+\details{
+Never-EL counts appear only weighted (\code{N_NEVER_WEIGHTED}, by
+\code{SAMPLE_WEIGHT}, which is taken as 1 when the roster carries none) or
+labeled as sample rows (\code{N_NEVER_SAMPLE}): an unweighted never-EL total is
+never reported.
 }

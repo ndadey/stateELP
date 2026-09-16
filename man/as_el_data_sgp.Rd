@@ -9,21 +9,30 @@ as_el_data_sgp(long_data, spec, academic = NULL)
 \arguments{
 \item{long_data}{A LONG_DATA-shaped data frame: \code{VALID_CASE},
 \code{CONTENT_AREA}, \code{YEAR}, \code{ID}, \code{GRADE}, \code{SCALE_SCORE}, \code{ACHIEVEMENT_LEVEL},
-plus any per-row demographics, including \code{EL_STATUS}.}
+plus per-row roster attributes, including \code{EL_STATUS} and \code{ELP_FORM}.}
 
-\item{spec}{An \code{el_spec} supplying the content-area map, the grade recode
-and the level scale.}
+\item{spec}{An \code{el_spec} supplying the value maps and the level scale.}
 
-\item{academic}{Optional academic table, already in canonical form or
-acceptable to \code{\link[=as_academic_long]{as_academic_long()}}.}
+\item{academic}{Optional academic table, in any form \code{\link[=as_academic_long]{as_academic_long()}}
+accepts.}
 }
 \value{
 An \code{el_data} bundle identical to what the separate-objects form
-would produce from the same records.
+produces from the same records.
 }
 \description{
-\code{CONTENT_AREA} \strong{values} map to components through the spec's
-\code{data$content_area_map}, never by label: \code{READING} is the overall composite
-in one state's WIDA file and the reading test in another's, so a label-based
-guess silently produces a different analysis.
+Recodes a LONG_DATA file into the merged single-long-file form and hands it
+to \code{\link[=as_el_data]{as_el_data()}}, which splits it. \code{CONTENT_AREA} \strong{values} map to
+components through \code{spec$data$columns$value_maps$CONTENT_AREA$base}, never
+by label: \code{READING} is the overall composite in one state's WIDA file and
+the reading test in another's, so a label-based guess silently produces a
+different analysis.
+}
+\details{
+\code{ID} becomes \code{STUDENT_ID}; \code{YEAR} \code{"YYYY_YYYY"} becomes the spring year;
+\code{GRADE} recodes through the spec's value map (\code{"0"} to \code{"K"});
+\code{ACHIEVEMENT_LEVEL} parses against the spec's level scale, labels included;
+\code{VALID_CASE} is honored. When every delivered level is a whole number but
+the spec bands on a fractional break, a warning says the decimal from the
+raw score file is needed. \code{SGP} and growth-target columns are out of scope.
 }

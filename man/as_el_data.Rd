@@ -4,31 +4,60 @@
 \alias{as_el_data}
 \title{Build a validated EL data bundle}
 \usage{
-as_el_data(spine, components = NULL, academic = NULL, spec = NULL)
+as_el_data(elp, roster = NULL, academic = NULL, spec = NULL)
 }
 \arguments{
-\item{spine}{One row per student-year: the denominator for anything counted
-per student-year, and the only object students may be counted from.}
+\item{elp}{The base table: one row per student-year-component. Or, with
+\code{roster = NULL}, a merged single long file to be split.}
 
-\item{components}{Optional, one row per student-year-component.}
+\item{roster}{The roster: one row per student-year, and the only object
+students may be counted from. \code{NULL} to split a merged \code{elp}.}
 
-\item{academic}{Optional, one row per student-year-subject. \code{grade} is
-required on it, with no fill-from-spine fallback, so that the
-spine-agreement check always has something to check.}
+\item{academic}{Optional academic table, one row per student-year-subject.}
 
-\item{spec}{Optional \code{el_spec}. When supplied, component names are checked
-against the spec's component model.}
+\item{spec}{Optional \code{el_spec}. When supplied: delivered column names are
+renamed through \code{spec$data$columns}, \code{GRADE} values are recoded through
+its value map, \code{COMPONENT} values are checked against the component
+model, the headline coverage count is filled in, and the spec is carried
+in the bundle so \code{\link[=elp_headline]{elp_headline()}} can resolve without it being passed
+again.}
 }
 \value{
-An \code{el_data} object: \verb{$spine}, \verb{$components}, \verb{$academic},
-\verb{$coverage} and \verb{$meta}.
+An \code{el_data} object: \verb{$elp} (base), \verb{$roster}, \verb{$academic},
+\verb{$coverage}, \verb{$spec} and \verb{$meta}.
 }
 \description{
-Build a validated EL data bundle
+Two delivery forms land here directly:
 }
+\details{
+\enumerate{
+\item \strong{Separate objects} -- the sim's own call,
+\code{as_el_data(el_long_sim, roster = el_roster_sim, academic = academic_long_sim)}.
+\item \strong{A fully merged single long file} -- roster attributes repeated on
+every component row, SGP LONG_DATA style -- passed as \code{elp} with
+\code{roster = NULL}. It is split on intake: roster attributes become the
+roster (one row per student-year, including rows whose \code{COMPONENT} is
+\code{NA}, which is how an untested or former student-year is carried), and
+measurement columns become the base table.
+}
+
+SGP LONG_DATA files go through \code{\link[=as_el_data_sgp]{as_el_data_sgp()}} first, which recodes them
+into the merged form.
+}
+\section{Validation}{
+
+Roster unique on \verb{STUDENT_ID x YEAR}, with \code{EL_STATUS} in
+\code{current / former / never}. Base table unique on \verb{STUDENT_ID x YEAR x COMPONENT}, \code{COMPONENT} character and (with a spec) inside the spec's
+component model, every row with a roster row, and \code{ELP_FORM} equal to the
+roster's. Academic table keyed on \code{SUBJECT}, \code{GRADE} present -- no
+fill-from-roster fallback -- and equal to the roster's, every row with a
+roster row. The two key names are never swapped.
+}
+
 \examples{
-bundle <- as_el_data(el_long_sim,
-                     components = elp_components_sim,
-                     academic = academic_long_sim)
+bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+                     academic = academic_long_sim,
+                     spec = read_el_spec("00_SIM_EL_Spec"))
 bundle
+head(elp_headline(bundle))
 }

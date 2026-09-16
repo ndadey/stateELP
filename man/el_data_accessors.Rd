@@ -2,16 +2,16 @@
 % Please edit documentation in R/el_data.R
 \name{el_data_accessors}
 \alias{el_data_accessors}
-\alias{el_spine}
-\alias{el_components}
+\alias{el_base}
+\alias{el_roster}
 \alias{el_academic}
 \alias{el_coverage}
 \alias{print.el_data}
 \title{Bundle accessors}
 \usage{
-el_spine(x)
+el_base(x)
 
-el_components(x)
+el_roster(x)
 
 el_academic(x)
 
@@ -28,5 +28,7 @@ el_coverage(x)
 The requested table, or \code{NULL} when the bundle does not carry it.
 }
 \description{
-Bundle accessors
+\code{el_base()} is the ELP base table, \code{el_roster()} the counting frame. Stage
+code reads the headline through \code{\link[=elp_headline]{elp_headline()}}, never by filtering
+\code{el_base()} itself.
 }

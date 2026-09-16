@@ -1,216 +1,459 @@
 # The delivery boundary.
 #
-# The three long tables are the analysis model; the delivered form is whatever
-# a state hands over. as_el_data() is the adapter, and it is the only place
-# that knows about delivered shapes. Every data-taking run_<stage>() takes the
-# validated bundle, never raw tables, so no stage has to ask what form the
-# data arrived in.
+# The three long tables are the analysis model (sim_contract.md 0.4.0); the
+# delivered form is whatever a state hands over. as_el_data() is the adapter,
+# and it is the only place that knows about delivered shapes. Every
+# data-taking run_<stage>() takes the validated bundle, never raw tables, so no
+# stage has to ask what form the data arrived in.
+#
+#   base      one row per STUDENT_ID x YEAR x COMPONENT -- every ELP
+#             measurement, and the only source of it
+#   roster    one row per STUDENT_ID x YEAR -- the counting frame; no
+#             measurement columns
+#   academic  one row per STUDENT_ID x YEAR x SUBJECT
+#
+# Column names are ALL CAPS per ReportR's student_results_long conventions.
+# Nothing in this file names a component: the headline is read from the spec.
 
-SPINE_REQUIRED <- c("student_id", "school_year", "grade", "el_status")
-EL_STATUS_VALUES <- c("current", "former", "never")
+ROSTER_REQUIRED   <- c("STUDENT_ID", "YEAR", "GRADE", "EL_STATUS")
+BASE_COLUMNS      <- c("STUDENT_ID", "YEAR", "COMPONENT", "ELP_FORM",
+                       "SCALE_SCORE", "ACHIEVEMENT_LEVEL")
+ACADEMIC_REQUIRED <- c("STUDENT_ID", "YEAR", "GRADE", "SUBJECT")
+ACADEMIC_COLUMNS  <- c(ACADEMIC_REQUIRED, "SCALE_SCORE", "ACHIEVEMENT_LEVEL",
+                       "ACHIEVEMENT_LEVEL_ALT")
+EL_STATUS_VALUES  <- c("current", "former", "never")
+KEY               <- c("STUDENT_ID", "YEAR")
 
 #' Build a validated EL data bundle
 #'
-#' @param spine One row per student-year: the denominator for anything counted
-#'   per student-year, and the only object students may be counted from.
-#' @param components Optional, one row per student-year-component.
-#' @param academic Optional, one row per student-year-subject. `grade` is
-#'   required on it, with no fill-from-spine fallback, so that the
-#'   spine-agreement check always has something to check.
-#' @param spec Optional `el_spec`. When supplied, component names are checked
-#'   against the spec's component model.
+#' Two delivery forms land here directly:
 #'
-#' @return An `el_data` object: `$spine`, `$components`, `$academic`,
-#'   `$coverage` and `$meta`.
+#' 1. **Separate objects** -- the sim's own call,
+#'    `as_el_data(el_long_sim, roster = el_roster_sim, academic = academic_long_sim)`.
+#' 2. **A fully merged single long file** -- roster attributes repeated on
+#'    every component row, SGP LONG_DATA style -- passed as `elp` with
+#'    `roster = NULL`. It is split on intake: roster attributes become the
+#'    roster (one row per student-year, including rows whose `COMPONENT` is
+#'    `NA`, which is how an untested or former student-year is carried), and
+#'    measurement columns become the base table.
+#'
+#' SGP LONG_DATA files go through [as_el_data_sgp()] first, which recodes them
+#' into the merged form.
+#'
+#' @section Validation:
+#' Roster unique on `STUDENT_ID x YEAR`, with `EL_STATUS` in
+#' `current / former / never`. Base table unique on `STUDENT_ID x YEAR x
+#' COMPONENT`, `COMPONENT` character and (with a spec) inside the spec's
+#' component model, every row with a roster row, and `ELP_FORM` equal to the
+#' roster's. Academic table keyed on `SUBJECT`, `GRADE` present -- no
+#' fill-from-roster fallback -- and equal to the roster's, every row with a
+#' roster row. The two key names are never swapped.
+#'
+#' @param elp The base table: one row per student-year-component. Or, with
+#'   `roster = NULL`, a merged single long file to be split.
+#' @param roster The roster: one row per student-year, and the only object
+#'   students may be counted from. `NULL` to split a merged `elp`.
+#' @param academic Optional academic table, one row per student-year-subject.
+#' @param spec Optional `el_spec`. When supplied: delivered column names are
+#'   renamed through `spec$data$columns`, `GRADE` values are recoded through
+#'   its value map, `COMPONENT` values are checked against the component
+#'   model, the headline coverage count is filled in, and the spec is carried
+#'   in the bundle so [elp_headline()] can resolve without it being passed
+#'   again.
+#'
+#' @return An `el_data` object: `$elp` (base), `$roster`, `$academic`,
+#'   `$coverage`, `$spec` and `$meta`.
 #' @export
 #' @examples
-#' bundle <- as_el_data(el_long_sim,
-#'                      components = elp_components_sim,
-#'                      academic = academic_long_sim)
+#' bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+#'                      academic = academic_long_sim,
+#'                      spec = read_el_spec("00_SIM_EL_Spec"))
 #' bundle
-as_el_data <- function(spine, components = NULL, academic = NULL,
-                       spec = NULL) {
-  stopifnot(is.data.frame(spine))
-  spine <- tibble::as_tibble(spine)
+#' head(elp_headline(bundle))
+as_el_data <- function(elp, roster = NULL, academic = NULL, spec = NULL) {
+  stopifnot(is.data.frame(elp),
+            is.null(roster) || is.data.frame(roster),
+            is.null(academic) || is.data.frame(academic),
+            is.null(spec) || inherits(spec, "el_spec"))
 
-  miss <- setdiff(SPINE_REQUIRED, names(spine))
-  if (length(miss)) {
-    stop("Spine is missing required column(s): ", paste(miss, collapse = ", "),
-         ".\nThese five run Checks 1 and 2 in full: ",
-         paste(c(SPINE_REQUIRED, "elp_level"), collapse = ", "), ".",
-         call. = FALSE)
-  }
-  if (anyDuplicated(spine[c("student_id", "school_year")]) != 0L) {
-    stop("Spine is not unique on student_id x school_year. Every count in ",
-         "Prep 2 and both Check 1 denominators assume that grain.",
-         call. = FALSE)
-  }
-  bad <- setdiff(unique(stats::na.omit(spine$el_status)), EL_STATUS_VALUES)
-  if (length(bad)) {
-    stop("`el_status` must be one of ", paste(EL_STATUS_VALUES, collapse = "/"),
-         "; found: ", paste(bad, collapse = ", "),
-         ".\nMonitoring years are sub-states of `former`, not a fourth value.",
-         call. = FALSE)
+  version <- .contract_version(elp, roster, academic)
+  cols <- if (is.null(spec)) NULL else spec$data$columns
+
+  elp <- tibble::as_tibble(elp)
+  if (is.null(roster)) {
+    elp <- .apply_crosswalk(.apply_crosswalk(elp, cols$roster), cols$base)
+    parts <- .split_merged(elp)
+    elp <- parts$base
+    roster <- parts$roster
+  } else {
+    elp <- .apply_crosswalk(elp, cols$base)
+    roster <- .apply_crosswalk(tibble::as_tibble(roster), cols$roster)
   }
 
-  if (!is.null(components)) {
-    components <- .validate_components(tibble::as_tibble(components), spine, spec)
-  }
+  roster <- .validate_roster(roster, spec)
+  elp <- .validate_base(elp, roster, spec)
   if (!is.null(academic)) {
-    academic <- .validate_academic(tibble::as_tibble(academic), spine)
+    academic <- .apply_crosswalk(tibble::as_tibble(academic), cols$academic)
+    academic <- .validate_academic(academic, roster, spec)
   }
 
   out <- list(
-    spine      = spine,
-    components = components,
-    academic   = academic,
-    coverage   = el_coverage_table(spine, academic),
+    elp      = elp,
+    roster   = roster,
+    academic = academic,
+    coverage = el_coverage_table(roster, elp = elp, academic = academic,
+                                 spec = spec),
+    spec     = spec,
     meta = list(
-      sim_contract_version = attr(spine, "sim_contract_version"),
-      spec_id  = if (is.null(spec)) NA_character_ else spec$program$short_name,
-      n_students = length(unique(spine$student_id)),
-      years = range(spine$school_year, na.rm = TRUE),
-      built = Sys.time()
+      sim_contract_version = version,
+      spec_id    = if (is.null(spec)) NA_character_
+                   else spec$program$short_name %||% NA_character_,
+      n_students = length(unique(roster$STUDENT_ID)),
+      years      = range(roster$YEAR, na.rm = TRUE),
+      built      = Sys.time()
     )
   )
   class(out) <- "el_data"
   out
 }
 
-.validate_components <- function(components, spine, spec) {
-  # The swapped-key check comes first on purpose: a table keyed on `subject`
-  # is also missing `component`, and "missing: component" would send someone
-  # off to add a column rather than to rename the one they have.
-  if ("subject" %in% names(components)) {
-    stop("Components table must key on `component`, not `subject`. ",
-         "A `reading` domain and an academic Reading subject conflate in a ",
-         "join if both key columns share a name.", call. = FALSE)
+# ---- intake helpers ----------------------------------------------------------
+
+.contract_version <- function(...) {
+  for (x in list(...)) {
+    v <- attr(x, "sim_contract_version")
+    if (!is.null(v)) return(v)
   }
-  need <- c("student_id", "school_year", "component")
-  miss <- setdiff(need, names(components))
+  NA_character_
+}
+
+# canonical = delivered. Renames only where the delivered name is present and
+# the canonical one is not, so an identity crosswalk is a no-op.
+.apply_crosswalk <- function(x, map) {
+  if (is.null(map)) return(x)
+  for (canon in names(map)) {
+    delivered <- map[[canon]]
+    if (!identical(canon, delivered) && delivered %in% names(x) &&
+        !canon %in% names(x)) {
+      names(x)[names(x) == delivered] <- canon
+    }
+  }
+  x
+}
+
+.as_year <- function(y, what) {
+  if (is.character(y) || is.factor(y)) {
+    y <- as.character(y)
+    # SGP "YYYY_YYYY" -> the spring (end) year.
+    span <- grepl("^[0-9]{4}_[0-9]{4}$", y)
+    y[span] <- substr(y[span], 6L, 9L)
+    y <- suppressWarnings(as.numeric(y))
+  }
+  if (!is.numeric(y) || any(!is.na(y) & y != round(y))) {
+    stop("`YEAR` on the ", what, " must be a whole spring year ",
+         "(or SGP \"YYYY_YYYY\").", call. = FALSE)
+  }
+  as.integer(y)
+}
+
+.recode_grade <- function(g, spec) {
+  g <- as.character(g)
+  map <- if (is.null(spec)) NULL else spec$data$columns$value_maps$GRADE
+  if (!is.null(map)) {
+    hit <- !is.na(g) & g %in% names(map)
+    g[hit] <- unname(map[g[hit]])
+  }
+  g
+}
+
+.require <- function(x, need, what, hint = NULL) {
+  miss <- setdiff(need, names(x))
   if (length(miss)) {
-    stop("Components table is missing: ", paste(miss, collapse = ", "), ".",
+    stop(what, " is missing required column(s): ",
+         paste(miss, collapse = ", "), ".", hint, call. = FALSE)
+  }
+}
+
+.split_merged <- function(merged) {
+  .require(merged, c(KEY, "COMPONENT"), "A merged single long file",
+           paste0("\nPass `roster =` for the separate-objects form; a merged ",
+                  "file needs COMPONENT on every measurement row."))
+  meas <- intersect(c("COMPONENT", "SCALE_SCORE", "ACHIEVEMENT_LEVEL"),
+                    names(merged))
+  # ELP_FORM is functionally dependent on the student-year, so it belongs to
+  # both tables (sim_contract.md 4.1).
+  roster <- dplyr::distinct(merged[setdiff(names(merged), meas)])
+  dup <- duplicated(roster[KEY])
+  if (any(dup)) {
+    stop(sum(dup), " student-year(s) in the merged file carry roster ",
+         "attributes that vary across their component rows. A roster ",
+         "attribute is one value per student-year.", call. = FALSE)
+  }
+  # A base row is a measurement: a component with a scale score, a level, or
+  # both (sim_contract.md 4.2). A row with neither -- COMPONENT NA, or both
+  # measures NA -- is how a merged file carries an untested or former
+  # student-year, and it lands on the roster only.
+  measured <- !is.na(merged$COMPONENT) &
+    (!is.na(merged$SCALE_SCORE %||% NA) | !is.na(merged$ACHIEVEMENT_LEVEL %||% NA))
+  base <- merged[measured, intersect(BASE_COLUMNS, names(merged)), drop = FALSE]
+  list(roster = roster, base = base)
+}
+
+.validate_roster <- function(roster, spec) {
+  .require(roster, ROSTER_REQUIRED, "The roster",
+           paste0("\nThese four plus base-table rows for the headline ",
+                  "component run Checks 1 and 2 in full."))
+  roster$STUDENT_ID <- as.character(roster$STUDENT_ID)
+  roster$YEAR <- .as_year(roster$YEAR, "roster")
+  roster$GRADE <- .recode_grade(roster$GRADE, spec)
+  if (anyDuplicated(roster[KEY]) != 0L) {
+    stop("The roster is not unique on STUDENT_ID x YEAR. Every count in ",
+         "Prep 2 and both Check 1 denominators assume that grain.",
          call. = FALSE)
   }
-  if (anyDuplicated(components[c("student_id", "school_year", "component")]) != 0L) {
-    stop("Components table is not unique on student_id x school_year x component.",
+  bad <- setdiff(unique(stats::na.omit(roster$EL_STATUS)), EL_STATUS_VALUES)
+  if (length(bad)) {
+    stop("`EL_STATUS` must be one of ", paste(EL_STATUS_VALUES, collapse = "/"),
+         "; found: ", paste(bad, collapse = ", "),
+         ".\nMonitoring years are sub-states of `former`, not a fourth value.",
          call. = FALSE)
   }
-  if (!is.character(components$component)) {
-    stop("`component` must be character, never a factor: the spec supplies ",
+  roster[c(ROSTER_REQUIRED, setdiff(names(roster), ROSTER_REQUIRED))]
+}
+
+.validate_base <- function(base, roster, spec) {
+  # The swapped-key check comes first on purpose: a table keyed on SUBJECT is
+  # also missing COMPONENT, and "missing: COMPONENT" would send someone off to
+  # add a column rather than to rename the one they have.
+  if ("SUBJECT" %in% names(base)) {
+    stop("The base table must key on `COMPONENT`, not `SUBJECT`. A reading ",
+         "domain and an academic Reading subject conflate in a join if both ",
+         "key columns share a name.", call. = FALSE)
+  }
+  .require(base, c(KEY, "COMPONENT"), "The base table")
+
+  extra <- setdiff(names(base), BASE_COLUMNS)
+  if (length(extra)) {
+    stop("The base table carries measurement only; found non-base column(s): ",
+         paste(extra, collapse = ", "), ".\nRoster attributes belong on the ",
+         "roster -- or deliver one merged file with `roster = NULL` and it is ",
+         "split on intake.", call. = FALSE)
+  }
+  if (!"SCALE_SCORE" %in% names(base) && !"ACHIEVEMENT_LEVEL" %in% names(base)) {
+    stop("The base table needs SCALE_SCORE, ACHIEVEMENT_LEVEL, or both.",
+         call. = FALSE)
+  }
+  # The table's shape never changes: a component may lack a scale or a level,
+  # but the column is always there.
+  if (!"SCALE_SCORE" %in% names(base)) base$SCALE_SCORE <- NA_real_
+  if (!"ACHIEVEMENT_LEVEL" %in% names(base)) base$ACHIEVEMENT_LEVEL <- NA_real_
+
+  if (!"ELP_FORM" %in% names(base)) {
+    if (!"ELP_FORM" %in% names(roster)) {
+      stop("`ELP_FORM` is required on the base table or the roster: it gates ",
+           "the headline. For an instrument with no alternate form, set it to ",
+           "\"annual\".", call. = FALSE)
+    }
+    # Redundant with the roster's on purpose; carried across, never invented.
+    base <- dplyr::left_join(base, roster[c(KEY, "ELP_FORM")], by = KEY)
+  }
+
+  base$STUDENT_ID <- as.character(base$STUDENT_ID)
+  base$YEAR <- .as_year(base$YEAR, "base table")
+  if (!is.character(base$COMPONENT)) {
+    stop("`COMPONENT` must be character, never a factor: the spec supplies ",
          "display order, and a factor coerces on bind_rows() with a real ",
          "delivery.", call. = FALSE)
   }
+  if (!is.numeric(base$ACHIEVEMENT_LEVEL)) {
+    stop("`ACHIEVEMENT_LEVEL` must be numeric -- the instrument's value, or an ",
+         "ordinal index for a categorical scale, with labels in the spec. ",
+         "Labeled deliveries are parsed by as_el_data_sgp().", call. = FALSE)
+  }
+  if (anyDuplicated(base[c(KEY, "COMPONENT")]) != 0L) {
+    stop("The base table is not unique on STUDENT_ID x YEAR x COMPONENT.",
+         call. = FALSE)
+  }
   if (!is.null(spec)) {
-    unknown <- setdiff(unique(components$component), spec_components(spec))
+    unknown <- setdiff(unique(base$COMPONENT), spec_components(spec))
     if (length(unknown)) {
-      stop("Component(s) not in the spec's component model: ",
+      stop("COMPONENT value(s) not in the spec's component model: ",
            paste(unknown, collapse = ", "),
            ".\nMap an instrument's own name with `native_name` in the spec.",
            call. = FALSE)
     }
   }
-  # `form` is redundant with the spine's elp_form on purpose; assert it agrees,
-  # or a domain-level analysis that forgot to join the spine averages alternate
-  # ordinals with annual decimals.
-  if ("form" %in% names(components) && "elp_form" %in% names(spine)) {
-    chk <- dplyr::left_join(
-      components[c("student_id", "school_year", "form")],
-      spine[c("student_id", "school_year", "elp_form")],
-      by = c("student_id", "school_year"))
-    disagree <- !is.na(chk$elp_form) & chk$form != chk$elp_form
-    if (any(disagree)) {
-      stop(sum(disagree), " component row(s) carry a `form` that disagrees ",
-           "with the spine's `elp_form`.", call. = FALSE)
-    }
+
+  chk <- dplyr::left_join(
+    base[c(KEY, "ELP_FORM")],
+    dplyr::mutate(roster[KEY], .ON_ROSTER = TRUE,
+                  .ROSTER_FORM = if ("ELP_FORM" %in% names(roster))
+                    roster$ELP_FORM else NA_character_),
+    by = KEY)
+  orphan <- is.na(chk$.ON_ROSTER)
+  if (any(orphan)) {
+    stop(sum(orphan), " base-table row(s) have no roster row. The roster is ",
+         "the counting frame; a measurement without a student-year cannot be ",
+         "counted or given a status.", call. = FALSE)
   }
-  components
+  disagree <- !is.na(chk$.ROSTER_FORM) & chk$ELP_FORM != chk$.ROSTER_FORM
+  if (any(disagree)) {
+    stop(sum(disagree), " base-table row(s) carry an `ELP_FORM` that ",
+         "disagrees with the roster's. A domain-level analysis would average ",
+         "alternate ordinals with annual decimals.", call. = FALSE)
+  }
+  base[BASE_COLUMNS]
 }
 
-.validate_academic <- function(academic, spine) {
-  if ("component" %in% names(academic)) {
-    stop("Academic table must key on `subject`, not `component`.",
+.validate_academic <- function(academic, roster, spec) {
+  if ("COMPONENT" %in% names(academic)) {
+    stop("The academic table must key on `SUBJECT`, not `COMPONENT`.",
          call. = FALSE)
   }
-  need <- c("student_id", "school_year", "grade", "subject")
-  miss <- setdiff(need, names(academic))
-  if (length(miss)) {
-    stop("Academic table is missing: ", paste(miss, collapse = ", "),
-         ".\n`grade` is required on the academic row, with no fill-from-spine ",
-         "fallback: an EOC delivery reports a real tested grade there, and a ",
-         "validator cannot check agreement on a column that is not present.",
-         call. = FALSE)
-  }
-  if (anyDuplicated(academic[c("student_id", "school_year", "subject")]) != 0L) {
-    stop("Academic table is not unique on student_id x school_year x subject.",
+  .require(academic, ACADEMIC_REQUIRED, "The academic table",
+           paste0("\n`GRADE` is required on the academic row, with no ",
+                  "fill-from-roster fallback: an EOC delivery reports a real ",
+                  "tested grade there, and a validator cannot check agreement ",
+                  "on a column that is not present."))
+  academic$STUDENT_ID <- as.character(academic$STUDENT_ID)
+  academic$YEAR <- .as_year(academic$YEAR, "academic table")
+  academic$GRADE <- .recode_grade(academic$GRADE, spec)
+  academic$SUBJECT <- as.character(academic$SUBJECT)
+
+  if (anyDuplicated(academic[c(KEY, "SUBJECT")]) != 0L) {
+    stop("The academic table is not unique on STUDENT_ID x YEAR x SUBJECT.",
          call. = FALSE)
   }
   chk <- dplyr::left_join(
-    academic[c("student_id", "school_year", "grade")],
-    dplyr::rename(spine[c("student_id", "school_year", "grade")],
-                  spine_grade = "grade"),
-    by = c("student_id", "school_year"))
-  orphan <- is.na(chk$spine_grade)
+    academic[c(KEY, "GRADE")],
+    dplyr::rename(roster[c(KEY, "GRADE")], .ROSTER_GRADE = "GRADE"),
+    by = KEY)
+  orphan <- is.na(chk$.ROSTER_GRADE)
   if (any(orphan)) {
-    stop(sum(orphan), " academic row(s) have no spine row. The spine is the ",
-         "roster; an academic row without one cannot be counted or given a ",
-         "status.", call. = FALSE)
+    stop(sum(orphan), " academic row(s) have no roster row. The roster is the ",
+         "counting frame; an academic row without one cannot be counted or ",
+         "given a status.", call. = FALSE)
   }
-  disagree <- chk$grade != chk$spine_grade
+  disagree <- chk$GRADE != chk$.ROSTER_GRADE
   if (any(disagree)) {
-    stop(sum(disagree), " academic row(s) disagree with the spine on `grade`.",
+    stop(sum(disagree), " academic row(s) disagree with the roster on `GRADE`.",
          call. = FALSE)
   }
-  academic
+  academic[c(intersect(ACADEMIC_COLUMNS, names(academic)),
+             setdiff(names(academic), ACADEMIC_COLUMNS))]
 }
+
+# ---- the headline ------------------------------------------------------------
+
+#' Resolve the ELP headline
+#'
+#' **The only route any stage takes to the headline.** The base table filtered
+#' to `spec$elp$headline` on the annual form, joined to the roster keys, and
+#' banded per `spec$elp$bands` -- one filter, one join, nothing pivots,
+#' nothing cached (sim_contract.md 4.3).
+#'
+#' Alternate-form student-years never resolve here: the alternate form
+#' reports on a different scale, and banding it on the annual scheme silently
+#' mixes two measurement systems. Former and never-EL student-years have no
+#' base-table rows and so never resolve either.
+#'
+#' @param data An `el_data` bundle.
+#' @param spec An `el_spec`. Defaults to the spec the bundle was built with.
+#' @return A tibble: `STUDENT_ID`, `YEAR`, `ACHIEVEMENT_LEVEL`, `SCALE_SCORE`,
+#'   `ELP_BAND`.
+#' @export
+#' @examples
+#' spec <- read_el_spec("00_SIM_EL_Spec")
+#' b <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
+#' table(elp_headline(b)$ELP_BAND)
+elp_headline <- function(data, spec = NULL) {
+  stopifnot(inherits(data, "el_data"))
+  if (is.null(spec)) spec <- data$spec
+  if (is.null(spec)) {
+    stop("elp_headline() needs a spec to know which component is the ",
+         "headline: pass `spec`, or build the bundle with ",
+         "as_el_data(..., spec = ).", call. = FALSE)
+  }
+  stopifnot(inherits(spec, "el_spec"))
+  .resolve_headline(data$elp, data$roster, spec)
+}
+
+.resolve_headline <- function(base, roster, spec) {
+  h <- base[base$COMPONENT == spec_headline(spec) & base$ELP_FORM %in% "annual",
+            c(KEY, "ACHIEVEMENT_LEVEL", "SCALE_SCORE"), drop = FALSE]
+  h <- dplyr::semi_join(h, roster[KEY], by = KEY)
+  h$ELP_BAND <- assign_elp_band(h$ACHIEVEMENT_LEVEL, spec)
+  h
+}
+
+# ---- coverage ----------------------------------------------------------------
 
 #' Coverage of the academic-by-ELP pairing
 #'
-#' Check 3's data-considerations block. Reports, per year and grade, how many
-#' students are academically scored, how many current ELs have a same-year ELP
-#' headline, and how large the former and never-EL reference groups are. No
-#' filter anywhere decides the pairing silently; this table is where the
-#' overlap is visible.
+#' Check 3's data-considerations block. Per year and grade, counted from the
+#' roster -- the only counting frame -- how many current ELs there are, how
+#' many have a same-year headline, how many took the alternate form, how large
+#' the former and never-EL reference groups are, and how many student-years
+#' are academically scored. No filter anywhere decides the pairing silently;
+#' this table is where the overlap is visible.
 #'
-#' @param spine A spine data frame.
-#' @param academic An academic data frame, or `NULL`.
-#' @return A tibble by `school_year` and `grade`.
+#' Never-EL counts appear only weighted (`N_NEVER_WEIGHTED`, by
+#' `SAMPLE_WEIGHT`, which is taken as 1 when the roster carries none) or
+#' labeled as sample rows (`N_NEVER_SAMPLE`): an unweighted never-EL total is
+#' never reported.
+#'
+#' @param roster A roster data frame.
+#' @param elp Optional base table; with `spec`, fills `N_CURRENT_ELP`.
+#' @param academic Optional academic table; fills `N_ACADEMIC_SCORED`.
+#' @param spec Optional `el_spec`, needed to resolve the headline.
+#' @return A tibble by `YEAR` and `GRADE`: `N_CURRENT`, `N_CURRENT_ELP`,
+#'   `N_ALTERNATE`, `N_FORMER`, `N_NEVER_SAMPLE`, `N_NEVER_WEIGHTED`,
+#'   `N_ACADEMIC_SCORED`. Unavailable counts are `NA`, never `0`.
 #' @export
-el_coverage_table <- function(spine, academic = NULL) {
-  has_headline <- "elp_level" %in% names(spine)
-  has_form <- "elp_form" %in% names(spine)
+el_coverage_table <- function(roster, elp = NULL, academic = NULL,
+                              spec = NULL) {
+  stopifnot(is.data.frame(roster), all(ROSTER_REQUIRED %in% names(roster)))
 
-  base <- spine |>
-    dplyr::group_by(.data$school_year, .data$grade) |>
+  r <- roster[c(KEY, "GRADE", "EL_STATUS")]
+  r$.W <- if ("SAMPLE_WEIGHT" %in% names(roster)) roster$SAMPLE_WEIGHT else 1
+  r$.ALT <- if ("ELP_FORM" %in% names(roster)) {
+    roster$ELP_FORM %in% "alternate"
+  } else NA
+  r$.ELP <- NA
+  if (!is.null(elp) && !is.null(spec)) {
+    h <- .resolve_headline(elp, roster, spec)
+    r$.ELP <- paste(r$STUDENT_ID, r$YEAR) %in% paste(h$STUDENT_ID, h$YEAR)
+  }
+  r$.ACAD <- NA
+  if (!is.null(academic)) {
+    scored <- academic[!is.na(academic$SCALE_SCORE %||% NA), KEY, drop = FALSE]
+    r$.ACAD <- paste(r$STUDENT_ID, r$YEAR) %in%
+      paste(scored$STUDENT_ID, scored$YEAR)
+  }
+
+  r |>
+    dplyr::mutate(.CUR = .data$EL_STATUS %in% "current",
+                  .NEV = .data$EL_STATUS %in% "never") |>
+    dplyr::group_by(.data$YEAR, .data$GRADE) |>
     dplyr::summarise(
-      n_spine     = dplyr::n(),
-      n_current   = sum(.data$el_status == "current", na.rm = TRUE),
-      n_former    = sum(.data$el_status == "former", na.rm = TRUE),
-      n_never     = sum(.data$el_status == "never", na.rm = TRUE),
-      n_elp       = if (has_headline) {
-        sum(.data$el_status == "current" & !is.na(.data$elp_level))
-      } else NA_integer_,
-      n_alternate = if (has_form) {
-        sum(.data$elp_form %in% "alternate")
-      } else NA_integer_,
+      N_CURRENT         = sum(.data$.CUR),
+      N_CURRENT_ELP     = sum(.data$.CUR & .data$.ELP),
+      N_ALTERNATE       = sum(.data$.CUR & .data$.ALT),
+      N_FORMER          = sum(.data$EL_STATUS %in% "former"),
+      N_NEVER_SAMPLE    = sum(.data$.NEV),
+      N_NEVER_WEIGHTED  = sum(.data$.W[.data$.NEV]),
+      N_ACADEMIC_SCORED = sum(.data$.ACAD),
       .groups = "drop"
     )
-
-  if (is.null(academic)) {
-    return(dplyr::mutate(base, n_academic = NA_integer_))
-  }
-  acad <- academic |>
-    dplyr::distinct(.data$student_id, .data$school_year, .data$grade) |>
-    dplyr::count(.data$school_year, .data$grade, name = "n_academic")
-
-  base |>
-    dplyr::left_join(acad, by = c("school_year", "grade")) |>
-    dplyr::mutate(n_academic = dplyr::coalesce(.data$n_academic, 0L))
 }
 
 # ---- accessors ---------------------------------------------------------------
 
 #' Bundle accessors
+#'
+#' `el_base()` is the ELP base table, `el_roster()` the counting frame. Stage
+#' code reads the headline through [elp_headline()], never by filtering
+#' `el_base()` itself.
 #'
 #' @param x An `el_data` bundle.
 #' @param ... Unused.
@@ -220,11 +463,11 @@ NULL
 
 #' @rdname el_data_accessors
 #' @export
-el_spine <- function(x) { stopifnot(inherits(x, "el_data")); x$spine }
+el_base <- function(x) { stopifnot(inherits(x, "el_data")); x$elp }
 
 #' @rdname el_data_accessors
 #' @export
-el_components <- function(x) { stopifnot(inherits(x, "el_data")); x$components }
+el_roster <- function(x) { stopifnot(inherits(x, "el_data")); x$roster }
 
 #' @rdname el_data_accessors
 #' @export
@@ -238,15 +481,18 @@ el_coverage <- function(x) { stopifnot(inherits(x, "el_data")); x$coverage }
 #' @export
 print.el_data <- function(x, ...) {
   cat("<el_data>\n")
-  cat("  spine     :", format(nrow(x$spine), big.mark = ","), "rows,",
+  cat("  base     :", format(nrow(x$elp), big.mark = ","), "rows,",
+      length(unique(x$elp$COMPONENT)), "components\n")
+  cat("  roster   :", format(nrow(x$roster), big.mark = ","), "rows,",
       format(x$meta$n_students, big.mark = ","), "students,",
       paste(x$meta$years, collapse = "-"), "\n")
-  cat("  components:",
-      if (is.null(x$components)) "- (absent)"
-      else paste(format(nrow(x$components), big.mark = ","), "rows"), "\n")
-  cat("  academic  :",
+  cat("  academic :",
       if (is.null(x$academic)) "- (absent: Check 1 Model 2, Check 3 and Check 4 degrade to NULL)"
       else paste(format(nrow(x$academic), big.mark = ","), "rows"), "\n")
+  cat("  spec     :",
+      if (is.null(x$spec)) "- (none: pass one to elp_headline())"
+      else paste0(x$meta$spec_id, " (headline: ", spec_headline(x$spec), ")"),
+      "\n")
   if (!is.na(x$meta$sim_contract_version)) {
     cat("  sim contract:", x$meta$sim_contract_version, "\n")
   }
@@ -257,160 +503,189 @@ print.el_data <- function(x, ...) {
 
 #' Adapt an SGP LONG_DATA delivery
 #'
-#' `CONTENT_AREA` **values** map to components through the spec's
-#' `data$content_area_map`, never by label: `READING` is the overall composite
-#' in one state's WIDA file and the reading test in another's, so a label-based
-#' guess silently produces a different analysis.
+#' Recodes a LONG_DATA file into the merged single-long-file form and hands it
+#' to [as_el_data()], which splits it. `CONTENT_AREA` **values** map to
+#' components through `spec$data$columns$value_maps$CONTENT_AREA$base`, never
+#' by label: `READING` is the overall composite in one state's WIDA file and
+#' the reading test in another's, so a label-based guess silently produces a
+#' different analysis.
+#'
+#' `ID` becomes `STUDENT_ID`; `YEAR` `"YYYY_YYYY"` becomes the spring year;
+#' `GRADE` recodes through the spec's value map (`"0"` to `"K"`);
+#' `ACHIEVEMENT_LEVEL` parses against the spec's level scale, labels included;
+#' `VALID_CASE` is honored. When every delivered level is a whole number but
+#' the spec bands on a fractional break, a warning says the decimal from the
+#' raw score file is needed. `SGP` and growth-target columns are out of scope.
 #'
 #' @param long_data A LONG_DATA-shaped data frame: `VALID_CASE`,
 #'   `CONTENT_AREA`, `YEAR`, `ID`, `GRADE`, `SCALE_SCORE`, `ACHIEVEMENT_LEVEL`,
-#'   plus any per-row demographics, including `EL_STATUS`.
-#' @param spec An `el_spec` supplying the content-area map, the grade recode
-#'   and the level scale.
-#' @param academic Optional academic table, already in canonical form or
-#'   acceptable to [as_academic_long()].
+#'   plus per-row roster attributes, including `EL_STATUS` and `ELP_FORM`.
+#' @param spec An `el_spec` supplying the value maps and the level scale.
+#' @param academic Optional academic table, in any form [as_academic_long()]
+#'   accepts.
 #' @return An `el_data` bundle identical to what the separate-objects form
-#'   would produce from the same records.
+#'   produces from the same records.
 #' @export
 as_el_data_sgp <- function(long_data, spec, academic = NULL) {
   stopifnot(is.data.frame(long_data), inherits(spec, "el_spec"))
   d <- tibble::as_tibble(long_data)
+  version <- attr(long_data, "sim_contract_version")
 
   if ("VALID_CASE" %in% names(d)) {
-    d <- d[d$VALID_CASE == "VALID_CASE", , drop = FALSE]
+    d <- d[d$VALID_CASE %in% "VALID_CASE", , drop = FALSE]
+    d$VALID_CASE <- NULL
   }
-  need <- c("CONTENT_AREA", "YEAR", "ID", "GRADE")
-  miss <- setdiff(need, names(d))
-  if (length(miss)) {
-    stop("LONG_DATA is missing: ", paste(miss, collapse = ", "), ".",
-         call. = FALSE)
-  }
+  d <- .rename_alias(d, "ID", "STUDENT_ID")
+  .require(d, c("CONTENT_AREA", KEY, "GRADE"), "LONG_DATA")
 
-  ca_map <- spec$data$content_area_map
+  ca_map <- spec$data$columns$value_maps$CONTENT_AREA$base
   if (is.null(ca_map)) {
-    stop("`spec$data$content_area_map` is required to read a LONG_DATA ",
-         "delivery: CONTENT_AREA values map to components through the spec, ",
-         "never by label.", call. = FALSE)
+    stop("`spec$data$columns$value_maps$CONTENT_AREA$base` is required to ",
+         "read a LONG_DATA delivery: CONTENT_AREA values map to components ",
+         "through the spec, never by label.", call. = FALSE)
   }
-  unknown <- setdiff(unique(d$CONTENT_AREA), names(ca_map))
+  unknown <- setdiff(unique(as.character(d$CONTENT_AREA)), names(ca_map))
   if (length(unknown)) {
-    stop("CONTENT_AREA value(s) absent from the spec's content_area_map: ",
+    stop("CONTENT_AREA value(s) absent from the spec's value map: ",
          paste(unknown, collapse = ", "), ".", call. = FALSE)
   }
-
-  grade_recode <- spec$data$grade_recode
-  recode_grade <- function(g) {
-    g <- as.character(g)
-    if (!is.null(grade_recode)) {
-      hit <- g %in% names(grade_recode)
-      g[hit] <- unname(grade_recode[g[hit]])
-    }
-    g
+  d$COMPONENT <- unname(ca_map[as.character(d$CONTENT_AREA)])
+  d$CONTENT_AREA <- NULL
+  if ("ACHIEVEMENT_LEVEL" %in% names(d)) {
+    d$ACHIEVEMENT_LEVEL <- .parse_achievement_level(d$ACHIEVEMENT_LEVEL, spec)
   }
+  if ("SCALE_SCORE" %in% names(d)) d$SCALE_SCORE <- as.numeric(d$SCALE_SCORE)
 
-  level <- .parse_achievement_level(d[["ACHIEVEMENT_LEVEL"]], spec)
-
-  components <- tibble::tibble(
-    student_id  = as.character(d$ID),
-    school_year = as.integer(d$YEAR),
-    component   = unname(ca_map[as.character(d$CONTENT_AREA)]),
-    scale_score = if ("SCALE_SCORE" %in% names(d)) as.numeric(d$SCALE_SCORE)
-                  else NA_real_,
-    level       = level
-  )
-  if ("ELP_FORM" %in% names(d)) components$form <- as.character(d$ELP_FORM)
-
-  headline <- spec_headline(spec)
-  head_rows <- components[components$component == headline, ]
-
-  carry <- setdiff(names(d), c("CONTENT_AREA", "SCALE_SCORE",
-                               "ACHIEVEMENT_LEVEL", "VALID_CASE"))
-  spine <- d[carry] |>
-    dplyr::distinct() |>
-    dplyr::rename(student_id = "ID", school_year = "YEAR", grade = "GRADE")
-  names(spine) <- tolower(names(spine))
-  spine$student_id <- as.character(spine$student_id)
-  spine$school_year <- as.integer(spine$school_year)
-  spine$grade <- recode_grade(spine$grade)
-
-  spine <- spine |>
-    dplyr::left_join(
-      dplyr::rename(head_rows[c("student_id", "school_year",
-                                "scale_score", "level")],
-                    elp_scale = "scale_score", elp_level = "level"),
-      by = c("student_id", "school_year")) |>
-    dplyr::mutate(elp_band = assign_elp_band(.data$elp_level, spec))
-
-  if (!is.null(academic)) academic <- as_academic_long(academic)
-  as_el_data(spine, components = components, academic = academic, spec = spec)
+  if (!is.null(academic)) academic <- as_academic_long(academic, spec)
+  attr(d, "sim_contract_version") <- version
+  as_el_data(d, roster = NULL, academic = academic, spec = spec)
 }
 
-# ACHIEVEMENT_LEVEL may arrive as the vendor's labels or as numbers. Vendor
+.rename_alias <- function(d, alias, canon) {
+  if (alias %in% names(d)) {
+    if (canon %in% names(d)) {
+      stop("Both `", alias, "` and `", canon, "` are present; `", alias,
+           "` is an alias of `", canon, "`, so the delivery is ambiguous.",
+           call. = FALSE)
+    }
+    names(d)[names(d) == alias] <- canon
+  }
+  d
+}
+
+# ACHIEVEMENT_LEVEL may arrive as the vendor's labels or as numbers; it is
+# stored numeric always (an ordinal index for a categorical scale). Vendor
 # levels only: nothing here derives a level from a scale score.
 .parse_achievement_level <- function(x, spec) {
-  if (is.null(x)) return(NA_real_)
   ls <- spec$elp$level_scale
-
-  if (identical(ls$type, "categorical")) return(as.character(x))
-
-  num <- suppressWarnings(as.numeric(as.character(x)))
-  if (all(is.na(num)) && !all(is.na(x))) {
-    lab <- ls$labels
+  num <- if (is.numeric(x)) x else suppressWarnings(as.numeric(as.character(x)))
+  labeled <- !is.na(x) & is.na(num)
+  if (any(labeled)) {
+    lab <- if (identical(ls$type, "categorical")) ls$levels else ls$labels
     if (is.null(lab)) {
-      stop("ACHIEVEMENT_LEVEL is not numeric and the spec's level scale ",
-           "declares no labels to match it against.", call. = FALSE)
+      stop("ACHIEVEMENT_LEVEL carries labels, and the spec's level scale ",
+           "declares none to match them against.", call. = FALSE)
     }
-    num <- match(as.character(x), lab)
+    idx <- match(as.character(x[labeled]), lab)
+    if (anyNA(idx)) {
+      stop("ACHIEVEMENT_LEVEL label(s) not in the spec's level scale: ",
+           paste(unique(as.character(x[labeled])[is.na(idx)]), collapse = ", "),
+           ".", call. = FALSE)
+    }
+    num[labeled] <- idx
   }
   # The 4.0-4.4 / 4.5-4.9 split needs the decimal from the raw score file. If
   # the spec bands on a fractional break but every delivered level is whole,
   # the delivery has been rounded and those bands can never be populated.
   bands <- spec_bands(spec)
   if (!is.null(bands) && any(bands$breaks %% 1 != 0) &&
-      all(stats::na.omit(num) %% 1 == 0)) {
+      length(stats::na.omit(num)) && all(stats::na.omit(num) %% 1 == 0)) {
     warning("Every delivered ACHIEVEMENT_LEVEL is a whole number, but the ",
             "spec bands on a fractional break. Band(s) split at a decimal ",
             "cannot be populated from this delivery -- the raw file's ",
             "decimal level is needed.", call. = FALSE)
   }
-  num
+  as.numeric(num)
 }
 
 # ---- delivery form: academic ------------------------------------------------
 
 #' Adapt an academic results table
 #'
-#' Accepts a stateSummative-shaped or SGP-long academic table and renames it to
-#' this package's lowercase canonical names. `stateELP` does not import
-#' `stateSummative`; a handoff between the two is a rename at the boundary --
-#' data crosses, code does not.
+#' The `standardize_student_results()` equivalent. For ReportR-shaped input
+#' -- `student_results_long` plus `ACHIEVEMENT_LEVEL_ALT` -- it is a
+#' near-identity: types are coerced and nothing is renamed. For SGP-long input
+#' it applies the alias map: `ID` to `STUDENT_ID`, `CONTENT_AREA` to
+#' `SUBJECT`, `"YYYY_YYYY"` to the spring year, `VALID_CASE` filtered. With a
+#' spec, `CONTENT_AREA` values recode to subject keys through
+#' `spec$data$columns$value_maps$CONTENT_AREA$academic`, and labeled
+#' `ACHIEVEMENT_LEVEL`s map to integers through each subject's
+#' `level_labels`.
+#'
+#' `stateELP` does not import `stateSummative` or ReportR; a handoff between
+#' them is a rename at the boundary -- data crosses, code does not.
 #'
 #' @param x A data frame of academic results.
-#' @return A tibble with canonical names.
+#' @param spec Optional `el_spec`.
+#' @return A tibble with canonical ALL-CAPS names, canonical columns first.
 #' @export
-as_academic_long <- function(x) {
-  stopifnot(is.data.frame(x))
+as_academic_long <- function(x, spec = NULL) {
+  stopifnot(is.data.frame(x), is.null(spec) || inherits(spec, "el_spec"))
   d <- tibble::as_tibble(x)
 
-  canon <- c(
-    ID = "student_id", STUDENT_ID = "student_id",
-    YEAR = "school_year", SCHOOL_YEAR = "school_year",
-    GRADE = "grade",
-    CONTENT_AREA = "subject", SUBJECT = "subject",
-    SCALE_SCORE = "scale_score",
-    ACHIEVEMENT_LEVEL = "perf_level", PERF_LEVEL = "perf_level",
-    ALT_PERF_LEVEL = "alt_perf_level"
-  )
   if ("VALID_CASE" %in% names(d)) {
-    d <- d[d$VALID_CASE == "VALID_CASE", , drop = FALSE]
+    d <- d[d$VALID_CASE %in% "VALID_CASE", , drop = FALSE]
     d$VALID_CASE <- NULL
   }
-  hit <- names(d) %in% names(canon)
-  names(d)[hit] <- unname(canon[names(d)[hit]])
+  d <- .rename_alias(d, "ID", "STUDENT_ID")
+  d <- .rename_alias(d, "CONTENT_AREA", "SUBJECT")
 
-  if ("student_id" %in% names(d)) d$student_id <- as.character(d$student_id)
-  if ("school_year" %in% names(d)) d$school_year <- as.integer(d$school_year)
-  if ("grade" %in% names(d)) d$grade <- as.character(d$grade)
-  if ("subject" %in% names(d)) d$subject <- as.character(d$subject)
-  d
+  if ("STUDENT_ID" %in% names(d)) d$STUDENT_ID <- as.character(d$STUDENT_ID)
+  if ("YEAR" %in% names(d)) d$YEAR <- .as_year(d$YEAR, "academic table")
+  if ("GRADE" %in% names(d)) d$GRADE <- .recode_grade(d$GRADE, spec)
+  if ("SUBJECT" %in% names(d)) {
+    d$SUBJECT <- as.character(d$SUBJECT)
+    map <- if (is.null(spec)) NULL
+           else spec$data$columns$value_maps$CONTENT_AREA$academic
+    if (!is.null(map)) {
+      hit <- d$SUBJECT %in% names(map)
+      d$SUBJECT[hit] <- unname(map[d$SUBJECT[hit]])
+      unknown <- setdiff(unique(d$SUBJECT), spec_academic_subjects(spec))
+      if (length(unknown) && length(spec_academic_subjects(spec))) {
+        stop("Academic subject value(s) neither in the spec's value map nor ",
+             "spec subject keys: ", paste(unknown, collapse = ", "), ".",
+             call. = FALSE)
+      }
+    }
+  }
+  if ("SCALE_SCORE" %in% names(d)) d$SCALE_SCORE <- as.numeric(d$SCALE_SCORE)
+  for (lv in intersect(c("ACHIEVEMENT_LEVEL", "ACHIEVEMENT_LEVEL_ALT"),
+                       names(d))) {
+    d[[lv]] <- .parse_academic_level(d[[lv]], d$SUBJECT, spec, lv)
+  }
+  d[c(intersect(ACADEMIC_COLUMNS, names(d)), setdiff(names(d), ACADEMIC_COLUMNS))]
+}
+
+.parse_academic_level <- function(x, subject, spec, what) {
+  num <- if (is.numeric(x)) x else suppressWarnings(as.numeric(as.character(x)))
+  labeled <- !is.na(x) & is.na(num)
+  if (any(labeled)) {
+    if (is.null(spec) || is.null(subject)) {
+      stop("`", what, "` carries labels; pass the spec so they can be mapped ",
+           "through each subject's `level_labels`.", call. = FALSE)
+    }
+    for (i in which(labeled)) {
+      lab <- spec$academic[[subject[i]]]$level_labels
+      num[i] <- match(as.character(x[i]), lab)
+    }
+    if (anyNA(num[labeled])) {
+      stop("`", what, "` label(s) not in the spec's `level_labels`: ",
+           paste(unique(as.character(x[labeled][is.na(num[labeled])])),
+                 collapse = ", "), ".", call. = FALSE)
+    }
+  }
+  if (any(!is.na(num) & num != round(num))) {
+    stop("`", what, "` must be a whole level.", call. = FALSE)
+  }
+  as.integer(num)
 }
