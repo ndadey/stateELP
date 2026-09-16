@@ -1,5 +1,5 @@
 # Check 1 -- Cohort survival analysis. run_check1(data, spec, start_grade = "K").
-# Sample: one stable entry cohort, left_truncated excluded by construction.
+# Sample: one stable entry cohort, LEFT_TRUNCATED excluded by construction.
 # Built per internal_docs/steps/5_check1_survival.md.
 #
 # The exit-dating convention this stage rests on is ALREADY tested, in

@@ -11,9 +11,10 @@ test_that("the grade loop is driven by the spec, not the observed grade span", {
   skip("check3 not built: $coverage")
 })
 
-test_that("the join runs academic left-joined to spine, not the reverse", {
-  # A spine-left join silently drops the former and never-EL reference groups,
-  # because they have no ELP rows. Row-count guard.
+test_that("the join runs academic left-joined to roster, not the reverse", {
+  # Starting from the ELP side silently drops the former and never-EL
+  # reference groups, because they have no ELP rows. Row-count guard; the
+  # direction itself is already demonstrated in test-el_data.R.
   skip("check3 not built: $box_data")
 })
 

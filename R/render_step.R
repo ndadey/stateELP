@@ -159,11 +159,10 @@ stage_qmd_path <- function(stage) {
   res <- if (stage %in% c("prep1", "prep3")) {
     run(spec)
   } else {
-    run(as_el_data(get("el_long_sim", envir = asNamespace("stateELP")),
-                   components = get("elp_components_sim",
-                                    envir = asNamespace("stateELP")),
-                   academic = get("academic_long_sim",
-                                  envir = asNamespace("stateELP")),
+    ns <- asNamespace("stateELP")
+    run(as_el_data(get("el_long_sim", envir = ns),
+                   roster = get("el_roster_sim", envir = ns),
+                   academic = get("academic_long_sim", envir = ns),
                    spec = spec),
         spec)
   }
