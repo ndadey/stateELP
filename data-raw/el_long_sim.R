@@ -1,7 +1,7 @@
 # ==============================================================================
 # data-raw/el_long_sim.R  --  stateELP
 #
-# Contract: sim_contract.md v0.2.0. Bump the contract when a column, a grain,
+# Contract: sim_contract.md v0.3.0. Bump the contract when a column, a grain,
 # or a distribution changes here.
 #
 # Synthetic EL data in the THREE-TABLE component form.
@@ -13,15 +13,18 @@
 #
 # Produces three tables, all keyed on student_id x school_year:
 #
-#   el_long_sim         SPINE       one row per student-year. grade, el_status,
-#                                   demographics, and the HEADLINE columns
-#                                   elp_level / elp_scale / elp_band. All five
-#                                   walkthrough steps read only these.
-#   elp_components_sim  COMPONENTS  one row per student-year-component:
-#                                   component, form, scale_score, level. A
-#                                   component reporting a level but no scale
-#                                   carries NA. Rows exist only for CURRENT
-#                                   student-years: formers do not test.
+#   el_roster_sim       ROSTER      one row per student-year: the enrollment /
+#                                   status frame (grade, el_status, demographics,
+#                                   elp_form). Counts students; carries NO
+#                                   measurement columns. Untested years and
+#                                   former / never students exist ONLY here.
+#   el_long_sim         BASE        the base table for all analysis. One row per
+#                                   student-year-component: component, form,
+#                                   scale_score, level. WIDA fills eight rows per
+#                                   tested student-year. The headline is resolved
+#                                   FROM this table via spec$elp$headline; the
+#                                   roster caches nothing. Rows exist only for
+#                                   CURRENT student-years: formers do not test.
 #   academic_long_sim   ACADEMIC    one row per student-year-subject:
 #                                   scale_score, perf_level.
 #
@@ -448,20 +451,26 @@ comp_alt <- traj %>%
 # AFTER every random draw above, so the RNG stream is unchanged from v0.1.0
 # (sim_contract.md 2.1 / 4.4). `component` is character: the spec supplies
 # order and labels, and a factor would coerce on bind_rows() with real data.
-elp_components_sim <- bind_rows(comp_annual, comp_alt) %>%
+# Column names conform to ReportR's student_results_long conventions
+# (internal_docs/NOTES-student_results_long.md): ALL CAPS, STUDENT_ID x YEAR
+# keys, ACHIEVEMENT_LEVEL for the reported level. Generator internals stay
+# lowercase; the rename happens once, here at the output boundary.
+el_long_sim <- bind_rows(comp_annual, comp_alt) %>%
   semi_join(spine %>% filter(el_status == "current") %>%
               select(student_id, school_year),
             by = c("student_id", "school_year")) %>%
-  transmute(student_id, school_year,
-            component = as.character(component), form,
-            scale_score = as.numeric(scale_score), level = as.numeric(level)) %>%
-  arrange(student_id, school_year, match(component, COMPONENTS))
+  transmute(STUDENT_ID = student_id, YEAR = school_year,
+            COMPONENT = as.character(component), ELP_FORM = form,
+            SCALE_SCORE = as.numeric(scale_score),
+            ACHIEVEMENT_LEVEL = as.numeric(level)) %>%
+  arrange(STUDENT_ID, YEAR, match(COMPONENT, COMPONENTS))
 
 # ---- Headline resolution -----------------------------------------------------
 # The spine's elp_* columns ARE the headline component. One join, one spec field.
-headline <- elp_components_sim %>%
-  filter(component == HEADLINE, form == "annual") %>%
-  transmute(student_id, school_year, elp_level = level, elp_scale = scale_score)
+headline <- el_long_sim %>%
+  filter(COMPONENT == HEADLINE, ELP_FORM == "annual") %>%
+  transmute(student_id = STUDENT_ID, school_year = YEAR,
+            elp_level = ACHIEVEMENT_LEVEL, elp_scale = SCALE_SCORE)
 
 spine <- spine %>%
   select(-headline_level) %>%
@@ -515,9 +524,11 @@ academic_long_sim <- spine %>%
   ) %>%
   # grade rides on the academic row: student_results_long carries it, EOC
   # deliveries report a real tested grade, and the agreement check needs it.
-  transmute(student_id, school_year, grade = num_grade(grade_n), subject,
-            scale_score, perf_level, alt_perf_level) %>%
-  arrange(student_id, school_year, subject)
+  transmute(STUDENT_ID = student_id, YEAR = school_year,
+            GRADE = num_grade(grade_n), SUBJECT = subject,
+            SCALE_SCORE = scale_score, ACHIEVEMENT_LEVEL = perf_level,
+            ACHIEVEMENT_LEVEL_ALT = alt_perf_level) %>%
+  arrange(STUDENT_ID, YEAR, SUBJECT)
 
 # ==============================================================================
 # 9. Graduation / Seal, district size, final spine columns
@@ -548,28 +559,58 @@ dsize <- spine %>% filter(el_status == "current") %>%
            breaks = quantile(mean_el, c(0,.34,.67,1)),
            labels = c("small","medium","large"), include.lowest = TRUE)))
 
-el_long_sim <- spine %>%
+el_roster_sim <- spine %>%
   left_join(grad, by = c("student_id", "school_year")) %>%
   left_join(dsize %>% select(district_id, district_size_band), by = "district_id") %>%
   mutate(cohort_start_year = entry_year,
          cohort_label = ifelse(!is.na(entry_grade) & !left_truncated,
                                paste0(entry_grade, "-", entry_year), NA_character_)) %>%
+  mutate(n_races = (race_american_indian == "Y") + (race_asian == "Y") +
+                   (race_black == "Y") + (race_pacific == "Y") +
+                   (race_white == "Y"),
+         RACE_ETHNICITY = dplyr::case_when(       # ReportR canonical categorical
+           hispanic == "Y" ~ "Hispanic or Latino",
+           n_races > 1     ~ "Two or More Races",
+           race_american_indian == "Y" ~ "American Indian or Alaska Native",
+           race_asian   == "Y" ~ "Asian",
+           race_black   == "Y" ~ "Black or African American",
+           race_pacific == "Y" ~ "Native Hawaiian or Other Pacific Islander",
+           race_white   == "Y" ~ "White",
+           TRUE ~ "Not Reported")) %>%
   transmute(
-    student_id, school_year, grade, district_id, school_code, school_id,
-    sex, hispanic, race_american_indian, race_asian, race_black, race_pacific,
-    race_white, country_of_birth, immigrant_status, first_entry_us_school_date,
-    frpl_status, econ_disadv, sped_classification, swd_flag, gifted_flag,
-    migrant_status, home_language, service_model,
-    lep_program_start_date, lep_program_completion_date, title3_lep_flag,
-    ever_el, el_status, el_status_detail, el_monitor_year, exit_observed,
-    year_in_status, entry_grade, cohort_start_year, cohort_label, left_truncated,
-    initial_elp, newcomer_flag, sife_flag, elp_form,
-    elp_level, elp_scale, elp_band, elp_growth_target_met,   # <- HEADLINE only
-    grad_4yr_status, grad_5yr_status, ela_grad_pathway, math_grad_pathway,
-    school_exit_date, seal_of_biliteracy, seal_languages,
-    district_size_band, sample_weight
+    STUDENT_ID = student_id, YEAR = school_year, GRADE = grade,
+    DISTRICT_ID = district_id, SCHOOL_ID = school_id,   # SCHOOL_CODE dropped: a
+                                        # ReportR alias of SCHOOL_ID (NOTES map)
+    GENDER = sex, RACE_ETHNICITY, HISPANIC = hispanic,
+    RACE_AMERICAN_INDIAN = race_american_indian, RACE_ASIAN = race_asian,
+    RACE_BLACK = race_black, RACE_PACIFIC = race_pacific,
+    RACE_WHITE = race_white,
+    COUNTRY_OF_BIRTH = country_of_birth, IMMIGRANT_STATUS = immigrant_status,
+    FIRST_ENTRY_US_SCHOOL_DATE = first_entry_us_school_date,
+    FRL = econ_disadv, FRL_DETAIL = frpl_status,   # FRL_STATUS is an alias of
+                                                   # FRL; detail gets a non-alias name
+    IEP = swd_flag, SPED_CLASSIFICATION = sped_classification,
+    GIFTED_FLAG = gifted_flag, MIGRANT_STATUS = migrant_status,
+    HOME_LANGUAGE = home_language, SERVICE_MODEL = service_model,
+    LEP_PROGRAM_START_DATE = lep_program_start_date,
+    LEP_PROGRAM_COMPLETION_DATE = lep_program_completion_date,
+    TITLE3_LEP_FLAG = title3_lep_flag,
+    EL = ifelse(el_status == "current", "Y", "N"),  # ReportR canonical binary
+    EVER_EL = ever_el, EL_STATUS = el_status,
+    EL_STATUS_DETAIL = el_status_detail, EL_MONITOR_YEAR = el_monitor_year,
+    EXIT_OBSERVED = exit_observed, YEAR_IN_STATUS = year_in_status,
+    ENTRY_GRADE = entry_grade, COHORT_START_YEAR = cohort_start_year,
+    COHORT_LABEL = cohort_label, LEFT_TRUNCATED = left_truncated,
+    INITIAL_ELP = initial_elp, NEWCOMER_FLAG = newcomer_flag,
+    SIFE_FLAG = sife_flag, ELP_FORM = elp_form,
+    ELP_GROWTH_TARGET_MET = elp_growth_target_met,
+    GRAD_4YR_STATUS = grad_4yr_status, GRAD_5YR_STATUS = grad_5yr_status,
+    ELA_GRAD_PATHWAY = ela_grad_pathway, MATH_GRAD_PATHWAY = math_grad_pathway,
+    SCHOOL_EXIT_DATE = school_exit_date,
+    SEAL_OF_BILITERACY = seal_of_biliteracy, SEAL_LANGUAGES = seal_languages,
+    DISTRICT_SIZE_BAND = district_size_band, SAMPLE_WEIGHT = sample_weight
   ) %>%
-  arrange(student_id, school_year)
+  arrange(STUDENT_ID, YEAR)
 
 # ==============================================================================
 # 10. VALIDATION -- guardrails as executable checks
@@ -577,41 +618,44 @@ el_long_sim <- spine %>%
 cat("\n============== stateELP three-table sim ==============\n")
 cat(sprintf("instrument : %s   headline: %s\n", elp_spec$instrument, HEADLINE))
 cat(sprintf("components : %s\n", paste(COMPONENTS, collapse = ", ")))
-cat(sprintf("el_long_sim         %10s rows x %2d cols  (spine)\n",
+cat(sprintf("el_roster_sim         %10s rows x %2d cols  (roster / enrollment frame)\n",
+            format(nrow(el_roster_sim), big.mark=","), ncol(el_roster_sim)))
+cat(sprintf("el_long_sim  %10s rows x %2d cols\n",
             format(nrow(el_long_sim), big.mark=","), ncol(el_long_sim)))
-cat(sprintf("elp_components_sim  %10s rows x %2d cols\n",
-            format(nrow(elp_components_sim), big.mark=","), ncol(elp_components_sim)))
 cat(sprintf("academic_long_sim   %10s rows x %2d cols\n",
             format(nrow(academic_long_sim), big.mark=","), ncol(academic_long_sim)))
 cat(sprintf("students %s | years %d-%d\n",
-            format(n_distinct(el_long_sim$student_id), big.mark=","), Y0, Y1))
+            format(n_distinct(el_roster_sim$STUDENT_ID), big.mark=","), Y0, Y1))
 
 ck <- function(label, ok) cat(sprintf("  %-52s %s\n", label, ifelse(ok, "PASS", "FAIL")))
 
 cat("\n-- Key uniqueness --\n")
 ck("spine unique on student x year",
-   !any(duplicated(el_long_sim[c("student_id","school_year")])))
+   !any(duplicated(el_roster_sim[c("STUDENT_ID","YEAR")])))
 ck("components unique on student x year x component",
-   !any(duplicated(elp_components_sim[c("student_id","school_year","component")])))
+   !any(duplicated(el_long_sim[c("STUDENT_ID","YEAR","COMPONENT")])))
 ck("academic unique on student x year x subject",
-   !any(duplicated(academic_long_sim[c("student_id","school_year","subject")])))
+   !any(duplicated(academic_long_sim[c("STUDENT_ID","YEAR","SUBJECT")])))
 
 cat("\n-- Headline resolution --\n")
-hd <- elp_components_sim %>% filter(component == HEADLINE, form == "annual") %>%
-  inner_join(el_long_sim %>% select(student_id, school_year, elp_level),
-             by = c("student_id","school_year"))
-ck(sprintf("spine elp_level equals the '%s' component row", HEADLINE),
-   isTRUE(all.equal(hd$level, hd$elp_level)))
-ck("every non-NA spine elp_level has a component row",
-   sum(!is.na(el_long_sim$elp_level)) == nrow(hd))
+hd <- el_long_sim %>% filter(COMPONENT == HEADLINE, ELP_FORM == "annual") %>%
+  inner_join(spine %>% select(student_id, school_year, elp_level),
+             by = c("STUDENT_ID" = "student_id", "YEAR" = "school_year"))
+ck(sprintf("internal headline equals the '%s' component row", HEADLINE),
+   isTRUE(all.equal(hd$ACHIEVEMENT_LEVEL, hd$elp_level)))
+ck("every non-NA internal headline has a component row",
+   sum(!is.na(spine$elp_level)) == nrow(hd))
+ck("roster ships no headline columns (elp_level / elp_scale / elp_band)",
+   !any(c("elp_level","elp_scale","elp_band","ELP_LEVEL","ELP_SCALE","ELP_BAND") %in% names(el_roster_sim)))
 
 cat("\n-- Component vocabulary --\n")
-print(elp_components_sim %>% count(component, .drop = FALSE) %>% as.data.frame())
+print(el_long_sim %>% count(COMPONENT, .drop = FALSE) %>% as.data.frame())
 
 cat("\n-- Composite integrity: spec `from` weights and NA propagation --\n")
-wide <- elp_components_sim %>% filter(!is.na(scale_score)) %>%
-  select(student_id, school_year, component, level) %>%
-  tidyr::pivot_wider(names_from = component, values_from = level, names_expand = TRUE)
+wide <- el_long_sim %>% filter(!is.na(SCALE_SCORE)) %>%
+  select(STUDENT_ID, YEAR, COMPONENT, ACHIEVEMENT_LEVEL) %>%
+  tidyr::pivot_wider(names_from = COMPONENT, values_from = ACHIEVEMENT_LEVEL,
+                     names_expand = TRUE)
 bad <- 0L
 for (cp in COMPOSITES) {
   w <- elp_spec$components[[cp]]$from
@@ -624,72 +668,72 @@ for (cp in COMPOSITES) {
 ck("composites reproduce spec weights; NA propagates", bad == 0)
 
 cat("\n-- Form separation (alternate levels never enter the headline) --\n")
-ck("no alternate-form student has a spine elp_level",
-   !any(el_long_sim$elp_form == "alternate" & !is.na(el_long_sim$elp_level),
+ck("no alternate-form student has an internal headline",
+   !any(spine$elp_form == "alternate" & !is.na(spine$elp_level),
         na.rm = TRUE))
-print(elp_components_sim %>% count(form) %>% as.data.frame())
+print(el_long_sim %>% count(form) %>% as.data.frame())
 
 cat("\n-- Level-only components --\n")
 cat(sprintf("  rows with level and no scale_score: %s\n",
-            format(sum(is.na(elp_components_sim$scale_score)), big.mark=",")))
+            format(sum(is.na(el_long_sim$SCALE_SCORE)), big.mark=",")))
 
 cat("\n-- Bands come from the spec --\n")
-print(el_long_sim %>% filter(!is.na(elp_band)) %>% count(elp_band) %>% as.data.frame())
+print(spine %>% filter(!is.na(elp_band)) %>% count(elp_band) %>% as.data.frame())
 ck("no band outside spec labels",
-   all(na.omit(unique(el_long_sim$elp_band)) %in% elp_spec$bands$labels))
+   all(na.omit(unique(spine$elp_band)) %in% elp_spec$bands$labels))
 
 cat("\n-- Population rule: components and headline only on CURRENT rows --\n")
 ck("no component row for a former or never student-year",
-   nrow(anti_join(elp_components_sim,
-                  el_long_sim %>% filter(el_status == "current") %>%
-                    select(student_id, school_year),
-                  by = c("student_id", "school_year"))) == 0)
-ck("elp_level is NA on every non-current spine row",
-   all(is.na(el_long_sim$elp_level[el_long_sim$el_status != "current"])))
-ck("components$form equals spine elp_form on every row", {
-  f <- elp_components_sim %>%
-    left_join(el_long_sim %>% select(student_id, school_year, elp_form),
-              by = c("student_id", "school_year"))
-  !any(is.na(f$elp_form)) && all(f$form == f$elp_form)
+   nrow(anti_join(el_long_sim,
+                  el_roster_sim %>% filter(EL_STATUS == "current") %>%
+                    select(STUDENT_ID, YEAR),
+                  by = c("STUDENT_ID", "YEAR"))) == 0)
+ck("internal headline is NA on every non-current student-year",
+   all(is.na(spine$elp_level[spine$el_status != "current"])))
+ck("base ELP_FORM equals roster ELP_FORM on every row", {
+  f <- el_long_sim %>%
+    left_join(el_roster_sim %>% select(STUDENT_ID, YEAR, R_FORM = ELP_FORM),
+              by = c("STUDENT_ID", "YEAR"))
+  !any(is.na(f$R_FORM)) && all(f$ELP_FORM == f$R_FORM)
 })
-ck("component is character and within the vocabulary",
-   is.character(elp_components_sim$component) &&
-     all(elp_components_sim$component %in% COMPONENTS))
+ck("COMPONENT is character and within the vocabulary",
+   is.character(el_long_sim$COMPONENT) &&
+     all(el_long_sim$COMPONENT %in% COMPONENTS))
 
 cat("\n-- Academic table --\n")
-ck("every academic row has a spine row with the same grade", {
+ck("every academic row has a roster row with the same grade", {
   a <- academic_long_sim %>%
-    left_join(el_long_sim %>% select(student_id, school_year, spine_grade = grade),
-              by = c("student_id", "school_year"))
-  !any(is.na(a$spine_grade)) && all(a$grade == a$spine_grade)
+    left_join(el_roster_sim %>% select(STUDENT_ID, YEAR, ROSTER_GRADE = GRADE),
+              by = c("STUDENT_ID", "YEAR"))
+  !any(is.na(a$ROSTER_GRADE)) && all(a$GRADE == a$ROSTER_GRADE)
 })
-ck("no academic rows in 2020", !any(academic_long_sim$school_year == 2020L))
-ck("perf_level is integer and a score at prof_cut is level 4",
-   is.integer(academic_long_sim$perf_level) &&
+ck("no academic rows in 2020", !any(academic_long_sim$YEAR == 2020L))
+ck("ACHIEVEMENT_LEVEL is integer and a score at prof_cut is level 4",
+   is.integer(academic_long_sim$ACHIEVEMENT_LEVEL) &&
      findInterval(P$prof_cut, P$academic_cuts) + 1L == 4L)
 
 cat("\n-- COVID: academic rows by year (2020 absent) --\n")
-print(academic_long_sim %>% count(school_year) %>% as.data.frame())
+print(academic_long_sim %>% count(YEAR) %>% as.data.frame())
 
 cat("\n-- Monitoring years (OELA Exhibit 3.12 structure) --\n")
-print(el_long_sim %>% filter(el_status == "former") %>%
-        count(el_status_detail) %>% as.data.frame())
+print(el_roster_sim %>% filter(EL_STATUS == "former") %>%
+        count(EL_STATUS_DETAIL) %>% as.data.frame())
 
 cat("\n-- Flows suppression, cohort K-2017 --\n")
-coh <- el_long_sim %>% filter(cohort_label == "K-2017") %>%
-  group_by(student_id) %>%
-  summarise(exited = any(el_status == "former") | any(exit_observed == 1L),
+coh <- el_roster_sim %>% filter(COHORT_LABEL == "K-2017") %>%
+  group_by(STUDENT_ID) %>%
+  summarise(exited = any(EL_STATUS == "former") | any(EXIT_OBSERVED == 1L),
             .groups = "drop")
-chars <- el_long_sim %>% filter(cohort_label == "K-2017") %>%
-  group_by(student_id) %>% slice_min(school_year, n = 1, with_ties = FALSE) %>%
+chars <- el_roster_sim %>% filter(COHORT_LABEL == "K-2017") %>%
+  group_by(STUDENT_ID) %>% slice_min(YEAR, n = 1, with_ties = FALSE) %>%
   ungroup() %>%
-  select(student_id, initial_elp, home_language, service_model,
-         district_size_band, sex, econ_disadv, sped_classification) %>%
-  left_join(coh, by = "student_id")
+  select(STUDENT_ID, INITIAL_ELP, HOME_LANGUAGE, SERVICE_MODEL,
+         DISTRICT_SIZE_BAND, GENDER, FRL, SPED_CLASSIFICATION) %>%
+  left_join(coh, by = "STUDENT_ID")
 cat(sprintf("  cohort n = %d\n", nrow(chars)))
 fail <- 0L
-for (v in c("initial_elp","home_language","service_model","district_size_band",
-            "sex","econ_disadv","sped_classification")) {
+for (v in c("INITIAL_ELP","HOME_LANGUAGE","SERVICE_MODEL","DISTRICT_SIZE_BAND",
+            "GENDER","FRL","SPED_CLASSIFICATION")) {
   tab <- chars %>%
     mutate(cat = tidyr::replace_na(as.character(.data[[v]]), "(none)")) %>%
     count(cat, exited) %>%
@@ -699,8 +743,8 @@ for (v in c("initial_elp","home_language","service_model","district_size_band",
   # Expected suppression, not sizing failure: sex "X" (~0.3%), and the initial
   # bands at or above the exit threshold, which are empty by construction.
   keep <- tab$cat != "(none)" &                       # residual missing bucket
-          !(v == "sex" & tab$cat == "X") &            # ~0.3% category
-          !(v == "initial_elp" &
+          !(v == "GENDER" & tab$cat == "X") &         # ~0.3% category
+          !(v == "INITIAL_ELP" &
             tab$cat %in% elp_spec$bands$labels[
               elp_spec$bands$breaks[-length(elp_spec$bands$breaks)] >= 4])
   b <- sum((n_ex < P$min_cell | n_st < P$min_cell) & keep)
@@ -710,13 +754,13 @@ for (v in c("initial_elp","home_language","service_model","district_size_band",
 ck("all disaggregations clear min_cell", fail == 0)
 
 cat("\n-- Duration: K entrants, full-follow-up cohorts --\n")
-kd <- el_long_sim %>% filter(entry_grade == "K", !left_truncated,
-                             cohort_start_year + P$max_years <= Y1) %>%
-  group_by(student_id, cohort_start_year) %>%
-  summarise(exit_t = suppressWarnings(min(year_in_status[exit_observed == 1L],
+kd <- el_roster_sim %>% filter(ENTRY_GRADE == "K", !LEFT_TRUNCATED,
+                             COHORT_START_YEAR + P$max_years <= Y1) %>%
+  group_by(STUDENT_ID, COHORT_START_YEAR) %>%
+  summarise(exit_t = suppressWarnings(min(YEAR_IN_STATUS[EXIT_OBSERVED == 1L],
                                           na.rm = TRUE)), .groups = "drop") %>%
   mutate(exit_t = ifelse(is.finite(exit_t), exit_t, NA_integer_))
-print(kd %>% group_by(cohort_start_year) %>%
+print(kd %>% group_by(COHORT_START_YEAR) %>%
         summarise(n = n(),
                   pct_by_5  = round(mean(!is.na(exit_t) & exit_t <= 5)*100, 1),
                   pct_by_6  = round(mean(!is.na(exit_t) & exit_t <= P$max_years)*100, 1),
@@ -757,14 +801,14 @@ cat("======================================================\n")
 # ==============================================================================
 # 11. Save
 # ==============================================================================
-SIM_CONTRACT_VERSION <- "0.2.0"
-attr(el_long_sim,        "sim_contract_version") <- SIM_CONTRACT_VERSION
-attr(elp_components_sim, "sim_contract_version") <- SIM_CONTRACT_VERSION
+SIM_CONTRACT_VERSION <- "0.3.0"
+attr(el_roster_sim,        "sim_contract_version") <- SIM_CONTRACT_VERSION
+attr(el_long_sim, "sim_contract_version") <- SIM_CONTRACT_VERSION
 attr(academic_long_sim,  "sim_contract_version") <- SIM_CONTRACT_VERSION
 
 if (dir.exists("data")) {
-  save(el_long_sim,        file = "data/el_long_sim.rda",        compress = "xz")
-  save(elp_components_sim, file = "data/elp_components_sim.rda", compress = "xz")
+  save(el_roster_sim,        file = "data/el_roster_sim.rda",        compress = "xz")
+  save(el_long_sim, file = "data/el_long_sim.rda", compress = "xz")
   save(academic_long_sim,  file = "data/academic_long_sim.rda",  compress = "xz")
-  cat("Wrote data/el_long_sim.rda, elp_components_sim.rda, academic_long_sim.rda\n")
+  cat("Wrote data/el_roster_sim.rda, el_long_sim.rda, academic_long_sim.rda\n")
 }

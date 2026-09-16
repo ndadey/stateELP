@@ -13,9 +13,10 @@ never pooled** (structure-tested). Plus two EO comparison groups
 matched EO for the fairness box plots; full EO for the average-score
 benchmark.
 
-**Data needs.** Academic table ⟕ spine status (**this join direction;
-row-count test guards it**). Spine: `elp_level`/`elp_band`/`elp_scale`
-(scale is load-bearing here), `elp_form`, `econ_disadv`, `sample_weight`.
+**Data needs.** Academic table ⟕ roster status (**this join direction;
+row-count test guards it**). Headline level/scale/band via `elp_headline()`
+on the base table (the scale score is load-bearing here); roster `ELP_FORM`,
+`FRL`, `SAMPLE_WEIGHT`.
 Spec: `academic` cuts + `policy$academic_benchmark`, `elp$bands`,
 `elp$administration_window`, `policy$suppression`. Same-year pairing only;
 2020 panels `NULL` (missing year, not empty).
@@ -36,7 +37,7 @@ Spec: `academic` cuts + `policy$academic_benchmark`, `elp$bands`,
   against Prep 2 composition and Check 1 attrition/selection — never
   resolved by picking one grade arbitrarily.
 - *Fairness checks*: (a) box plots re-run on the SES-filtered EO group
-  (crude filter in shell — sim has `econ_disadv`, no parental education;
+  (crude filter in shell — sim has `FRL`, no parental education;
   matching is a later addition); (b) identical logistic with the
   binarization threshold swapped to the EO group's average ELA score, read
   at its 50% crossing. A persistent gap (fairness threshold below the

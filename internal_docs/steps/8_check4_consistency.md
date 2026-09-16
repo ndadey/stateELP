@@ -7,7 +7,7 @@ below 50%, what does Youden's J say the raw consistency statistic can't?
 **Sample.** Identical to Check 3's paired cross-section (all ELs per grade ×
 year with both scores), by grade and year — state it first.
 
-**Data needs.** Headline `elp_scale`; academic proficiency vs
+**Data needs.** The headline scale score via `elp_headline()`; academic proficiency vs
 `policy$academic_benchmark` + `academic` cuts; `policy$error_tolerance` via
 Prep 3's `$meta` (or spec directly); `policy$exit` (current threshold, for
 reference lines); Check 1's reliability annotations where available.

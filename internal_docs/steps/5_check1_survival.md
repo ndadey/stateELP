@@ -7,12 +7,12 @@ doing selection work that should belong to the language test alone?
 **Sample.** A stable entry cohort — same starting grade (default K), same
 entry year — tracked forward. Cohort set derived from the panel range and
 `policy$timelines$max_years_to_exit`, **never year literals** (sim: K-2015…
-K-2019). `left_truncated` excluded by construction. Checkpoint: cohort large
+K-2019). `LEFT_TRUNCATED` excluded by construction. Checkpoint: cohort large
 and stable (no pandemic-era enrollment anomaly) before trusting the curve.
 
-**Data needs.** Spine for Model 1 (`student_id`, `school_year`, `grade`,
-`el_status`, `entry_grade`, `cohort_label`, `left_truncated`,
-`initial_elp`). Academic table for Model 2 (lagged ELA) — slot `NULL`
+**Data needs.** Roster for Model 1 (`STUDENT_ID`, `YEAR`, `GRADE`,
+`EL_STATUS`, `ENTRY_GRADE`, `COHORT_LABEL`, `LEFT_TRUNCATED`,
+`INITIAL_ELP`). Academic table for Model 2 (lagged ELA) — slot `NULL`
 without it. Spec: `policy$timelines` (max timeline, on-time rule,
 `exit_dating`), `elp$bands`, `policy$suppression`. Shared derivations from
 `R/utils.R` (exit dating first-former, absorbing; censored; flags) — call,

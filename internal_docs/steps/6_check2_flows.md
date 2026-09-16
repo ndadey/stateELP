@@ -11,9 +11,9 @@ address it?
 students are their own column, never silently folded into either group
 `[PROPOSED — CONFIRM]`.
 
-**Data needs.** Spine + the disaggregation set (`home_language`,
-`district_id` → size band from spec, `sex`, `econ_disadv`,
-`sped_classification`, `service_model`, `initial_elp`). Academic table for
+**Data needs.** Roster + the disaggregation set (`HOME_LANGUAGE`,
+`DISTRICT_ID` → size band from spec, `GENDER`, `FRL`,
+`SPED_CLASSIFICATION`, `SERVICE_MODEL`, `INITIAL_ELP`). Academic table for
 the descriptive summary — `NULL` without it. Spec: `policy$timelines`,
 `policy$district_size_bands`, `policy$suppression`, `elp$bands`. Shared
 flags from `R/utils.R` (`exit_ever ⊇ exit_max ⊇ exit_ontime`, `no_exit`,
@@ -27,7 +27,7 @@ near-empty by construction — expected). Window-relative captions
 ("never exited *in the years observed*"). The **descriptive academic
 summary**: median ELA percentile or proficiency rate for on-time vs
 prolonged at comparable trajectory points (comparable = same
-`year_in_status` `[PROPOSED — CONFIRM]`). "Trajectories" view: headline
+`YEAR_IN_STATUS` `[PROPOSED — CONFIRM]`). "Trajectories" view: headline
 level × year-in-status faceted by exit category `[PROPOSED — CONFIRM]`.
 
 **Additional check (Types 2–6, gated; `NULL` in sim).** Prep 2's

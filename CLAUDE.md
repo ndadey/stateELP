@@ -76,53 +76,15 @@ Maintain this table. It starts as the shell inventory.
 
 | Piece | Status | Notes |
 |---|---|---|
-| Package skeleton, `DESCRIPTION`, `renv` | **built** | `renv::init()`, explicit snapshot; 17 runtime deps locked |
-| `data-raw/el_long_sim.R` + `sim_contract.md` | **written, RUN** | contract v0.2.0; all four `[FILL IN]` placeholders filled from the 2026-09-15 build |
-| `data/` (three `.rda`) | **built** | 7.07 MB, `sim_contract_version` 0.2.0 on each; regenerate, don't hand-edit |
-| `R/spec.R` + three specs | **built** | SIM (Type 1) / NJ / ELPA21 (Type 6); + demographics lookups |
-| `R/el_data.R` (bundle, adapter, coverage) | **built** | `as_el_data()`, `as_el_data_sgp()`, `as_academic_long()`, coverage table |
-| `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, exit dating, cohorts, exit flags |
-| `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested both formats; see the Dropbox note below |
+| Package skeleton, `DESCRIPTION`, `renv` | not built | renv::init() at creation |
+| `data-raw/el_long_sim.R` + `sim_contract.md` | **written, unexecuted** | contract v0.2.0; first run fills its `[FILL IN]` placeholders |
+| `data/` (three `.rda`) | not built | regenerate, don't hand-edit |
+| `R/spec.R` + three specs | not built | SIM (Type 1) / NJ / ELPA21 (Type 6) |
+| `R/el_data.R` (bundle, adapter, coverage) | not built | |
 | `internal_docs/steps/` (8 files) + `dev/prompts/` | **written** | numbered `1_`–`9_` in run order; binding per-stage contracts; refine as stages evolve |
 | Eight `.qmd` shells | not built | one stage session each (§15) |
-| Fixtures: A–J, slide-52, J-vs-consistency | **A–J built** | A–J with its last-current counter-test in `test-utils.R`; slide-52 lands with Check 1, J-vs-consistency with Check 4 |
+| Fixtures: A–J, slide-52, J-vs-consistency | not built | see §10; A–J + slide-52 land in the foundation session / Check 1 |
 | Stage analyses (all) | not built | later passes per instruction file |
-
-**Test count at the end of the foundation session:** 206 passing, 58 `skip()`ped
-(the eight per-stage files), 0 failures. `devtools::check()`: **0 errors, 0
-warnings**, 2 NOTEs — the 7.1 MB `data/` directory (expected; `sim_contract.md`
-§9) and "unable to verify current time" (environmental).
-
-**Three environment facts a later session will otherwise rediscover the hard
-way:**
-
-1. **R 4.3.3 is not installed on this machine** (4.2.1 / 4.4.2 / 4.5.3 are).
-   The shipped data was built on **4.4.2**, and determinism across the two was
-   verified rather than assumed — see `sim_contract.md` §2.1. Only R 4.4.2 has
-   a working dev toolchain: its user library shipped `fs` 1.6.5 and `rlang`
-   1.1.5, both below what `devtools` 2.5.x needs, so the project library
-   carries newer ones installed through `renv`. `renv`'s lockfile records the
-   package's own dependencies only; on a fresh clone run
-   `renv::hydrate(c("devtools", "roxygen2"))` after `renv::restore()`.
-2. **`devtools::check()` cannot run from the repo root while any file in
-   `internal_docs/working/` is open in another application.** `R CMD build`
-   copies the whole package directory *before* applying `.Rbuildignore`, so a
-   single locked file anywhere in the tree aborts the copy — an open workbook
-   leaves a `~$*.xlsx` lock file and the check dies with "permission denied"
-   long before it reaches any R code. Workaround used here, and the one to
-   reuse: check a clean export of the tracked files, which excludes
-   `working/` because it is git-ignored —
-   `git archive --format=tar HEAD | tar -x -C <staging>`, drop `.Rprofile`
-   and `renv/` from the staging copy, then `devtools::check("<staging>")`.
-3. **This repository is inside a Dropbox tree, and Quarto cannot clean up
-   after itself there.** Rendering into a synced directory produces the
-   document and *then* fails, because the sync client holds a handle on
-   `<name>_files` while Quarto tries to delete it (os error 32). The CLI exits
-   non-zero, so the loop looks broken while having actually succeeded, and the
-   stale `_files` directory poisons the next run. `render_step()` therefore
-   renders in `tempdir()` and moves the finished documents into `out_dir`.
-   This is a deviation from §9's "render there" `[PROPOSED — CONFIRM]`; the
-   promise that matters — no `_files/` in the source tree — is kept either way.
 
 ## 4. Data contract — three long tables
 
@@ -136,47 +98,60 @@ ELP instruments don't share a score structure (WIDA: 4 domains + 3 composites
 categorical determination that is a profile rule over domains). The package
 handles this the way ReportR handled subjects: **the thing that varies is a
 row key, not a set of columns** — the same atomic-layer-plus-resolver split as
-stateSpecs' `tests` + `map`.
+stateSpecs' `tests` + `map`. **Column names conform to ReportR's
+`student_results_long` conventions** (the NOTES file in the ReportR repo is
+the authority): ALL CAPS, `STUDENT_ID × YEAR` keys, canonical names adopted
+exactly where they exist, EL-specific names coined in the same idiom. Values
+are unchanged; the contract's v0.4.0 note records the three documented
+divergences (character `GRADE` carrying `"K"`; numeric/integer
+`ACHIEVEMENT_LEVEL` with labels in the spec; lowercase `COMPONENT`/`SUBJECT`
+values as spec keys) and the alias-collision decisions (`school_code` dropped;
+`FRL_DETAIL`; the derived binary `EL` beside the three-level `EL_STATUS`).
 
 | Table | Grain | Sim object | Core columns |
 |---|---|---|---|
-| Spine | student × year | `el_long_sim` (54 cols) | `student_id`, `school_year`, `grade`, `el_status`, demographics/program fields, and the **headline** `elp_level` / `elp_scale` / `elp_band` |
-| Components | student × year × component | `elp_components_sim` | `student_id`, `school_year`, `component`, `form`, `scale_score`, `level` |
-| Academic | student × year × subject | `academic_long_sim` | `student_id`, `school_year`, `grade`, `subject`, `scale_score`, `perf_level`, `alt_perf_level` |
+| **Base** (all analysis) | student × year × component | `el_long_sim` | `STUDENT_ID`, `YEAR`, `COMPONENT`, `ELP_FORM`, `SCALE_SCORE`, `ACHIEVEMENT_LEVEL` — every ELP measurement is a row here; the **headline** resolves from it via `elp_headline()` and `spec$elp$headline` |
+| Roster (enrollment frame) | student × year | `el_roster_sim` (52 cols) | `STUDENT_ID`, `YEAR`, `GRADE`, `EL_STATUS`, demographics/program fields, `ELP_FORM` — **no measurement columns**; the only place students are counted |
+| Academic | student × year × subject | `academic_long_sim` | `STUDENT_ID`, `YEAR`, `GRADE`, `SUBJECT`, `SCALE_SCORE`, `ACHIEVEMENT_LEVEL`, `ACHIEVEMENT_LEVEL_ALT` |
 
 Rules a session must not break (each is a test):
 
-- **Headline only.** All stages read `elp_level` / `elp_scale` / `elp_band`
-  from the spine. `elp_scale` is now load-bearing: Check 3's logistic
-  regression and Check 4's consistency/J run on the headline **scale score**.
-  No `compute_*()` behind Prep 2 or Checks 1–4 names a component or reads the
-  components table — that table exists for Prep 1, exit-rule work, and the
-  Type-gated Additional checks. Enforced by the ELPA21-headline smoke fixture.
-- **`component` vocabulary** (from the Report Views doc): `listening`,
+- **Headline via the base table.** The base table is the single source of
+  ELP measurement; the roster caches nothing. All stages read the headline
+  through one accessor — `elp_headline(data)`: base filtered to
+  `spec$elp$headline` on the annual form, joined to roster keys, banded per
+  `spec$elp$bands` — and Checks 3–4 run on its scale score. No `compute_*()`
+  behind Prep 2 or Checks 1–4 names a component; only Prep 1, exit-rule work,
+  and Type-gated Additional checks read the base table below the headline.
+  Enforced by the ELPA21-headline smoke fixture (`headline =
+  "determination"` must resolve through the same accessor).
+- **`COMPONENT` vocabulary** (from the Report Views doc): `listening`,
   `speaking`, `reading`, `writing`, `oral`, `written`, `comprehension`,
   `expressive`, `overall`, plus `determination`. Character, never factor.
   Instrument-native names map in the spec (`native_name`: WIDA "Literacy" →
   `written`); never add `literacy` or `composite_overall` to the vocabulary. A
   component may lack a scale (`NA`) or a level (`NA`).
-- **Key names differ by table**: `component` vs `subject`, asserted — or
+- **Key names differ by table**: `COMPONENT` vs `SUBJECT`, asserted — or
   WIDA's `reading` domain and an academic Reading subject conflate in a join.
   `kind` holds the vendor words; the key never does.
-- **Counting.** The spine is the denominator for anything counted per
-  student-year; never count students from the academic (×subjects) or
-  components (×8) tables. Person-period data for Check 1's models is
-  **derived, never stored**.
-- **`el_status`** keeps three values: `current` / `former` / `never`.
+- **Counting.** The roster is the denominator for anything counted per
+  student-year; never count students from the academic table (×subjects) or
+  the base table (×8 for WIDA). The roster exists because the base table only
+  has rows where a test happened: untested-but-enrolled years and the
+  former/never reference groups live only there. Person-period data for
+  Check 1's models is **derived, never stored**.
+- **`EL_STATUS`** keeps three values: `current` / `former` / `never`.
   Monitoring years are sub-states of `former`; sim formers leave the panel
   after monitoring year 4, so "Former ELs" means former-within-four-years and
   captions say so. **"English-only (EO)"** in Checks 3–4 maps to
   `el_status == "never"`; former ELs are never in the EO group.
 - **Exit observation.** The sim flags exit on the **last current** row; the
   package's decided convention dates exit to the **first former** year. The
-  package recomputes `year_in_status`, `censored`, and the exit indicators
-  from `el_status` transitions; the sim's D-tier columns are validation inputs
+  package recomputes `YEAR_IN_STATUS`, `censored`, and the exit indicators
+  from `EL_STATUS` transitions; the sim's D-tier columns are validation inputs
   only; a test asserts package exit year = flagged row's `school_year + 1`.
-- **Formers and never-ELs carry no ELP.** `elp_*` is `NA` on every non-current
-  row (contract §4.4). Alternate-form students carry `elp_level = NA`, are
+- **Formers and never-ELs carry no ELP.** They have no base-table rows at
+  all (contract §4.4). Alternate-form students never enter the headline, are
   excluded from the exit rule and from band distributions unless the spec
   declares an alternate `level_scale`, are reported as a group, and never exit
   in this sim — a modeling limitation, not a finding.
@@ -187,7 +162,7 @@ Rules a session must not break (each is a test):
   Consequence for Check 1's Model 2: the lagged-ELA covariate is `NA` for
   2021 person-period rows (no 2020 score exists); those rows drop from
   Model 2 with a rendered note — **never imputed**.
-- **`sample_weight`.** Never-EL rows are a 10% sample, weight 10. Every
+- **`SAMPLE_WEIGHT`.** Never-EL rows are a 10% sample, weight 10. Every
   statewide share weights; every within-EL statistic does not; EO group
   *means* are unaffected by a constant weight but EO *n*s are always reported
   weighted or labeled. A test asserts no unweighted never-EL total appears.
@@ -200,19 +175,21 @@ Rules a session must not break (each is a test):
   parameters of the generator (contract §5.2–5.3). Stage `.qmd`s built on sim
   data must not present a fairness-check gap or a skimming-bias result as a
   finding — the machinery is real, the numbers are by construction.
-- **Minimum viable delivery**: `student_id`, `school_year`, `grade`,
-  `el_status`, `elp_level` run Checks 1 (Model 1) and 2 in full; `elp_scale` +
-  the academic table (with `grade` — required, no fallback, decided
+- **Minimum viable delivery**: a roster (`STUDENT_ID`, `YEAR`,
+  `GRADE`, `EL_STATUS`) plus base-table rows for at least the headline
+  component run Checks 1 (Model 1) and 2 in full; the headline scale score +
+  the academic table (with `GRADE` — required, no fallback, decided
   2026-08-26) unlock Check 1 Model 2, Check 3, and Check 4; the
   disaggregation set unlocks the crosstab rows; parental education is absent
   from the sim, so the matched fairness check is crude-SES-only there.
 - If `data-raw/el_long_sim.R` is missing, stop and say so; never re-simulate.
 
 **Derived variables the package adds** (recomputed, never trusted from a
-delivery): `year_in_status`, cohort key (`NA` when `left_truncated`),
+delivery): `YEAR_IN_STATUS`, cohort key (`NA` when `LEFT_TRUNCATED`),
 `censored`, `exit_ever` ⊇ `exit_max` ⊇ `exit_ontime` + `no_exit`, `on_time` /
 `prolonged` (Check 2's headline split, from `policy$timelines`), `lt_el`,
-`elp_band`, person-period frames for Check 1.
+the banded headline (via `elp_headline()` and `elp$bands`), person-period
+frames for Check 1.
 
 ## 5. `el_spec`
 
@@ -311,7 +288,7 @@ with the real tested grade on the academic row.
 | `growth_targets`, `timelines` | `policy$growth`, `policy$timelines` | moved; on-time rule becomes a structure; `exit_dating`, `initial_elp_source` added (the old prompt's `elp` sketch carried `initial_elp_source`; the classification rule puts it in `policy`) `[PROPOSED — CONFIRM]` |
 | *(absent)* | `policy$program`, `policy$error_tolerance` | new, from Prep 3 `[PROPOSED — CONFIRM]` |
 | `years$cohort_anchor_grade` | *(dropped)* | starting cohort is `start_grade = "K"` on Check 1/2 functions |
-| `data$columns` | `data$columns` | extended: spine, per-component entries, academic table |
+| `data$columns` | `data$columns` | extended: roster, per-component entries, academic table |
 | `as_assessment_spec()` | `el_spec()` | shell constructor; shape stays acceptable to stateSpecs later |
 
 **Three instantiations** under `inst/specs/`, all through `test-spec.R`,
@@ -394,7 +371,7 @@ accordingly. Slots: `$program_table`, `$error_tolerance`,
 "K")`). Sample: a stable entry cohort (same starting grade, same year, ideally
 K/1) tracked forward — derived from the panel range and
 `policy$timelines$max_years_to_exit`, never year literals (sim: five usable K
-cohorts, K-2015…K-2019); `left_truncated` excluded by construction. **Exit
+cohorts, K-2015…K-2019); `LEFT_TRUNCATED` excluded by construction. **Exit
 dating: first former year, counted as a year in status; exit absorbing;
 disappeared = first year absent with no prior exit** — fixed by the deck's A–J
 example; slide-52's "exited at year's end" for row *t* means observed exited
@@ -452,7 +429,7 @@ column-percent blocks for primary language, district size band, sex / low SES
 / special education, service type, initial ELP band; suppression `NA` not
 dropped) — plus the new **descriptive academic summary**: median ELA
 percentile or proficiency rate for on-time vs prolonged at comparable
-trajectory points (comparable = same `year_in_status` `[PROPOSED — CONFIRM]`;
+trajectory points (comparable = same `YEAR_IN_STATUS` `[PROPOSED — CONFIRM]`;
 `NULL` without the academic table). Interpretation text: the human face of
 the stuck population — if disability status drives prolongation, a threshold
 change alone won't address it. "Decide" box: which subgroups get separate
@@ -474,8 +451,8 @@ restricted to grades with summative academic data (from
 `grades = NULL`); **each grade analyzed separately, never pooled**
 (structure-tested); plus two EO comparison groups: SES-matched-or-filtered EO
 for the box plots, full EO for the average-score benchmark. Universe: the
-academic table joined to spine status (**academic ⟕ spine** — row-count test
-guards the direction; spine ⟕ academic silently drops the reference groups).
+academic table joined to roster status (**academic ⟕ roster** — row-count test
+guards the direction; roster ⟕ academic silently drops the reference groups).
 Same-year pairing only; caption pairs `elp$administration_window` with the
 academic window; 2020 panels `NULL` (missing year, not empty). Core outputs
 per grade × subject:
@@ -500,7 +477,7 @@ per grade × subject:
   the language threshold.
 - **Two fairness checks** — is the EL bar one EO peers themselves don't
   clear? (a) box plots re-run on the SES/parental-education-matched EO group
-  — crude SES filter in the shell (sim has `econ_disadv`, no parental
+  — crude SES filter in the shell (sim has `FRL`, no parental
   education), matching function a later addition; (b) the identical logistic
   re-run with the binarization threshold swapped from the state's proficiency
   cut to the **EO group's average ELA score**, read at its 50% crossing. A
@@ -568,22 +545,22 @@ authored text.
 
 **Row universes.** Each stage declares its own (the Sample line); no stage
 requires both assessments unless defined on the pairing. Checks 1 (Model 1)
-and 2 live on the spine; Check 1 Model 2, Check 3, and Check 4 live on the
+and 2 live on the roster; Check 1 Model 2, Check 3, and Check 4 live on the
 pairing — a student with no score in a tested grade is not in that universe,
 not missing from it. The coverage table reports the overlap; no filter
 decides it silently.
 
 ## 7. `as_el_data()` and delivery forms
 
-`as_el_data(spine, components = NULL, academic = NULL)` returns a validated
-bundle; every data-taking `run_<stage>()` takes the bundle, never raw tables.
+`as_el_data(elp, roster, academic = NULL)` returns a validated
+bundle — the base table first, the roster as the counting frame; every data-taking `run_<stage>()` takes the bundle, never raw tables.
 The three tables are the analysis model; the delivered form is whatever a
 state hands over, and `as_el_data()` is the adapter.
 
 Accepted forms in the shell:
 
 1. **Separate objects** — the sim's own call:
-   `as_el_data(el_long_sim, components = elp_components_sim, academic = academic_long_sim)`.
+   `as_el_data(el_long_sim, roster = el_roster_sim, academic = academic_long_sim)`. A fully merged single long file (roster attributes repeated per component row, SGP LONG_DATA style) is also accepted and split on intake.
 2. **SGP LONG_DATA** — `VALID_CASE`, `CONTENT_AREA`, `YEAR`, `ID`, `GRADE`,
    `SCALE_SCORE`, `ACHIEVEMENT_LEVEL`, demographics per row. `CONTENT_AREA`
    **values** map to components through `data$columns`, never by label
@@ -591,20 +568,25 @@ Accepted forms in the shell:
    test in `NV_Data_LONG`); `GRADE "0"` → `"K"`; `ACHIEVEMENT_LEVEL` parsed
    by the level scale, **warn on integer-only levels** (the 4.0–4.4 / 4.5–4.9
    bands need the decimal from the raw ACCESS file); `VALID_CASE` honored.
-   `SGP`/target columns out of scope, recorded as the natural later spine
+   `SGP`/target columns out of scope, recorded as the natural later roster
    addition. Exercised by a hand-reshaped fixture, never a simulation.
 3. ~~Single wide student-year table~~ — dropped to Later additions
    `[PROPOSED — CONFIRM]`.
 
-Validator: key `student_id × school_year`; academic `grade` present and equal
-to the spine's; components `form` equal to spine `elp_form` (sixth column,
-redundant on purpose `[PROPOSED — CONFIRM]`; consider naming both `elp_form`);
+Validator: key `STUDENT_ID × YEAR`; academic `GRADE` present and equal
+to the roster's; base-table `ELP_FORM` equal to the roster's (same name on both tables) (sixth column,
+redundant on purpose `[PROPOSED — CONFIRM]`; consider naming both `ELP_FORM`);
 the **coverage table** by year × grade (academic-scored; current ELs with
 same-year ELP; former; never; alternate takers) — Check 3's
-data-considerations block. `as_academic_long()` accepts stateSummative-shaped
-or SGP-long academic input and renames; stateELP does not import
-stateSummative; case differences are a stateSpecs family decision; any
-handoff is a `rename()` at the boundary ("data crosses, code doesn't").
+data-considerations block. `as_academic_long()` is now the
+`standardize_student_results()` equivalent: for ReportR-shaped input it is a
+near-identity (the academic table *is* `student_results_long` +
+`ACHIEVEMENT_LEVEL_ALT`); for SGP-long input it applies the NOTES alias map
+(`ID` → `STUDENT_ID`, `CONTENT_AREA` → `SUBJECT`, `"YYYY_YYYY"` → end-year
+integer, `VALID_CASE` filtered), with `CONTENT_AREA` *values* recoded to spec
+keys through `data$columns`. stateELP does not import stateSummative or
+ReportR; any residual handoff is a `rename()` at the boundary ("data crosses,
+code doesn't").
 Person-period frames for Check 1 are built by a `check1_`-internal helper
 from the bundle, on demand.
 
@@ -669,13 +651,13 @@ Fixtures that must exist in the shell:
   proficiency base rate well below 50% where the raw-consistency peak and the
   J-optimal cut diverge; the Check 4 code must return the J optimum. This
   encodes the Process Overview's checkpoint as executable proof.
-- ELPA21-headline spine (a few rows): every built `compute_*()` runs — the
+- ELPA21-headline fixture (a base + roster pair, a few rows): every built `compute_*()` runs — the
   no-WIDA-assumptions smoke test; the ELPA21 spec also exercises Type 6
   gating (its Additional-check slots populate structurally; the SIM Type 1
   spec's are `NULL`).
 - SGP-long fixture and stateSummative-shaped academic fixture; identical
   bundle output across accepted forms.
-- Structural: `component` ≠ `subject`; Check 3 join direction; sim-vs-package
+- Structural: `COMPONENT` ≠ `SUBJECT`; Check 3 join direction; sim-vs-package
   exit year `+1`; no unweighted never-EL total; per-grade results never
   pooled (Check 3/4 output keyed by grade); 2021 Model-2 rows dropped, never
   imputed; policy fields only under `policy`; `types` declaration consistent
@@ -733,7 +715,7 @@ on its default:
 | 9 | `policy$program` and `policy$error_tolerance` fields | adopt (Prep 3 needs a home) |
 | 10 | Wide single-table delivery form | dropped to Later additions |
 | 11 | Disappeared column in Check 2 outputs | include; columns sum to All |
-| 12 | Check 2 "comparable points" for the academic summary | same `year_in_status` |
+| 12 | Check 2 "comparable points" for the academic summary | same `YEAR_IN_STATUS` |
 | 13 | Check 2 trajectories view | level × year-in-status, faceted by exit group |
 | 14 | Check 1 weighting index (`$grade_weights`) | build as experimental-labeled slots; no mechanical use until validated vs the Indiana pipeline |
 | 15 | Auto-narrative | not in shell |
@@ -754,7 +736,7 @@ multi-criterion combination from scratch (audit-only for now);
 audience-differentiated (technical vs policy) rendering; later start grades
 and grouped spans; preliminary cohorts; starting grade as crosstab rows;
 old-vs-new-standards box plots; the wide single-table delivery form; SGP
-growth/target columns on the spine; screener-based initial ELP; ingest of
+growth/target columns on the roster; screener-based initial ELP; ingest of
 real state files; empirical-quantile district bins; exit-rule *evaluation*
 (rule-implied eligibility vs observed exits); whether the Additional checks
 stay inline or become a companion document (Molly's open format question);

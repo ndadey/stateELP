@@ -15,8 +15,10 @@ Views, deck extractions, original `NJ_elp_2023.R`),
 
 1. **Skeleton.** `DESCRIPTION` (Package: stateELP; Imports individual
    packages only, never tidyverse; R 4.3.3), generated `NAMESPACE`,
-   `R/globals.R`, `.Rbuildignore`/`.gitignore` in the ReportR pattern,
-   `renv::init()`. Commit.
+   `R/globals.R`, `.Rbuildignore`/`.gitignore` in the ReportR pattern
+   (`.Rbuildignore` additionally covers `^\.claude$` — the repo may carry a
+   committed `.claude/settings.json` with permission deny rules; leave that
+   file untouched), `renv::init()`. Commit.
 
 2. **Spec layer.** `R/spec.R`: `el_spec()` constructor + validator per
    CLAUDE.md §5 — `elp` block (`components` with
@@ -46,23 +48,27 @@ Views, deck extractions, original `NJ_elp_2023.R`),
    run output; confirm version 0.2.0. Write `R/data.R` against the
    contract's §3.5/§4.2/§5.1 tables, with the column-agreement test. Commit.
 
-4. **Bundle and adapters.** `R/el_data.R`: `as_el_data()` (key uniqueness;
-   academic `grade` required and equal to spine's; components `form` equal
-   to spine `elp_form`; the year × grade coverage table) and
+4. **Bundle and adapters.** `R/el_data.R`: `as_el_data(el_long_sim, roster = el_roster_sim, academic = ...)` (key
+   uniqueness; academic `GRADE` required and equal to the roster's;
+   base-table `ELP_FORM` equal to roster `ELP_FORM`; the year × grade coverage
+   table), the **`elp_headline()` accessor** — base table filtered to
+   `spec$elp$headline` on the annual form, joined to roster keys, banded per
+   spec, returning `STUDENT_ID`, `YEAR`, `ACHIEVEMENT_LEVEL`, `SCALE_SCORE`,
+   `ELP_BAND`; the only route any stage takes to the headline — and
    `as_academic_long()`. Fixtures: hand-reshaped SGP-long
    (`CONTENT_AREA = "READING"` → `overall` via crosswalk, `GRADE "0"` →
    `"K"`, labeled levels, `VALID_CASE` honored, warn on integer-only
    levels); small stateSummative-shaped academic fixture; the
-   ELPA21-headline spine fixture (a few rows) as a shared test helper.
+   ELPA21-headline fixture (a base + roster pair, a few rows) as a shared test helper.
    `test-el_data.R`: identical bundles across accepted forms;
-   join-direction row-count guard; `component` ≠ `subject`. Commit.
+   join-direction row-count guard; `COMPONENT` ≠ `SUBJECT`. Commit.
 
 5. **Shared derivations.** In `R/utils.R`: suppression (`NA`, never dropped
    rows; `min_cell` from `policy$suppression` only), banding from
    `spec$elp$bands`, weighting helpers, and the status-transition
-   derivations both cohort checks consume — `year_in_status`, `censored`,
+   derivations both cohort checks consume — `YEAR_IN_STATUS`, `censored`,
    exit dating (**first former year**, absorbing), cohort keys (excluding
-   `left_truncated`), the nested exit flags, on-time/prolonged. Include the
+   `LEFT_TRUNCATED`), the nested exit flags, on-time/prolonged. Include the
    sim-vs-package exit-year `+1` test and the last-current-dating
    counter-test here, driven by the A–J tibble from deck slides 43–51 (50%
    at year 7 / grade 6; 40% within 6 years). Commit.

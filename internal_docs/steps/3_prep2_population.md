@@ -9,11 +9,11 @@ every later stage is read against.
 allows), observed across ≥5 years — not a single cohort. Never-EL students
 enter only as the enrollment denominator.
 
-**Data needs.** Spine: `student_id`, `school_year`, `grade`, `el_status`,
-`sample_weight`, `district_id`, `entry_grade`, `initial_elp`/`elp_band`,
-`elp_form`, and the disaggregation set (`home_language`, `service_model`,
-`sped_classification`/`swd_flag`, `sex`, `frpl_status`/`econ_disadv`,
-`immigrant_status`/`newcomer_flag`, `el_status_detail`). Spec:
+**Data needs.** Roster: `STUDENT_ID`, `YEAR`, `GRADE`, `EL_STATUS`,
+`SAMPLE_WEIGHT`, `DISTRICT_ID`, `ENTRY_GRADE`, `INITIAL_ELP`, `ELP_FORM`;
+the banded headline via `elp_headline()`; and the disaggregation set (`HOME_LANGUAGE`, `SERVICE_MODEL`,
+`SPED_CLASSIFICATION`/`IEP`, `GENDER`, `FRL_DETAIL`/`FRL`,
+`IMMIGRANT_STATUS`/`NEWCOMER_FLAG`, `EL_STATUS_DETAIL`). Spec:
 `policy$district_size_bands`, `policy$suppression`, `elp$bands`,
 `policy$timelines$lt_el_definition`.
 
@@ -46,7 +46,7 @@ caution ("resist the urge to average") renders.
 
 **Guardrails (tests).** Statewide shares weighted, within-EL statistics not;
 no unweighted never-EL total in any slot; district bins from spec, never the
-sim's `district_size_band` column; suppression `NA` not dropped;
+sim's `DISTRICT_SIZE_BAND` column; suppression `NA` not dropped;
 alternate-form exclusion noted where initial ELP renders; heritage `NULL`
 does not error.
 
