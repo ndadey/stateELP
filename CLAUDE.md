@@ -76,15 +76,53 @@ Maintain this table. It starts as the shell inventory.
 
 | Piece | Status | Notes |
 |---|---|---|
-| Package skeleton, `DESCRIPTION`, `renv` | not built | renv::init() at creation |
-| `data-raw/el_long_sim.R` + `sim_contract.md` | **written, unexecuted** | contract v0.2.0; first run fills its `[FILL IN]` placeholders |
-| `data/` (three `.rda`) | not built | regenerate, don't hand-edit |
-| `R/spec.R` + three specs | not built | SIM (Type 1) / NJ / ELPA21 (Type 6) |
-| `R/el_data.R` (bundle, adapter, coverage) | not built | |
+| Package skeleton, `DESCRIPTION`, `renv` | **built** | `renv::init()`, explicit snapshot; 17 runtime deps locked |
+| `data-raw/el_long_sim.R` + `sim_contract.md` | **written, RUN** | contract v0.2.0; all four `[FILL IN]` placeholders filled from the 2026-09-15 build |
+| `data/` (three `.rda`) | **built** | 7.07 MB, `sim_contract_version` 0.2.0 on each; regenerate, don't hand-edit |
+| `R/spec.R` + three specs | **built** | SIM (Type 1) / NJ / ELPA21 (Type 6); + demographics lookups |
+| `R/el_data.R` (bundle, adapter, coverage) | **built** | `as_el_data()`, `as_el_data_sgp()`, `as_academic_long()`, coverage table |
+| `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, exit dating, cohorts, exit flags |
+| `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested both formats; see the Dropbox note below |
 | `internal_docs/steps/` (8 files) + `dev/prompts/` | **written** | numbered `1_`–`9_` in run order; binding per-stage contracts; refine as stages evolve |
 | Eight `.qmd` shells | not built | one stage session each (§15) |
-| Fixtures: A–J, slide-52, J-vs-consistency | not built | see §10; A–J + slide-52 land in the foundation session / Check 1 |
+| Fixtures: A–J, slide-52, J-vs-consistency | **A–J built** | A–J with its last-current counter-test in `test-utils.R`; slide-52 lands with Check 1, J-vs-consistency with Check 4 |
 | Stage analyses (all) | not built | later passes per instruction file |
+
+**Test count at the end of the foundation session:** 206 passing, 58 `skip()`ped
+(the eight per-stage files), 0 failures. `devtools::check()`: **0 errors, 0
+warnings**, 2 NOTEs — the 7.1 MB `data/` directory (expected; `sim_contract.md`
+§9) and "unable to verify current time" (environmental).
+
+**Three environment facts a later session will otherwise rediscover the hard
+way:**
+
+1. **R 4.3.3 is not installed on this machine** (4.2.1 / 4.4.2 / 4.5.3 are).
+   The shipped data was built on **4.4.2**, and determinism across the two was
+   verified rather than assumed — see `sim_contract.md` §2.1. Only R 4.4.2 has
+   a working dev toolchain: its user library shipped `fs` 1.6.5 and `rlang`
+   1.1.5, both below what `devtools` 2.5.x needs, so the project library
+   carries newer ones installed through `renv`. `renv`'s lockfile records the
+   package's own dependencies only; on a fresh clone run
+   `renv::hydrate(c("devtools", "roxygen2"))` after `renv::restore()`.
+2. **`devtools::check()` cannot run from the repo root while any file in
+   `internal_docs/working/` is open in another application.** `R CMD build`
+   copies the whole package directory *before* applying `.Rbuildignore`, so a
+   single locked file anywhere in the tree aborts the copy — an open workbook
+   leaves a `~$*.xlsx` lock file and the check dies with "permission denied"
+   long before it reaches any R code. Workaround used here, and the one to
+   reuse: check a clean export of the tracked files, which excludes
+   `working/` because it is git-ignored —
+   `git archive --format=tar HEAD | tar -x -C <staging>`, drop `.Rprofile`
+   and `renv/` from the staging copy, then `devtools::check("<staging>")`.
+3. **This repository is inside a Dropbox tree, and Quarto cannot clean up
+   after itself there.** Rendering into a synced directory produces the
+   document and *then* fails, because the sync client holds a handle on
+   `<name>_files` while Quarto tries to delete it (os error 32). The CLI exits
+   non-zero, so the loop looks broken while having actually succeeded, and the
+   stale `_files` directory poisons the next run. `render_step()` therefore
+   renders in `tempdir()` and moves the finished documents into `out_dir`.
+   This is a deviation from §9's "render there" `[PROPOSED — CONFIRM]`; the
+   promise that matters — no `_files/` in the source tree — is kept either way.
 
 ## 4. Data contract — three long tables
 
