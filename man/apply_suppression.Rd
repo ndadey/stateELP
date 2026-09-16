@@ -4,7 +4,7 @@
 \alias{apply_suppression}
 \title{Suppress small cells}
 \usage{
-apply_suppression(x, spec, n_col = "n", cols = NULL, blank_n = FALSE)
+apply_suppression(x, spec, n_col = "N", cols = NULL, blank_n = FALSE)
 }
 \arguments{
 \item{x}{A data frame carrying a count column.}
@@ -21,7 +21,8 @@ nowhere else.}
 is disclosive.}
 }
 \value{
-\code{x} with suppressed cells set to \code{NA} and a \code{suppressed} flag column.
+\code{x} with suppressed cells set to \code{NA} and a logical \code{SUPPRESSED}
+column.
 }
 \description{
 Sets value columns to \code{NA} where the cell count is below the spec's

@@ -2,37 +2,45 @@
 % Please edit documentation in R/utils.R
 \name{build_student_spans}
 \alias{build_student_spans}
-\title{Collapse a spine to one row per student}
+\title{Collapse a roster to one row per student}
 \usage{
-build_student_spans(spine, last_year = NULL)
+build_student_spans(roster, last_year = NULL)
 }
 \arguments{
-\item{spine}{A spine data frame.}
+\item{roster}{A roster with \code{STUDENT_ID}, \code{YEAR}, \code{GRADE}, \code{EL_STATUS};
+\code{LEFT_TRUNCATED} and \code{INITIAL_ELP} are carried onto the span when present.}
 
 \item{last_year}{Last year of the observation window. Defaults to the last
-year present. Pass it explicitly when the roster extends past the last
-year any cohort member was seen, or every student whose final row is the
-last observed year is counted as still-enrolled rather than disappeared.}
+year present. Pass it explicitly when the window extends past the last
+year anyone was seen, or every student whose final row is that year is
+counted as still enrolled rather than disappeared.}
 }
 \value{
-One row per ever-EL student: \code{student_id}, \code{first_current_year},
-\code{last_el_year}, \code{exit_year}, \code{exit_year_in_status}, \code{last_observed_year},
-\code{censor_type}, \code{censored}, \code{exited}.
+One row per student with a \code{current} row: \code{STUDENT_ID},
+\code{START_GRADE}, \code{FIRST_CURRENT_YEAR}, \code{EXIT_YEAR}, \code{EXIT_YEAR_IN_STATUS},
+\code{LAST_OBSERVED_YEAR}, \code{LAST_YEAR_IN_STATUS}, \code{CENSOR_TYPE},
+\code{CENSOR_YEAR}, \code{CENSORED}, \code{EXITED}, plus \code{LEFT_TRUNCATED} and
+\code{INITIAL_ELP} when the roster has them.
 }
 \description{
-The event table both cohort checks run on: when each student entered status,
-when they exited (first \code{former} year), when they were last seen, and
-whether they disappeared.
+The event table both cohort checks run on: when each student was first
+observed in status, when they exited, when they were last seen, and whether
+they disappeared.
 }
 \details{
 Definitions, fixed by the deck's A-J example:
 \itemize{
-\item \strong{exit year} -- the first year observed as \code{former}. Exit is absorbing:
-once exited, a student is an exiter in every later year regardless of
-later absence.
-\item \strong{disappeared} -- the first year absent from the data with no prior
-exit, provided that year is inside the observation window.
-\item \strong{no exit} -- still \code{current} at the window's last year. Disjoint from
-disappeared, so that Check 2's columns sum to the total.
+\item \strong{exit year} -- the first year observed as \code{former}, counted as a year in
+status. Exit is absorbing: nothing after it matters.
+\item \strong{disappeared} -- the first year absent from the data with no prior exit,
+provided that year is inside the observation window. Rows after an
+absence are not read: once censored, a student has left the risk set, so
+the life table's recurrence holds.
+\item \strong{window edge} -- still \code{current} in the window's last year. Disjoint
+from disappeared, so that Check 2's columns sum to the total.
 }
+
+Censored is not did-not-exit: both censor types are unobserved outcomes.
+Students observed only as \code{former} (they exited before the data began) are
+not at risk in the panel and have no span.
 }

@@ -4,21 +4,27 @@
 \alias{add_year_in_status}
 \title{Recompute year in status from observed transitions}
 \usage{
-add_year_in_status(spine)
+add_year_in_status(roster)
 }
 \arguments{
-\item{spine}{A spine data frame with \code{student_id}, \code{school_year},
-\code{el_status}.}
+\item{roster}{A roster with \code{STUDENT_ID}, \code{YEAR}, \code{EL_STATUS}.}
 }
 \value{
-\code{spine} with an added integer \code{year_in_status}.
+\code{roster} with an integer \code{YEAR_IN_STATUS}.
 }
 \description{
-Years since the first year observed as \code{current}, counting the exit year
-itself. Computed from \code{school_year} arithmetic rather than row position, so
-a gap year does not renumber the years that follow it.
+Years since the first year observed as \code{current}, counting that year as 1
+and counting the \strong{exit year} -- the first year observed as \code{former} -- as
+a year in status (the deck's A-J convention). Monitoring years after the
+exit year are not years in status and are \code{NA}; so is every row before a
+student's first \code{current} year and every never-EL row. Exit is absorbing:
+a \code{current} row after the exit year is also \code{NA}.
 }
 \details{
-\code{NA} for never-EL students, and for years before a student's first
-\code{current} year.
+Computed from \code{YEAR} arithmetic rather than row position, so a gap year
+does not renumber the years that follow it.
+
+A delivered \code{YEAR_IN_STATUS} -- the sim ships one -- is \strong{replaced}: the
+package recomputes every derivation and never trusts a delivered one. Keep
+a copy first if it is wanted as a validation input.
 }

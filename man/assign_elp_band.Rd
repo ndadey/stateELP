@@ -7,8 +7,8 @@
 assign_elp_band(level, spec)
 }
 \arguments{
-\item{level}{Headline level: numeric for a numeric level scale, character
-for a categorical one.}
+\item{level}{Headline \code{ACHIEVEMENT_LEVEL}: numeric, or labels for a
+categorical scale.}
 
 \item{spec}{An \code{el_spec}.}
 }
@@ -21,6 +21,8 @@ The 4.5 break in the WIDA-shaped scheme \emph{is} the exit threshold, so the top
 bands hold only students in their exit year.
 }
 \details{
-When the spec declares no \code{bands} the package default is one band per level,
-which is what a non-WIDA instrument with a categorical headline gets.
+When the spec declares no \code{bands} the package default is one band per
+level. For a categorical level scale the base table stores the ordinal
+index (sim_contract.md 4.2), so the band is that level's label from
+\code{level_scale$levels}; a level already delivered as its label passes through.
 }

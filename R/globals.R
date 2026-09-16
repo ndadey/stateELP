@@ -1,35 +1,41 @@
 # Non-standard-evaluation column names used across the package.
 #
-# Every name a dplyr verb refers to bare must be declared here or R CMD check
-# reports it as an undefined global. Grouped by the table it belongs to so a
-# stage session can see at a glance whether a name is already available.
+# Package code refers to columns through `.data$X` (imported from rlang in
+# R/stateELP-package.R), which needs no declaration. Any name a dplyr verb
+# refers to BARE must be declared here or R CMD check reports it as an
+# undefined global. Grouped by the table it belongs to, in the ALL-CAPS names
+# of sim_contract.md 0.4.0, so a stage session can see at a glance whether a
+# name is already available.
 
 utils::globalVariables(c(
-  # --- spine keys and status -------------------------------------------------
-  "student_id", "school_year", "grade", "el_status", "el_status_detail",
-  "ever_el", "exit_observed", "left_truncated", "cohort_label",
-  "cohort_start_year", "entry_grade", "year_in_status", "sample_weight",
+  # --- keys, shared by all three tables --------------------------------------
+  "STUDENT_ID", "YEAR", "GRADE",
 
-  # --- spine: headline ELP ---------------------------------------------------
-  "elp_form", "elp_level", "elp_scale", "elp_band", "initial_elp",
+  # --- roster: status and cohort ---------------------------------------------
+  "EL_STATUS", "EL_STATUS_DETAIL", "EL_MONITOR_YEAR", "EL", "EVER_EL",
+  "EXIT_OBSERVED", "YEAR_IN_STATUS", "ENTRY_GRADE", "COHORT_START_YEAR",
+  "COHORT_LABEL", "LEFT_TRUNCATED", "INITIAL_ELP", "ELP_FORM",
+  "SAMPLE_WEIGHT",
 
-  # --- spine: demographics and program ---------------------------------------
-  "district_id", "school_id", "sex", "frpl_status", "econ_disadv",
-  "sped_classification", "swd_flag", "home_language", "service_model",
-  "immigrant_status", "newcomer_flag", "sife_flag", "district_size_band",
+  # --- roster: demographics and program --------------------------------------
+  "DISTRICT_ID", "SCHOOL_ID", "GENDER", "RACE_ETHNICITY", "FRL", "FRL_DETAIL",
+  "IEP", "SPED_CLASSIFICATION", "HOME_LANGUAGE", "SERVICE_MODEL",
+  "IMMIGRANT_STATUS", "NEWCOMER_FLAG", "SIFE_FLAG", "DISTRICT_SIZE_BAND",
 
-  # --- components table ------------------------------------------------------
-  "component", "form", "scale_score", "level",
+  # --- base table ------------------------------------------------------------
+  "COMPONENT", "SCALE_SCORE", "ACHIEVEMENT_LEVEL",
 
   # --- academic table --------------------------------------------------------
-  "subject", "perf_level", "alt_perf_level",
+  "SUBJECT", "ACHIEVEMENT_LEVEL_ALT",
 
-  # --- derived by R/utils.R --------------------------------------------------
-  "first_current_year", "last_el_year", "last_observed_year", "exit_year",
-  "exit_year_in_status", "years_in_status", "censored", "censor_year",
-  "exit_ever", "exit_max", "exit_ontime", "no_exit", "on_time", "prolonged",
-  "lt_el", "start_grade", "cohort_n",
+  # --- derived: elp_headline() and R/utils.R ---------------------------------
+  "ELP_BAND", "LT_EL", "START_GRADE", "FIRST_CURRENT_YEAR",
+  "FIRST_FORMER_YEAR", "EXIT_YEAR", "EXIT_YEAR_IN_STATUS",
+  "LAST_OBSERVED_YEAR", "LAST_YEAR_IN_STATUS", "CENSOR_TYPE", "CENSOR_YEAR",
+  "CENSORED", "EXITED", "ON_TIME_YEARS", "EXIT_EVER", "EXIT_MAX",
+  "EXIT_ONTIME", "NO_EXIT", "DISAPPEARED", "ON_TIME", "PROLONGED",
+  "SUPPRESSED",
 
   # --- generic summary names -------------------------------------------------
-  "n", "n_students", "n_weighted", "pct", "value"
+  "N", "N_WEIGHTED", "PCT"
 ))

@@ -4,27 +4,29 @@
 \alias{build_cohort}
 \title{Build a starting-grade cohort}
 \usage{
-build_cohort(spine, spec, start_grade = "K", entry_years = NULL)
+build_cohort(roster, spec, start_grade = "K", entry_years = NULL)
 }
 \arguments{
-\item{spine}{A spine data frame.}
+\item{roster}{A roster with \code{STUDENT_ID}, \code{YEAR}, \code{GRADE}, \code{EL_STATUS}.}
 
 \item{spec}{An \code{el_spec}.}
 
 \item{start_grade}{Entry grade, e.g. \code{"K"}.}
 
 \item{entry_years}{Entry years to keep. \code{NULL} keeps every year with enough
-follow-up for the maximum timeline, derived from the panel range rather
-than named as literals.}
+follow-up for the maximum timeline plus the year that observes an exit in
+its last year, derived from the panel range rather than named as literals.}
 }
 \value{
-A tibble: \code{student_id}, \code{cohort_label}, \code{start_grade},
-\code{cohort_start_year}.
+A tibble: \code{STUDENT_ID}, \code{COHORT_LABEL}, \code{START_GRADE},
+\code{COHORT_START_YEAR}.
 }
 \description{
 A cohort is students who entered EL status in the same grade in the same
 year. Left-truncated students -- already in status when the panel opened --
 are excluded by construction: their duration is measured from an entry
 nobody observed, and including them understates time in status by up to the
-whole maximum timeline.
+whole maximum timeline. When the roster carries no \code{LEFT_TRUNCATED}, entry
+in the panel's first year cannot be told from earlier entry, so those
+students are treated as left-truncated. \verb{[PROPOSED - CONFIRM]}
 }

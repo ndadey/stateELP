@@ -10,7 +10,8 @@ weighted_n(w = NULL, na.rm = TRUE)
 weighted_share(x, w = NULL, na.rm = TRUE)
 }
 \arguments{
-\item{w}{A weight vector. \code{NULL} or all-\code{NA} is treated as unweighted.}
+\item{w}{A weight vector, typically \code{SAMPLE_WEIGHT}. \code{NULL} is treated as
+unweighted.}
 
 \item{na.rm}{Whether to drop \code{NA}s.}
 
