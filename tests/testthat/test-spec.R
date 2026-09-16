@@ -11,7 +11,7 @@ test_that("all three shipped specs construct and validate", {
   }
 })
 
-test_that("SIM spec matches sim_contract.md v0.2.0", {
+test_that("SIM spec matches sim_contract.md v0.4.0", {
   spec <- read_el_spec("00_SIM_EL_Spec")
 
   # 4.3 headline, 4.5 bands, 2.2 P block, 5.4 cut convention.
@@ -30,6 +30,19 @@ test_that("SIM spec matches sim_contract.md v0.2.0", {
 
   # Synthetic data must never be mistaken for a state's values.
   expect_identical(spec$verification$status, "synthetic")
+})
+
+test_that("SIM spec's identity crosswalk names real columns of the shipped tables", {
+  spec <- read_el_spec("00_SIM_EL_Spec")
+  cols <- spec$data$columns
+  tables <- list(roster = stateELP::el_roster_sim,
+                 base = stateELP::el_long_sim,
+                 academic = stateELP::academic_long_sim)
+  for (tbl in names(tables)) {
+    m <- cols[[tbl]]
+    expect_identical(names(m), unname(m), info = tbl)        # identity
+    expect_true(all(names(m) %in% names(tables[[tbl]])), info = tbl)
+  }
 })
 
 test_that("ELPA21 spec exercises the non-WIDA branches", {
@@ -263,6 +276,56 @@ test_that("exit dating is pinned to the first former year", {
   expect_error(
     make_spec_base(policy = list(timelines = list(exit_dating = "last_current_year"))),
     "must be \"first_former_year\""
+  )
+})
+
+test_that("the on-time rule and the LTEL year are structured, and checked", {
+  expect_error(
+    make_spec_base(policy = list(timelines = list(lt_el_years = "six"))),
+    "lt_el_years` must be a whole number"
+  )
+  expect_error(
+    make_spec_base(policy = list(timelines = list(on_time_rule = list(
+      by_start_grade = c(5, 6))))),
+    "by_start_grade` must be a named"
+  )
+  expect_error(
+    make_spec_base(policy = list(timelines = list(on_time_rule = list(
+      by_initial_band = c(nosuchband = 5))))),
+    "not in `elp\\$bands\\$labels`"
+  )
+  expect_s3_class(
+    make_spec_base(policy = list(timelines = list(
+      lt_el_years = 6L,
+      on_time_rule = list(default_years = 5L,
+                          by_start_grade = c(K = 5L, "3" = 6L),
+                          by_initial_band = c(low = 6L))))),
+    "el_spec"
+  )
+})
+
+test_that("delivery crosswalks use ALL-CAPS canonical names", {
+  expect_error(
+    make_spec_base(data = list(columns = list(
+      roster = c(student_id = "student_id")))),
+    "canonical names are ALL CAPS"
+  )
+  expect_error(
+    make_spec_base(data = list(columns = list(roster = c("STUDENT_ID")))),
+    "must be a named character vector"
+  )
+})
+
+test_that("CONTENT_AREA value maps must land on spec keys", {
+  expect_error(
+    make_spec_base(data = list(columns = list(value_maps = list(
+      CONTENT_AREA = list(base = c(READING = "expressive")))))),
+    "maps to unknown component"
+  )
+  expect_error(
+    make_spec_base(data = list(columns = list(value_maps = list(
+      CONTENT_AREA = list(academic = c(MATHEMATICS = "Math")))))),
+    "maps to unknown subject"
   )
 })
 

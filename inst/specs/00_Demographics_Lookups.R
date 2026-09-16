@@ -5,17 +5,22 @@
 # policy or measurement parameters, and several states share them. A spec points
 # here through data$demographics_spec.
 #
-# Every lookup is a named character vector: names are the values as delivered,
+# Every lookup is keyed by the ALL-CAPS roster column it labels
+# (sim_contract.md 3.5) and is a named character vector: names are the VALUES as
+# delivered (lowercase codes stay lowercase -- only column names are ALL CAPS),
 # elements are what a table or axis should show. A value absent from a lookup
 # renders as itself -- a lookup never silently drops a category, because a
 # dropped category is a suppressed group nobody can see.
+#
+# RACE_ETHNICITY needs no lookup: its values are already the federal labels.
+# `yes_no` and `exit_category` label values, not a single column.
 #
 # Row order is display order. "Other" and "Unknown" sort last by convention.
 # =============================================================================
 
 Demographics_Lookups <- list(
 
-  home_language = c(
+  HOME_LANGUAGE = c(
     spa = "Spanish",
     por = "Portuguese",
     ara = "Arabic",
@@ -29,7 +34,7 @@ Demographics_Lookups <- list(
     oth = "Other"
   ),
 
-  service_model = c(
+  SERVICE_MODEL = c(
     esl_pullout       = "ESL, pull-out",
     esl_pushin        = "ESL, push-in",
     sheltered         = "Sheltered content instruction",
@@ -39,7 +44,7 @@ Demographics_Lookups <- list(
     refused_services  = "Services refused"
   ),
 
-  sped_classification = c(
+  SPED_CLASSIFICATION = c(
     SLD = "Specific learning disability",
     SLI = "Speech or language impairment",
     OHI = "Other health impairment",
@@ -48,20 +53,20 @@ Demographics_Lookups <- list(
     OTH = "Other classification"
   ),
 
-  sex = c(M = "Male", F = "Female", X = "Non-binary / not reported"),
+  GENDER = c(M = "Male", F = "Female", X = "Non-binary / not reported"),
 
-  frpl_status = c(F = "Free lunch", R = "Reduced-price lunch", N = "Neither"),
+  FRL_DETAIL = c(F = "Free lunch", R = "Reduced-price lunch", N = "Neither"),
 
   yes_no = c(Y = "Yes", N = "No"),
 
-  el_status = c(
+  EL_STATUS = c(
     current = "Current EL",
     former  = "Former EL",
     never   = "Never EL (English-only)"
   ),
 
   # Monitoring years are sub-states of `former`, not a fourth status.
-  el_status_detail = c(
+  EL_STATUS_DETAIL = c(
     current      = "Current EL",
     monitoring_1 = "Former EL, monitoring year 1",
     monitoring_2 = "Former EL, monitoring year 2",
@@ -70,7 +75,7 @@ Demographics_Lookups <- list(
     never        = "Never EL (English-only)"
   ),
 
-  elp_form = c(annual = "Annual form", alternate = "Alternate form"),
+  ELP_FORM = c(annual = "Annual form", alternate = "Alternate form"),
 
   exit_category = c(
     on_time     = "Exited on time",

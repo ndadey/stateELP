@@ -63,6 +63,9 @@ ELPA21_EL_Spec <- stateELP::el_spec(
 
     headline = "determination",
 
+    # The base table stores ACHIEVEMENT_LEVEL numeric always (sim_contract.md
+    # 4.2): for a categorical scale that is the ordinal index into `levels`,
+    # so 2 is "Progressing". The labels live here, never in the data.
     level_scale = list(
       type   = "categorical",
       levels = c("Emerging", "Progressing", "Proficient")
@@ -144,12 +147,20 @@ ELPA21_EL_Spec <- stateELP::el_spec(
 
   data = list(
     columns = list(
-      spine = c(
-        student_id  = "student_id",
-        school_year = "school_year",
-        grade       = "grade",
-        el_status   = "el_status",
-        elp_level   = "elp_level"
+      roster = c(
+        STUDENT_ID = "STUDENT_ID",
+        YEAR       = "YEAR",
+        GRADE      = "GRADE",
+        EL_STATUS  = "EL_STATUS",
+        ELP_FORM   = "ELP_FORM"
+      ),
+      base = c(
+        STUDENT_ID        = "STUDENT_ID",
+        YEAR              = "YEAR",
+        COMPONENT         = "COMPONENT",
+        ELP_FORM          = "ELP_FORM",
+        SCALE_SCORE       = "SCALE_SCORE",
+        ACHIEVEMENT_LEVEL = "ACHIEVEMENT_LEVEL"
       )
     )
   ),

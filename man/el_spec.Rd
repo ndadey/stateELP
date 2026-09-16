@@ -34,7 +34,13 @@ carries a \code{source}.}
 optional \code{spec_id} pointer). Check 3 drives its grade loop from
 \verb{spec$academic$<subject>$grades}.}
 
-\item{data}{Delivery block: \code{columns} crosswalks and any value maps.}
+\item{data}{Delivery block. \code{columns} holds one crosswalk per table --
+\code{roster}, \code{base}, \code{academic}, each a named character vector of
+ALL-CAPS canonical name = delivered name -- plus optional per-component
+entries (\code{components}) and \code{value_maps}: \code{CONTENT_AREA$base} and
+\code{CONTENT_AREA$academic} map delivered \code{CONTENT_AREA} \emph{values} to
+component and subject keys, and \code{GRADE} maps delivered grade values
+(e.g. \code{"0"} to \code{"K"}). Values map by value, never by label.}
 
 \item{verification}{\code{status}, \code{verified_by}, \code{verified_date}, \code{method},
 \code{notes}.}

@@ -52,7 +52,7 @@ make_spec_base <- function(...) {
       ELA = list(grades = as.character(3:8), cuts = c(700, 735, 750, 790),
                  op = ">=", source = "provisional")
     ),
-    data = list(columns = list(spine = c(student_id = "student_id"))),
+    data = list(columns = list(roster = c(STUDENT_ID = "STUDENT_ID"))),
     verification = list(status = "synthetic"),
     source_documents = list()
   )

@@ -87,7 +87,13 @@ el_exit_typology <- function() {
 #' @param academic Academic-assessment block, one entry per subject (plus an
 #'   optional `spec_id` pointer). Check 3 drives its grade loop from
 #'   `spec$academic$<subject>$grades`.
-#' @param data Delivery block: `columns` crosswalks and any value maps.
+#' @param data Delivery block. `columns` holds one crosswalk per table --
+#'   `roster`, `base`, `academic`, each a named character vector of
+#'   ALL-CAPS canonical name = delivered name -- plus optional per-component
+#'   entries (`components`) and `value_maps`: `CONTENT_AREA$base` and
+#'   `CONTENT_AREA$academic` map delivered `CONTENT_AREA` *values* to
+#'   component and subject keys, and `GRADE` maps delivered grade values
+#'   (e.g. `"0"` to `"K"`). Values map by value, never by label.
 #' @param verification `status`, `verified_by`, `verified_date`, `method`,
 #'   `notes`.
 #' @param source_documents List of `list(title=, url=)` entries.
@@ -323,6 +329,37 @@ validate_el_spec <- function(spec) {
           "(the deck's A-J convention); a delivery using another convention ",
           "is translated at the boundary, not here.")
     }
+    if (.has(tl, "lt_el_years") && !.is_count(tl$lt_el_years)) {
+      add("`policy$timelines$lt_el_years` must be a whole number: the year in ",
+          "status from which a current EL counts as long-term.")
+    }
+    otr <- tl$on_time_rule
+    if (!is.null(otr)) {
+      if (!is.list(otr)) {
+        add("`policy$timelines$on_time_rule` must be a list.")
+      } else {
+        if (.has(otr, "default_years") && !.is_count(otr$default_years)) {
+          add("`policy$timelines$on_time_rule$default_years` must be a whole number.")
+        }
+        for (key in c("by_start_grade", "by_initial_band")) {
+          v <- otr[[key]]
+          if (!is.null(v) && (!is.numeric(v) || is.null(names(v)) ||
+                              anyNA(v) || any(v != round(v)))) {
+            add("`policy$timelines$on_time_rule$", key, "` must be a named ",
+                "vector of whole years (names are the ",
+                if (key == "by_start_grade") "start grades" else "initial bands",
+                ").")
+          }
+        }
+        if (is.numeric(otr$by_initial_band) && !is.null(bands$labels)) {
+          miss <- setdiff(names(otr$by_initial_band), bands$labels)
+          if (length(miss)) {
+            add("`policy$timelines$on_time_rule$by_initial_band` names band(s) ",
+                "not in `elp$bands$labels`: ", paste(miss, collapse = ", "), ".")
+          }
+        }
+      }
+    }
   }
 
   # --- suppression ------------------------------------------------------------
@@ -353,6 +390,46 @@ validate_el_spec <- function(spec) {
     if (.has(a, "op") && !identical(a$op, ">=")) {
       add("`academic$", sub, "$op` must be \">=\": cuts are level minimums, ",
           "so a score exactly at a cut belongs to the upper level.")
+    }
+  }
+
+  # --- delivery crosswalks ----------------------------------------------------
+  # Canonical names are the ALL-CAPS column names of the three tables
+  # (sim_contract.md 0.4.0); each entry maps canonical = delivered.
+  cols <- spec$data$columns
+  if (!is.null(cols)) {
+    for (tbl in intersect(c("roster", "base", "academic"), names(cols))) {
+      m <- cols[[tbl]]
+      if (!is.character(m) || is.null(names(m))) {
+        add("`data$columns$", tbl, "` must be a named character vector: ",
+            "canonical name = delivered name.")
+      } else if (any(names(m) != toupper(names(m)))) {
+        add("`data$columns$", tbl, "`: canonical names are ALL CAPS; got ",
+            paste(names(m)[names(m) != toupper(names(m))], collapse = ", "), ".")
+      }
+    }
+    if (!is.null(cols$components)) {
+      miss <- setdiff(names(cols$components), names(comps))
+      if (length(miss)) {
+        add("`data$columns$components` has entries for unknown component(s): ",
+            paste(miss, collapse = ", "), ".")
+      }
+    }
+    ca <- cols$value_maps$CONTENT_AREA
+    if (!is.null(ca$base)) {
+      miss <- setdiff(unname(ca$base), names(comps))
+      if (length(miss)) {
+        add("`data$columns$value_maps$CONTENT_AREA$base` maps to unknown ",
+            "component(s): ", paste(miss, collapse = ", "), ".")
+      }
+    }
+    subjects <- .academic_subjects(spec)
+    if (!is.null(ca$academic) && length(subjects)) {
+      miss <- setdiff(unname(ca$academic), subjects)
+      if (length(miss)) {
+        add("`data$columns$value_maps$CONTENT_AREA$academic` maps to unknown ",
+            "subject(s): ", paste(miss, collapse = ", "), ".")
+      }
     }
   }
 

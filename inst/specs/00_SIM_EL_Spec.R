@@ -2,7 +2,7 @@
 # 00_SIM_EL_Spec.R  --  the spec for the shipped simulated data
 # -----------------------------------------------------------------------------
 # WIDA-shaped, Type 1 (single overall composite). Matches data-raw/el_long_sim.R
-# and sim_contract.md v0.2.0 field for field: the component model of 4.1/4.3,
+# and sim_contract.md v0.4.0 field for field: the component model of 4.1/4.3,
 # the bands of 4.5, the exit rule of 4.7, min_cell and max_years from the P
 # block of 2.2, and the academic cuts and >= convention of 5.4.
 #
@@ -54,7 +54,14 @@ SIM_EL_Spec <- stateELP::el_spec(
     ),
 
     headline    = "overall",
-    level_scale = list(type = "numeric", range = c(1, 6)),
+    # Numeric in tenths; the labels name the whole levels, and are what a
+    # labeled SGP LONG_DATA delivery is parsed against (index = level).
+    level_scale = list(
+      type   = "numeric",
+      range  = c(1, 6),
+      labels = c("Entering", "Emerging", "Developing",
+                 "Expanding", "Bridging", "Reaching")
+    ),
 
     # sim_contract 4.5. The 4.5 boundary IS the exit threshold, so the top two
     # bands hold only students in their exit year.
@@ -111,6 +118,10 @@ SIM_EL_Spec <- stateELP::el_spec(
         by_initial_band = NULL
       ),
       lt_el_definition = "Current EL in year 6 or later of status.",
+      # The structured form of the definition above, which is what LT_EL is
+      # derived from. A spec with only the text leaves LT_EL NA.
+      # [PROPOSED - CONFIRM]
+      lt_el_years      = 6L,
       exit_dating      = "first_former_year",
       initial_elp_source = "first_annual",
       source           = "provisional"
@@ -118,7 +129,7 @@ SIM_EL_Spec <- stateELP::el_spec(
 
     growth = list(
       annual_target_levels = 0.4,
-      met_indicator        = "elp_growth_target_met",
+      met_indicator        = "ELP_GROWTH_TARGET_MET",
       how_set              = "Modelling choice in the generator; no policy basis.",
       source               = "provisional"
     ),
@@ -192,39 +203,47 @@ SIM_EL_Spec <- stateELP::el_spec(
   ),
 
   # --- delivery ---------------------------------------------------------------
-  # Identity crosswalk: the sim already emits canonical names.
+  # Identity crosswalk: the sim already emits the canonical ALL-CAPS names
+  # (sim_contract.md 3.5 / 4.2 / 5.1). Each entry is canonical = delivered.
   data = list(
     columns = list(
-      spine = c(
-        student_id  = "student_id",
-        school_year = "school_year",
-        grade       = "grade",
-        el_status   = "el_status",
-        elp_form    = "elp_form",
-        elp_level   = "elp_level",
-        elp_scale   = "elp_scale"
+      roster = c(
+        STUDENT_ID    = "STUDENT_ID",
+        YEAR          = "YEAR",
+        GRADE         = "GRADE",
+        EL_STATUS     = "EL_STATUS",
+        ELP_FORM      = "ELP_FORM",
+        SAMPLE_WEIGHT = "SAMPLE_WEIGHT"
       ),
-      components = c(
-        student_id  = "student_id",
-        school_year = "school_year",
-        component   = "component",
-        form        = "form",
-        scale_score = "scale_score",
-        level       = "level"
+      base = c(
+        STUDENT_ID        = "STUDENT_ID",
+        YEAR              = "YEAR",
+        COMPONENT         = "COMPONENT",
+        ELP_FORM          = "ELP_FORM",
+        SCALE_SCORE       = "SCALE_SCORE",
+        ACHIEVEMENT_LEVEL = "ACHIEVEMENT_LEVEL"
       ),
       academic = c(
-        student_id  = "student_id",
-        school_year = "school_year",
-        grade       = "grade",
-        subject     = "subject",
-        scale_score = "scale_score",
-        perf_level  = "perf_level"
+        STUDENT_ID            = "STUDENT_ID",
+        YEAR                  = "YEAR",
+        GRADE                 = "GRADE",
+        SUBJECT               = "SUBJECT",
+        SCALE_SCORE           = "SCALE_SCORE",
+        ACHIEVEMENT_LEVEL     = "ACHIEVEMENT_LEVEL",
+        ACHIEVEMENT_LEVEL_ALT = "ACHIEVEMENT_LEVEL_ALT"
+      ),
+      # SGP LONG_DATA delivery: CONTENT_AREA *values* map to component and
+      # subject keys, never by label -- READING is the overall composite in
+      # one state's WIDA file and the reading test in another's. Unused by the
+      # sim's own separate-objects call.
+      value_maps = list(
+        CONTENT_AREA = list(
+          base     = c(READING = "overall"),
+          academic = c(ELA = "ELA", MATHEMATICS = "Math")
+        ),
+        GRADE = c("0" = "K")
       )
     ),
-    # SGP LONG_DATA delivery: CONTENT_AREA *values* map to components, never by
-    # label. Unused by the sim's own separate-objects call.
-    content_area_map = c(READING = "overall"),
-    grade_recode     = c("0" = "K"),
     demographics_spec = "00_Demographics_Lookups"
   ),
 
@@ -234,13 +253,13 @@ SIM_EL_Spec <- stateELP::el_spec(
     verified_date = NA_character_,
     method        = "Synthetic fixture; nothing here describes a real state.",
     notes = paste(
-      "Mirrors data-raw/el_long_sim.R under sim_contract.md v0.2.0.",
+      "Mirrors data-raw/el_long_sim.R under sim_contract.md v0.4.0.",
       "Every policy value is provisional by construction."
     )
   ),
 
   source_documents = list(
-    list(title = "sim_contract.md v0.2.0", url = NA_character_),
+    list(title = "sim_contract.md v0.4.0", url = NA_character_),
     list(title = "Process Overview: Evaluating and Setting English Learner Exit Thresholds (v1.8)",
          url = NA_character_)
   )
