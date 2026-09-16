@@ -21,9 +21,10 @@ components table is stored long, not materialized from wide columns. The
 previous version's item 5 ("the generator is the one that is wrong") is
 reversed: the three-table generator is the target, and this document now
 describes it. One generator bug is fixed on the way (§4.4). Reference values
-that the fix or the version's other edits change are marked
-`[FILL IN after regeneration]`; the rest are carried from the 0.1.0 run and are
-expected to reproduce bit for bit (§2.1).
+that the fix or the version's other edits change were marked
+`[FILL IN after regeneration]` and **have now been filled from the 2026-09-15
+build** (§1, §2.2, §4.5, §9); the rest were carried from the 0.1.0 run and
+reproduced bit for bit, which §2.1 records.
 
 ---
 
@@ -64,7 +65,7 @@ Three clean R dataframes from one spine. All ship in `data/`.
 | Object | Grain | Rows (0.1.0 run) | Cols | Contents |
 |---|---|---|---|---|
 | `el_long_sim` | one row per `student_id × school_year` | 461,040 | 54 | the **spine**: grade, EL status, demographics, program fields, outcomes, and the three **headline** ELP columns |
-| `elp_components_sim` | one row per `student_id × school_year × component` | `[FILL IN after regeneration]` (annual rows shrink under §4.4; alternate rows stay at 6,595) | 6 | every reported ELP component as a row |
+| `elp_components_sim` | one row per `student_id × school_year × component` | 1,824,716 (annual rows shrank under §4.4; alternate rows stayed at 6,595, as predicted) | 6 | every reported ELP component as a row |
 | `academic_long_sim` | one row per `student_id × school_year × subject` | 568,202 | 7 | content-assessment scores |
 
 This is the three-table analysis model the package is built on:
@@ -124,6 +125,19 @@ varies across instruments is a row key, not a set of columns.
 bit. Anyone can rebuild the shipped data; the generator is the artifact of
 record, not the `.rda`.
 
+**Verified across R versions (2026-09-15).** The shipped build was produced on
+**R 4.4.2**, not 4.3.3 — no 4.3.3 is installed on the build machine. Rather than
+assume the streams agree, every 0.1.0-era reference value this document carried
+forward was checked against the 4.4.2 run, and all of them reproduce exactly:
+spine 461,040 rows × 54 columns, academic 568,202 rows, 6,595 alternate
+component rows, the SY2023 24,762 / 11,995 / 10,265 status split with its
+52.7% unweighted and 17.8% weighted EL shares, and all five rows of the §4.7
+cohort duration table. The values that moved are precisely the ones §2.1
+predicted would move — the components row set and the band distribution (§4.5)
+— and nothing else. R's RNG has not changed since 3.6.0, and this is the
+empirical confirmation for the 4.3.3 → 4.4.2 span. A future build on a version
+where these values *do* move has found a real break and must not be shipped.
+
 Two things break determinism and must not be introduced: sampling before the
 seed is set, and any use of `parallel::` or a hash-ordered structure in the
 generation path.
@@ -168,7 +182,9 @@ fixture shrinks by roughly a factor of four. `[PROPOSED — CONFIRM]`
 
 **Fixture-sized build.** `STATEELP_K_COHORT_N=300 STATEELP_NEVER_EL_N=4250`
 keeps the never/ever ratio (and so the implied EL share) and yields a spine of
-roughly 60k rows `[FILL IN after regeneration]`. It will not populate every
+57,965 rows (228,766 component and 71,524 academic rows). Confirmed: that build
+fails guardrail 9 on `sped_classification` alone, which is the documented
+consequence of `k_cohort_n = 300`, not a defect. It will not populate every
 disaggregation, and it is not supposed to. **A session must not lower `min_cell`
 or pool grades to make cells appear in the fixture build.**
 
@@ -513,10 +529,22 @@ students in their exit year. For K entrants, any band at 4.0 or above is
 near-empty by construction (`theta_1 ≤ 3.9`); suppression there is expected, not
 a sizing failure.
 
-Spine distribution across the six bands: `[FILL IN after regeneration]` (the
-0.1.0 values 31,480 / 58,860 / 67,380 / 35,360 / 40,907 / 86,258 included
-`former` rows and are wrong under §4.4; the top two bands will shrink to
-exit-year rows).
+Spine distribution across the six bands, 224,071 non-`NA` rows:
+
+| Band | 0.2.0 | 0.1.0 |
+|---|---|---|
+| `1.0-1.9` | 31,480 | 31,480 |
+| `2.0-2.9` | 58,860 | 58,860 |
+| `3.0-3.9` | 67,186 | 67,380 |
+| `4.0-4.4` | 32,666 | 35,360 |
+| `4.5-4.9` | 24,136 | 40,907 |
+| `5.0+` | 9,743 | 86,258 |
+
+The fix behaved exactly as §4.4 predicted. The two lowest bands are untouched —
+no K entrant reaches them after exit — while `5.0+` collapses by 89%, because
+under 0.1.0 it was mostly former ELs whose acquisition curve kept running
+through the four monitoring years. `5.0+` is now the smallest band rather than
+the largest, and the top two bands hold only students in their exit year.
 
 ### 4.6 Acquisition model
 
@@ -726,8 +754,8 @@ Writes `data/el_long_sim.rda`, `data/elp_components_sim.rda`, and
 `k_cohort_n = 2400`. Each object carries `attr(, "sim_contract_version")`, and
 `as_el_data()` reads it to label outputs.
 
-Size: roughly 9 MB across the shipped objects at full scale
-`[FILL IN after regeneration]`. That is above CRAN's 5 MB guidance, which is a
+Size: 7.07 MB across the shipped objects at full scale (spine 3.27, components
+3.06, academic 1.09). That is above CRAN's 5 MB guidance, which is a
 non-issue for a private GitHub repo and a blocker for submission. **Default:
 ship full scale in the private repo**, because developing the steps against
 suppressed cells hides rendering bugs behind blank tables; ship the fixture
