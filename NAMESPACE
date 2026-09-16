@@ -39,3 +39,7 @@ export(stage_qmd_path)
 export(validate_el_spec)
 export(weighted_n)
 export(weighted_share)
+importFrom(rlang,
+  .data,
+  .env
+)

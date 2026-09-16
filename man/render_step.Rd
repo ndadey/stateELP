@@ -38,6 +38,9 @@ stage, which is the natural RDS consumer. \verb{[PROPOSED - CONFIRM]}}
 \item{open}{Whether to open the rendered document. Defaults to interactive
 use only.}
 
+\item{quiet}{Passed to Quarto. \code{FALSE} shows the CLI's own output, which is
+the only way to see why a render failed.}
+
 \item{qmd}{Optional explicit path to a \code{.qmd}, bypassing stage-id lookup.
 Used by the smoke test.}
 }

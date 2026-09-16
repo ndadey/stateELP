@@ -13,7 +13,7 @@ Description: Analytic engine for the process "Evaluating and Setting English
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends:
-    R (>= 4.3.3)
+    R (>= 4.3.0)
 Imports:
     dplyr,
     rlang,
@@ -28,5 +28,6 @@ Suggests:
     withr
 Config/testthat/edition: 3
 LazyData: true
+LazyDataCompression: xz
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.1.0

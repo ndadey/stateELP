@@ -29,6 +29,8 @@
 #'   stage, which is the natural RDS consumer. `[PROPOSED - CONFIRM]`
 #' @param open Whether to open the rendered document. Defaults to interactive
 #'   use only.
+#' @param quiet Passed to Quarto. `FALSE` shows the CLI's own output, which is
+#'   the only way to see why a render failed.
 #' @param qmd Optional explicit path to a `.qmd`, bypassing stage-id lookup.
 #'   Used by the smoke test.
 #'
