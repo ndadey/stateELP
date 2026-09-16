@@ -1,0 +1,14 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.claude$
+^\.github$
+^CLAUDE\.md$
+^LICENSE\.md$
+^data-raw$
+^dev$
+^internal_docs$
+^renv$
+^renv\.lock$
+^reports$
+^sim_contract\.md$
+^\.Rprofile$

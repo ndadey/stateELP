@@ -1,0 +1,13 @@
+# Store text as LF in the repository and check it out as LF, so an R file
+# written on Windows and one written in a container produce no diff noise.
+* text=auto eol=lf
+
+# Binaries
+*.rda binary
+*.rds binary
+*.docx binary
+*.pptx binary
+*.xlsx binary
+*.zip binary
+*.png binary
+*.jpg binary

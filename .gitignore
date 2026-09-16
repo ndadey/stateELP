@@ -1,0 +1,31 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+..Rcheck/
+*.tar.gz
+*.tgz
+
+# renv: the lockfile is tracked, the library is not
+renv/library/
+renv/local/
+renv/cellar/
+renv/python/
+renv/sandbox/
+renv/staging/
+
+# rendered stage output (exemplars are added explicitly with -f)
+reports/
+
+# Working material: drafts, meeting notes, prior-run archives. Not governing
+# (CLAUDE.md 14), deny-listed in .claude/settings.json, and holds binaries.
+# Untracked by default -- delete this line to version it.
+internal_docs/working/
+
+# Quarto intermediates must never enter the source tree
+/*_files/
+/*.html
+!README.html
+.quarto/

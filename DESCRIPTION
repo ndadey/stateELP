@@ -1,0 +1,30 @@
+Package: stateELP
+Title: Evaluate and Set English Learner Exit Thresholds
+Version: 0.0.0.9000
+Authors@R:
+    person("Nathan", "Dadey", email = "ndadey@nciea.org", role = c("aut", "cre"))
+Description: Analytic engine for the process "Evaluating and Setting English
+    Learner Exit Thresholds": three preparation stages that document policy,
+    population and program context, four data checks that describe exit timing,
+    who gets stuck, academic patterns by English language proficiency, and
+    decision consistency, and a closing synthesis stage. The deliverable is a
+    set of Quarto documents, one per stage; the functions here exist to make
+    those render.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.3.3)
+Imports:
+    dplyr,
+    rlang,
+    stats,
+    tibble,
+    utils
+Suggests:
+    quarto,
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
