@@ -363,7 +363,9 @@ dependency or a Type gate is absent — never a crash, never an invented
 denominator. Every `.qmd` renders, in order: the **Sample** callout, the
 stage's authored Looking at / Looking for / Interpreting text, its figures and
 tables, its Checkpoint, any Type-gated Additional check, and its "Decide
-before moving on" as a closing confirm box.
+before moving on" as a closing confirm box. *Departure (2026-09-20): Check 1
+inserts its "Data fields used" box directly after the Sample callout, before
+Looking at.*
 
 **Prep 1 — Policy documentation** (`run_prep1(spec)`). Sample: N/A. The
 review-and-confirm table: assessment and component structure with weights,
@@ -420,7 +422,15 @@ accordingly. Slots: `$program_table`, `$error_tolerance`,
 "K")`). Sample: a stable entry cohort (same starting grade, same year, ideally
 K/1) tracked forward — derived from the panel range and
 `policy$timelines$max_years_to_exit`, never year literals (sim: five usable K
-cohorts, K-2015…K-2019); `LEFT_TRUNCATED` excluded by construction. **Exit
+cohorts, K-2015…K-2019); `LEFT_TRUNCATED` excluded by construction. **One
+cohort is analyzed, the most complete — the qualifying candidate with the
+longest observed follow-up (D1, 2026-09-20)**; `compute_cohorts()` is
+exported so Check 2 takes the same cohort instead of selecting again, and
+`$meta$sample` names the selected cohort, its N and its window from
+`$cohorts`. **A "Data fields used" box renders directly after the Sample
+callout (D2, 2026-09-20)**, generated from one internal field declaration
+that the compute functions validate against, so the box and the code cannot
+disagree. **Exit
 dating: first former year, counted as a year in status; exit absorbing;
 disappeared = first year absent with no prior exit** — fixed by the deck's A–J
 example; slide-52's "exited at year's end" for row *t* means observed exited
@@ -759,7 +769,7 @@ on its default:
 | 1 | Dev-mode vs RDS-mode `.qmd` | dev mode; `results_file` optional; Decision stage reads RDS |
 | 2 | Standalone `.qmd` vs Quarto book | standalone; combined render later |
 | 3 | SIM spec doubles as TEMPLATE spec | both, as in ReportR |
-| 4 | Computed inline values in shell | wait for stage build |
+| 4 | Computed inline values in shell | wait for stage build — **resolved for Check 1's Sample line (2026-09-20)**, which carries the selected cohort, its N and its window from `$cohorts` |
 | 5 | NJ spec ships in repo | yes — values unverified, no data |
 | 6 | `academic` block inline vs pointer | inline for SIM; pointer documented |
 | 7 | Exit rule: `terms` + display string | adopt; validated, never evaluated |
@@ -813,7 +823,11 @@ Cross-stage discipline: a stage session may **call** exported functions from
 `R/utils.R` and earlier stages' prefixes; it may not edit them. Shared
 derivations (exit dating, flags, cohorts, suppression, banding, weighting)
 live in `R/utils.R` and are built in the foundation session — if a stage genuinely needs
-a shared helper changed, the session stops and says which and why. A session
+a shared helper changed, the session stops and says which and why.
+*Departure (2026-09-20): cohort **membership** stays shared in `R/utils.R`
+(`build_cohort()`, called unchanged); cohort **selection** lives in the
+`check1_` prefix because it is Check 1's sample decision, and Check 2 follows
+it by calling the exported `compute_cohorts()`, which this section allows.* A session
 reads this file + its instruction file and nothing it can't verify in-repo.
 
 `internal_docs/` may also hold working material beyond `source/`, `steps/`,
@@ -838,7 +852,10 @@ session summary.
    spec layer + three specs, data generation (contract placeholders filled),
    `as_el_data()` + adapters, shared derivations in `R/utils.R` (with the
    A–J dating tests), `render_step()`. No `.qmd`s.
-3. **Stage sessions 2–9, one each, in file-number order**:
+3. **Stage sessions 2–9, one each, in file-number order** — *departure
+   (2026-09-20): Check 1 was built before Prep 1–3 by decision. It depends
+   only on the foundation session (this section: Checks 1–2 consume its
+   shared flags), so the Prep stages are neither built nor stubbed by it*:
    `2_prep1_policies` → `3_prep2_population` → `4_prep3_program` →
    `5_check1_survival` → `6_check2_flows` → `7_check3_academics` →
    `8_check4_consistency` → `9_decision_synthesis`. Launch each by pasting the filled

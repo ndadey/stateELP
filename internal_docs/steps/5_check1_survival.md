@@ -10,9 +10,24 @@ entry year — tracked forward. Cohort set derived from the panel range and
 K-2019). `LEFT_TRUNCATED` excluded by construction. Checkpoint: cohort large
 and stable (no pandemic-era enrollment anomaly) before trusting the curve.
 
+**Selection — one cohort, the most complete (D1, 2026-09-20).** Candidates
+are what `build_cohort()` returns with its default `entry_years`; call it,
+never re-derive. Most complete = **longest observed follow-up**,
+`FOLLOWUP_YEARS` = panel's last year − entry year + 1, which in practice is
+the earliest usable cohort and equals the number of life-table rows — the
+cohort with the most of its trajectory observed rather than censored at the
+window's edge. Only a candidate with `N_ENTRY` ≥ `min_cell` may be selected;
+with no qualifying candidate every analysis slot is `NULL` and the document
+renders a note saying why (`$meta` always renders, `$cohorts` whenever there
+are candidates) — never a crash. The Sample callout and `$meta$sample` name
+the selected cohort, its N and its window, built from `$cohorts`, never a
+literal.
+
 **Data needs.** Roster for Model 1 (`STUDENT_ID`, `YEAR`, `GRADE`,
-`EL_STATUS`, `ENTRY_GRADE`, `COHORT_LABEL`, `LEFT_TRUNCATED`,
-`INITIAL_ELP`). Academic table for Model 2 (lagged ELA) — slot `NULL`
+`EL_STATUS`, `LEFT_TRUNCATED`, `INITIAL_ELP`) — `ENTRY_GRADE` and
+`COHORT_LABEL` are **derived** by `build_cohort()` from `GRADE` / `YEAR` /
+`EL_STATUS` and never read from the delivery (`sim_contract.md` §3.5 marks
+both D-tier). Academic table for Model 2 (lagged ELA) — slot `NULL`
 without it. Spec: `policy$timelines` (max timeline, on-time rule,
 `exit_dating`), `elp$bands`, `policy$suppression`. Shared derivations from
 `R/utils.R` (exit dating first-former, absorbing; censored; flags) — call,
@@ -41,7 +56,13 @@ never re-derive locally.
 as a Model 2 covariate; if it is an achievement measure also in the exit
 rule, caption Checks 3–4 "consistency" with it as partly circular.
 
-**Output slots.** `$cohorts`, `$life_table`, `$exit_curve`,
+**Output slots.** `$cohorts` — one row per candidate cohort
+(`COHORT_LABEL`, `COHORT_START_YEAR`, `N_ENTRY`, `FOLLOWUP_YEARS`,
+`SELECTED`), suppressed on `N_ENTRY` with the count itself blanked; it
+answers only which cohort and why, carries no outcome columns, and renders
+beside the Checkpoint as its evidence. `compute_cohorts()` is **exported**,
+so Check 2 ("the same cohort as Check 1") calls it rather than selecting
+again. Then `$life_table`, `$exit_curve`,
 `$exit_curve_by_initial_band`, `$survival_est`, `$years_to_50`,
 `$at_max_timeline`, `$model2`, `$retention_share`, `$selection_strength`,
 `$grade_weights`, `$type3_covariate`, `$meta`.
@@ -62,10 +83,25 @@ machinery demo caption, never a finding.
 interpretations and the Decide box; deck slide-49 caution (later entrants
 excluded; overall exit % differs from K-cohort figures).
 
+**"Data fields used" box (D2, 2026-09-20).** Directly after the Sample
+callout, before Looking at, as a boxed callout. **Generated, never
+hand-written**: one internal declaration per field (`FIELD`, `TABLE`,
+`KIND` required/optional/derived, `SLOTS`, `USED_FOR`, `FALLBACK`) that the
+compute functions also validate their inputs against, so box and code cannot
+disagree. Declare only the fields this pass's slots consume; each later pass
+adds its rows. `$meta$data_fields` holds the rows whose `SLOTS` were computed
+in the run, plus `YOUR_COLUMN` resolved through `spec$data$columns` and
+`PRESENT` for optional fields. Renders as a flextable (Field · Your column ·
+Used for; Your column only when the crosswalk renames a listed field), then
+one line naming the derived fields and saying they are recomputed from
+`EL_STATUS` transitions, so a delivered column of the same name is not used;
+an absent optional field shows its fallback. Built in `R/`, never the `.qmd`.
+
 **Done-when (shell).** The slide-52 life table renders for one K cohort as
 the real element; A–J and slide-52 fixtures pass; all other slots
 placeholders with `skip()`ped tests; `.qmd` renders both formats with the
-Sample line.
+Sample line; the Sample names the selected cohort; the Data fields used box
+renders directly after it.
 
 **Later passes.** Curves → survival column → years-to-50 / at-max → Model 2
 → experimental weights (last, and only with the label).
