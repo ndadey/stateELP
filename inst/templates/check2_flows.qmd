@@ -1,0 +1,247 @@
+---
+title: "Data Check 2 --- Characteristics of on-time vs. prolonged exiters"
+subtitle: "Evaluating and Setting English Learner Exit Thresholds"
+params:
+  pkg_path: "."
+  spec_file: "00_SIM_EL_Spec"
+  results_file: ""
+  min_n: null
+format:
+  docx: default
+  html:
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 300
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+
+spec <- read_el_spec(params$spec_file)
+
+# Dev mode by default: the document runs the stage. `results_file` switches to
+# RDS mode, which is how the Decision stage will read what earlier stages
+# produced. Analysis logic lives in R/, never here: this file holds the prose,
+# the captions, and one call per table.
+res <- if (!is.null(params$results_file) && nzchar(params$results_file)) {
+  readRDS(params$results_file)
+} else {
+  # The academic table rides along for the academic summary (a later pass);
+  # this pass reads the roster only.
+  bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+                       academic = academic_long_sim, spec = spec)
+  run_check2(bundle, spec)
+}
+
+have_crosstab <- !is.null(res$crosstab)
+# Negated forms as their own names: `!expr !have_crosstab` reads the second
+# `!` as a second YAML tag and fails to parse.
+no_crosstab <- !have_crosstab
+
+min_cell <- spec_min_cell(spec)
+panel_last <- res$meta$panel[[2]]
+gate_applies <- isTRUE(res$meta$type_gate_applies)
+gate_absent <- !gate_applies
+
+# Built here, not inline in the chunk header: a colon-space inside an `!expr`
+# value is read as a YAML mapping and the render fails.
+crosstab_cap <- if (have_crosstab) {
+  sprintf(paste0("Exit outcomes, %s cohort, observed through %d. Every ",
+                 "indicator is relative to the years observed, so No_Exit ",
+                 "means not observed exiting by %d, not never exiting. ",
+                 "Cells under %d are suppressed."),
+          res$meta$cohort, panel_last, panel_last, min_cell)
+} else {
+  "Exit outcomes"
+}
+```
+
+::: {.callout-note appearance="default" icon=false}
+## Sample
+
+`r res$meta$sample`
+:::
+
+## Looking at
+
+A comparison of two groups from the Data Check 1 cohort --- students who
+exited on time, and students whose EL classification was prolonged --- across
+demographic and program characteristics: home language, district size, sex,
+socioeconomic status, disability status, the type of EL services received, and
+the ELP band a student started in. Alongside it, a descriptive summary of
+academic achievement (for example, median ELA percentile or proficiency rate)
+at comparable points in each group's trajectory.
+
+The groups are defined against the years actually observed, and all three exit
+indicators are relative to that window:
+
+- **On time** (`Exit_OnTime`) --- first observed as a former EL within
+  `r res$meta$on_time_text` of entering status, which is this state's
+  ESSA-expected timeline
+  `r if (isTRUE(res$meta$on_time_provisional)) "[DERIVED --- VERIFY]" else ""`
+- **Prolonged** --- everyone still in view who did not exit on time: students
+  who exited after that timeline, and students never observed to exit
+  (`No_Exit`).
+- **Disappeared** --- last seen before the window closed, with no exit
+  observed. Their outcome is unknown, so they are a column of their own and
+  are never counted as on time or as prolonged.
+
+`Exit_Ever`, `Exit_Max` and `Exit_OnTime` are nested --- every on-time exiter
+is also a maximum-timeline exiter and an ever-exiter --- so those three columns
+do not add up. What adds up is `Exit_Ever` + `No_Exit` + `Disappeared` = All.
+
+## Looking for
+
+Two things.
+
+1. **Whether prolonged classification goes with specific, identifiable
+   characteristics.** Disability status, mobility, home language, particular
+   districts or programs. A characteristic that is over-represented among
+   prolonged students is a candidate explanation for why they are still
+   classified; one that is spread evenly across both groups is not.
+2. **Whether the on-time group already looks academically stronger, even at
+   similar ELP levels.** If it does, something other than English proficiency
+   may be separating the two groups. This is the descriptive companion to the
+   formal test in Data Check 1.
+
+## The cohort, split by exit outcome
+
+```{r}
+#| label: tbl-crosstab
+#| tbl-cap: !expr crosstab_cap
+#| eval: !expr have_crosstab
+ft_check2_crosstab(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr no_crosstab
+cat("> **No crosstab.** ", res$meta$note, "\n", sep = "")
+```
+
+This is the first row of the slide-63 table: how many students fall into each
+outcome, and what share of the cohort that is. The characteristics of each
+group --- who they are, where they are enrolled, what services they received
+--- come below it, one block at a time, as they are built.
+
+## Interpreting it
+
+This is the descriptive companion to Data Check 1's formal test. Data Check 1
+asks whether exit timing is being driven by English proficiency as intended;
+this check puts a human face on who the "stuck" population is. That matters for
+what an eventual recommendation should include. If disability status is a major
+driver of prolonged classification, for example, a threshold change alone will
+not address the underlying issue: it would move some students, and leave the
+students held back by something other than their English exactly where they
+were.
+
+::: {.callout-important appearance="default" icon=false}
+## Reminder: this is not automatically about the cut score
+
+The first two data views are about the interactions between policies,
+programs, population, and exit criteria. The response to findings here is not
+necessarily to change your cut score.
+:::
+
+Three cautions carry the weight here.
+
+**Read a difference between the groups as a description, not a cause.** A
+characteristic that is more common among prolonged students says who the stuck
+population is. It does not say why they are stuck, and two characteristics that
+travel together (district size and type of instructional model, say) cannot be
+told apart in a crosstab.
+
+**`No_Exit` is "not observed exiting", and the window is finite.** The
+`r res$meta$cohort` cohort is followed through `r panel_last`. A student
+counted as `No_Exit` was still classified at the window's edge; nothing here
+says they will never exit. Likewise, `Exit_OnTime` and `Exit_Max` are counted
+against the years available, and a caption has to say so.
+
+**Do not mistake group change for achievement trajectories.** It is not
+necessarily that the same students are growing less over time; it is also that
+the slowest growers are the ones who stay. Anything this check later says about
+English proficiency or achievement over time is therefore said *within* an exit
+group --- never as one average for the whole cohort, whose mean drifts down
+simply because the fastest students leave it.
+
+::: {.callout-important appearance="default" icon=false}
+## Caution: remember your data structure
+
+This cohort is students who started in `r res$meta$start_grade`. It is the best
+case for exit: later entrants, including newcomers arriving in the upper
+grades, are not in this table at all. Read it as the make-up of one entry
+cohort, never as the state's overall exit picture.
+:::
+
+## Still to come
+
+This pass builds the top of the crosstab. The rest of Check 2 arrives in later
+passes, each with its own session:
+
+- **The characteristic blocks**, one at a time, as column percents within each
+  outcome: primary language; district size band (from the state's own bands,
+  not a tertile split); sex, low SES and special education; type of EL
+  services; and initial ELP band. The highest bands hold very few
+  kindergarten entrants by construction --- a student screening at the exit
+  threshold would not have been identified --- so those cells suppress, and
+  that is the design working.
+- **The descriptive academic summary**: median ELA percentile or proficiency
+  rate for on-time and prolonged students at the same year in status, which
+  needs the academic table.
+- **The trajectories view**: the `r spec_headline_label(spec)` level by year in
+  status, drawn separately for each exit outcome, never as one cohort line.
+
+## Additional check --- Types 2--6: blocked by one criterion only
+
+```{r}
+#| output: asis
+#| eval: !expr gate_absent
+cat("The exit rule is declared as Type 1 (a single overall composite), so there are no blocked-by-one-criterion groups to compare and this check does not apply. `blocked_groups` is `NULL` in the results object. Declare the additional criteria in `spec$policy$exit$pathways` and set `types` to activate it.\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr gate_applies
+cat("The exit rule declares more than one criterion, so this check applies, but it is not built yet. `blocked_groups` is `NULL` until its own pass.\n")
+```
+
+When it applies, the groups Prep Step 2 identified as blocked by one criterion
+only are added as further comparison groups alongside the on-time and prolonged
+exiters. A group that looks systematically different --- demographically,
+academically, in program experience --- means that criterion is screening on
+something other than what the main score screens on.
+
+::: {.callout-tip appearance="default" icon=false}
+## Decide before moving on
+
+- **Do specific subgroups warrant separate treatment in Data Checks 3--4?**
+  A group that is heavily over-represented among prolonged students may need
+  its own analysis there, rather than being averaged into the whole.
+- **What equity considerations does the final recommendation need to address
+  explicitly?** In particular, whether any characteristic that separates the
+  prolonged group is one a change to the threshold would leave untouched.
+:::
+
+```{r}
+#| output: asis
+cat("*Spec: ", res$meta$spec_id, ". ",
+    if (identical(res$meta$spec_id, "SIM")) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
+    "stateELP ", res$meta$package_version, ", run ", format(res$meta$run_date), ".*\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr identical(res$meta$spec_id, "SIM")
+cat("\n*These figures describe a synthetic fixture. No number here describes",
+    "any real state.*\n")
+```
