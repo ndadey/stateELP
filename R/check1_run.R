@@ -5,7 +5,8 @@
 #' Run Check 1 -- cohort survival analysis
 #'
 #' Selects one entry cohort and describes its exit timing. This pass builds
-#' `$cohorts` and `$life_table`; every later slot is `NULL` until its own
+#' `$cohorts`, `$life_table`, `$exit_curve` and
+#' `$exit_curve_by_initial_band`; every later slot is `NULL` until its own
 #' pass, and `$meta$pending` names them.
 #'
 #' With no qualifying cohort -- a panel too short for any cohort to reach the
@@ -39,18 +40,32 @@ run_check1 <- function(data, spec, start_grade = "K") {
   life_table <- if (is.na(selected)) NULL else {
     compute_life_table(data, spec, cohort = selected, start_grade = start_grade)
   }
+  exit_curve <- if (is.na(selected)) NULL else {
+    compute_exit_curve(data, spec, cohort = selected, start_grade = start_grade)
+  }
+  # The split needs a headline to band. A delivery with no annual headline
+  # rows -- or an instrument whose headline never resolves for this cohort --
+  # loses the split and keeps the overall curve.
+  has_band <- !is.na(selected) && nrow(.check1_initial_band(data, spec)) > 0L
+  exit_curve_by_initial_band <- if (!has_band) NULL else {
+    compute_exit_curve(data, spec, cohort = selected,
+                       start_grade = start_grade, by = "INITIAL_ELP")
+  }
 
   computed <- c(if (!is.null(cohorts)) "cohorts",
-                if (!is.null(life_table)) "life_table")
+                if (!is.null(life_table)) "life_table",
+                if (!is.null(exit_curve)) "exit_curve",
+                if (!is.null(exit_curve_by_initial_band))
+                  "exit_curve_by_initial_band")
 
   list(
     cohorts    = cohorts,
     life_table = life_table,
+    exit_curve = exit_curve,
+    exit_curve_by_initial_band = exit_curve_by_initial_band,
 
-    # [Later passes -- instruction file: curves -> survival column ->
-    #  years-to-50 / at-max -> Model 2 -> experimental weights]
-    exit_curve                 = NULL,
-    exit_curve_by_initial_band = NULL,
+    # [Later passes -- instruction file: survival column -> years-to-50 /
+    #  at-max -> Model 2 -> experimental weights]
     survival_est               = NULL,
     years_to_50                = NULL,
     at_max_timeline            = NULL,
@@ -70,10 +85,13 @@ run_check1 <- function(data, spec, start_grade = "K") {
       start_grade          = start_grade,
       cohort               = selected,
       panel                = c(min(roster$YEAR, na.rm = TRUE), panel_last),
-      data_fields          = .check1_data_fields(roster, spec, computed),
+      data_fields          = .check1_data_fields(data, spec, computed),
       note                 = .check1_note(cohorts, spec),
-      pending              = c("exit_curve", "exit_curve_by_initial_band",
-                               "survival_est", "years_to_50", "at_max_timeline",
+      band_note            = if (!is.na(selected) && !has_band) {
+        paste0("No annual headline resolves for this cohort, so the exit ",
+               "curve is not split by initial ELP band.")
+      } else NA_character_,
+      pending              = c("survival_est", "years_to_50", "at_max_timeline",
                                "model2", "retention_share",
                                "selection_strength", "grade_weights"),
       sim_contract_version = data$meta$sim_contract_version,

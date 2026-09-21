@@ -74,6 +74,48 @@ make_check1_bundle <- function(roster, spec = make_check1_spec()) {
 
 make_check1_spec <- function() read_el_spec("00_SIM_EL_Spec")
 
+# An ELPA21-shaped cohort: a categorical headline (an ordinal index into
+# level_scale$levels), no declared bands, and a panel long enough for one
+# cohort to be followable. The no-WIDA-assumptions smoke test for the curves
+# -- component values and level counts come from the spec, never typed here.
+make_check1_elpa21_bundle <- function(spec = read_el_spec("00_ELPA21_EL_Spec"),
+                                      panel = 2015:2022, n = 30L) {
+  headline <- spec_headline(spec)
+  n_levels <- length(spec$elp$level_scale$levels)
+  panel_last <- max(panel)
+
+  rows <- list()
+  for (s in seq_len(n)) {
+    # Exit after 3, 5 or 7 years in status; the rest never exit.
+    exit_after <- c(3L, 5L, 7L, NA_integer_)[(s %% 4L) + 1L]
+    yrs <- min(panel):panel_last
+    status <- rep("current", length(yrs))
+    if (!is.na(exit_after) && exit_after <= length(yrs)) {
+      status[seq(exit_after, length(status))] <- "former"
+    }
+    rows[[s]] <- tibble::tibble(
+      STUDENT_ID     = sprintf("E%03d", s),
+      YEAR           = as.integer(yrs),
+      GRADE          = c("K", as.character(seq_len(length(yrs) - 1L))),
+      EL_STATUS      = status,
+      ELP_FORM       = "annual",
+      LEFT_TRUNCATED = FALSE
+    )
+  }
+  roster <- dplyr::bind_rows(rows)
+
+  current <- roster[roster$EL_STATUS == "current", , drop = FALSE]
+  base <- tibble::tibble(
+    STUDENT_ID        = current$STUDENT_ID,
+    YEAR              = current$YEAR,
+    COMPONENT         = headline,
+    ELP_FORM          = "annual",
+    SCALE_SCORE       = NA_real_,     # the headline reports a level only
+    ACHIEVEMENT_LEVEL = rep_len(seq_len(n_levels), nrow(current))
+  )
+  as_el_data(base, roster = roster, spec = spec)
+}
+
 # The shipped simulation, built once per test run rather than per test: the
 # bundle joins 1.8M base rows against the roster.
 make_check1_sim_bundle <- local({

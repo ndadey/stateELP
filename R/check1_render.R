@@ -31,7 +31,8 @@ NULL
 # the rendered content without reaching into flextable's internals.
 .check1_fields_display <- function(results) {
   fields <- results$meta$data_fields
-  delivered <- fields[fields$TABLE == "roster", , drop = FALSE]
+  delivered <- fields[fields$TABLE %in% c("roster", "base", "academic"), ,
+                      drop = FALSE]
 
   used_for <- ifelse(
     delivered$KIND == "optional" & !delivered$PRESENT,

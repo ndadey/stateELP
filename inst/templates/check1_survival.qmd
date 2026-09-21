@@ -13,6 +13,8 @@ format:
 execute:
   echo: false
   warning: false
+fig-width: 8
+fig-height: 4.5
 fig-dpi: 300
 ---
 
@@ -39,10 +41,13 @@ res <- if (!is.null(params$results_file) && nzchar(params$results_file)) {
 
 have_life_table <- !is.null(res$life_table)
 have_cohorts <- !is.null(res$cohorts)
+have_curve <- !is.null(res$exit_curve)
+have_band_curve <- !is.null(res$exit_curve_by_initial_band)
 # Negated forms as their own names: `!expr !have_life_table` reads the second
 # `!` as a second YAML tag and fails to parse.
 no_life_table <- !have_life_table
 no_cohorts <- !have_cohorts
+no_band_curve <- !have_band_curve
 ```
 
 ::: {.callout-note appearance="default" icon=false}
@@ -61,6 +66,78 @@ ft_check1_data_fields(res)
 
 `r check1_derived_note(res)`
 :::
+
+## Life table
+
+Confirm the selected cohort is large and stable enough to support a
+trustworthy survival curve, and not distorted by an enrollment anomaly such
+as a pandemic-era dip. The candidates are below: the selected cohort is the
+one with the longest observed follow-up that clears the minimum cell size of
+`r spec_min_cell(spec)`.
+
+```{r}
+#| label: tbl-cohorts
+#| tbl-cap: "Candidate entry cohorts"
+#| eval: !expr have_cohorts
+ft_check1_cohorts(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr no_cohorts
+cat("> **No candidate cohorts.** ", res$meta$note, "\n", sep = "")
+```
+
+
+The life table below reads one row per year in status. Column **A** is the
+number of students still classified at the start of that year; **B** those
+observed to exit at its end; **C** those who disappear from the data at its
+end. **D** and **E** are those two as rates of the students actually at risk
+that year, and **F** accumulates exits against the original cohort.
+
+```{r}
+#| label: tbl-life-table
+#| tbl-cap: !expr if (have_life_table) paste0("Life table, ", res$meta$cohort, " cohort") else "Life table"
+#| eval: !expr have_life_table
+ft_check1_life_table(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr no_life_table
+cat("> **No life table.** ", res$meta$note, "\n", sep = "")
+```
+
+## Exit curves
+
+Column **F** as a picture: the share of the entry cohort observed to have
+exited by each year in status. The dashed line marks the state's maximum
+timeline, which is where "exited within the timeline" is read off.
+
+```{r}
+#| label: fig-exit-curve
+#| fig-cap: !expr if (have_curve) sprintf("Cumulative exit rate, %s cohort. Censored students are not exiters, so this is a lower bound.", res$meta$cohort) else "Cumulative exit rate"
+#| eval: !expr have_curve
+plot_exit_curve(res$exit_curve, spec)
+```
+
+Splitting the same curve by the band a student started in asks whether exit
+timing is already set at entry. The band is the student's first annual
+headline level, banded by the spec --- it is derived here, not read from a
+delivered column.
+
+```{r}
+#| label: fig-exit-curve-band
+#| fig-cap: "Cumulative exit rate by initial ELP band. Bands below the minimum cell size are suppressed and not drawn. Students with no annual headline -- alternate-form takers, whose levels are a different scale -- are shown separately rather than folded into a band."
+#| eval: !expr have_band_curve
+plot_exit_curve(res$exit_curve_by_initial_band, spec)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr no_band_curve
+cat("> **No split by initial band.** ", res$meta$band_note, "\n", sep = "")
+```
 
 ## Looking at
 
@@ -86,25 +163,6 @@ number of years students take to exit, what share of the cohort exits within
 the state's ESSA-expected timeline, and what share appears never to exit,
 still EL-classified many grades later.
 
-The life table below reads one row per year in status. Column **A** is the
-number of students still classified at the start of that year; **B** those
-observed to exit at its end; **C** those who disappear from the data at its
-end. **D** and **E** are those two as rates of the students actually at risk
-that year, and **F** accumulates exits against the original cohort.
-
-```{r}
-#| label: tbl-life-table
-#| tbl-cap: !expr if (have_life_table) paste0("Life table, ", res$meta$cohort, " cohort") else "Life table"
-#| eval: !expr have_life_table
-ft_check1_life_table(res)
-```
-
-```{r}
-#| output: asis
-#| eval: !expr no_life_table
-cat("> **No life table.** ", res$meta$note, "\n", sep = "")
-```
-
 ## Interpreting it
 
 Model 1 tells you the descriptive shape of your state's exit patterns ---
@@ -116,11 +174,19 @@ what a typical EL trajectory looks like in your state.
 
 Two cautions carry the weight here.
 
-**Column F is a lower bound, not a completion rate.** Students who disappear
-from the data are censored, not non-exiters: we stop being able to observe
-them, which is not evidence that they stayed in status. The final row is the
-window's edge --- there is no following year in which an exit could be
-observed, so B is empty and everyone still classified is censored there.
+**Column F, and the curve drawn from it, are a lower bound** --- not a
+completion rate. Students who disappear from the data are censored, not
+non-exiters: we stop being able to observe them, which is not evidence that
+they stayed in status. The final row is the window's edge --- there is no
+following year in which an exit could be observed, so B is empty and everyone
+still classified is censored there.
+
+**Read the band split as a description, not a prediction.** A cohort that
+starts higher exiting sooner is what the exit rule is built to produce; it
+says nothing on its own about whether the threshold sits at the right level.
+The bands near the exit threshold hold very few K entrants --- a student
+screening at the threshold would not have been identified --- so those bands
+suppress, and that is the design working, not a gap in the data.
 
 **No average time in status appears anywhere in this document**, because on
 censored data it is not defined. The honest summaries are the median years to
@@ -137,36 +203,16 @@ the upper grades --- are not in this table at all. Read it as the trajectory
 of one entry cohort, never as the state's overall exit rate.
 :::
 
-## Checkpoint
-
-Confirm the selected cohort is large and stable enough to support a
-trustworthy survival curve, and not distorted by an enrollment anomaly such
-as a pandemic-era dip. The candidates are below: the selected cohort is the
-one with the longest observed follow-up that clears the minimum cell size of
-`r spec_min_cell(spec)`.
-
-```{r}
-#| label: tbl-cohorts
-#| tbl-cap: "Candidate entry cohorts"
-#| eval: !expr have_cohorts
-ft_check1_cohorts(res)
-```
-
-```{r}
-#| output: asis
-#| eval: !expr no_cohorts
-cat("> **No candidate cohorts.** ", res$meta$note, "\n", sep = "")
-```
 
 ## Still to come
 
-This pass builds the life table. The rest of Check 1 arrives in later passes,
-each with its own session: the cumulative exit curve overall and by initial
-ELP band; the discrete-time survival estimate as a labeled companion column;
-median years to exit, the share exiting within the ESSA timeline, and the
-share still classified at the window's edge; Model 2 and its hazard ratio on
-lagged ELA; and, last and only with its experimental label, the
-retention-share / selection-strength weighting index.
+This pass builds the life table and the exit curves. The rest of Check 1
+arrives in later passes, each with its own session: the discrete-time survival
+estimate as a labeled companion column; median years to exit, the share
+exiting within the ESSA timeline, and the share still classified at the
+window's edge; Model 2 and its hazard ratio on lagged ELA; and, last and only
+with its experimental label, the retention-share / selection-strength
+weighting index.
 
 ::: {.callout-tip appearance="default" icon=false}
 ## Decide before moving on

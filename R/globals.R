@@ -38,6 +38,7 @@ utils::globalVariables(c(
 
   # --- Check 1 ---------------------------------------------------------------
   "N_ENTRY", "FOLLOWUP_YEARS", "SELECTED",
+  "GROUP", "N_AT_ENTRY", "N_EXITED_CUM", "CUM_EXIT_RATE",
 
   # --- generic summary names -------------------------------------------------
   "N", "N_WEIGHTED", "PCT"

@@ -22,40 +22,56 @@
   tibble::tribble(
     ~FIELD,            ~TABLE,    ~KIND,       ~SLOTS,                 ~USED_FOR, ~FALLBACK,
 
-    "STUDENT_ID",      "roster",  "required",  "cohorts,life_table",
+    "STUDENT_ID",      "roster",  "required",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
     "Follows one student across years, and counts the cohort once per student.",
     NA_character_,
 
-    "YEAR",            "roster",  "required",  "cohorts,life_table",
+    "YEAR",            "roster",  "required",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
     "Places each row in the panel: sets the follow-up window, and each student's year in status.",
     NA_character_,
 
-    "GRADE",           "roster",  "required",  "cohorts,life_table",
+    "GRADE",           "roster",  "required",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
     "Fixes the entry grade that defines the cohort, and labels each life-table row.",
     NA_character_,
 
-    "EL_STATUS",       "roster",  "required",  "cohorts,life_table",
+    "EL_STATUS",       "roster",  "required",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
     "The current / former transitions that date entry, exit and censoring.",
     NA_character_,
 
-    "LEFT_TRUNCATED",  "roster",  "optional",  "cohorts,life_table",
+    "LEFT_TRUNCATED",  "roster",  "optional",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
     "Excludes students already in EL status when the panel opened, whose time in status cannot be measured.",
     "entrants in the panel's first year are treated as left-truncated and excluded",
 
-    "COHORT_LABEL",    "derived", "derived",   "cohorts,life_table",
+    "COMPONENT",       "base",    "optional",  "exit_curve_by_initial_band",
+    "Selects the headline component, whose level becomes the student's initial ELP band.",
+    "the curve is not split by initial band; the overall curve is unaffected",
+
+    "ACHIEVEMENT_LEVEL", "base",  "optional",  "exit_curve_by_initial_band",
+    "The headline level at the student's first year in status, banded into the initial ELP band.",
+    "the curve is not split by initial band; the overall curve is unaffected",
+
+    "ELP_FORM",        "base",    "optional",  "exit_curve_by_initial_band",
+    "Restricts the headline to the annual form: alternate-form levels are a different scale and never enter a band.",
+    "alternate-form students cannot be told apart, and the split is not drawn",
+
+    "COHORT_LABEL",    "derived", "derived",   "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
     "Entry grade and entry year, the cohort key.",
     NA_character_,
 
-    "YEAR_IN_STATUS",  "derived", "derived",   "life_table",
+    "YEAR_IN_STATUS",  "derived", "derived",   "life_table,exit_curve,exit_curve_by_initial_band",
     "Years since the first year observed as an EL, counting the exit year.",
     NA_character_,
 
-    "EXIT_YEAR",       "derived", "derived",   "life_table",
+    "EXIT_YEAR",       "derived", "derived",   "life_table,exit_curve,exit_curve_by_initial_band",
     "The first year observed as a former EL; exit is absorbing.",
     NA_character_,
 
-    "CENSOR_TYPE",     "derived", "derived",   "life_table",
+    "CENSOR_TYPE",     "derived", "derived",   "life_table,exit_curve,exit_curve_by_initial_band",
     "Disappeared (first year absent) or still classified at the window's edge.",
+    NA_character_,
+
+    "ELP_BAND",        "derived", "derived",   "exit_curve_by_initial_band",
+    "The initial ELP band: the first annual headline level, banded by the spec.",
     NA_character_,
 
     "A_TO_F",          "derived", "derived",   "life_table",
@@ -88,22 +104,34 @@
 # The reporting half: the rows whose slots were computed, resolved against
 # this delivery. YOUR_COLUMN is what the state actually sent (the canonical
 # name when the crosswalk does not rename it); PRESENT answers the optional
-# fields.
-.check1_data_fields <- function(roster, spec, slots) {
+# fields. Derived rows have neither -- nothing delivered them.
+.check1_data_fields <- function(data, spec, slots) {
   out <- .check1_fields_for(slots)
   if (!nrow(out)) return(out)
 
-  cross <- spec$data$columns$roster
+  delivered <- list(
+    roster   = names(el_roster(data)),
+    base     = names(el_base(data)),
+    academic = if (is.null(el_academic(data))) character()
+               else names(el_academic(data))
+  )
+
   out$YOUR_COLUMN <- vapply(seq_len(nrow(out)), function(i) {
-    if (!identical(out$TABLE[i], "roster")) return(NA_character_)
+    tbl <- out$TABLE[[i]]
+    if (!tbl %in% names(delivered)) return(NA_character_)
+    cross <- spec$data$columns[[tbl]]
     # A field the crosswalk does not mention arrives under its canonical
     # name; `[[` on an absent name would error rather than say so.
-    if (!is.null(cross) && out$FIELD[i] %in% names(cross)) {
-      as.character(cross[[out$FIELD[i]]])
+    if (!is.null(cross) && out$FIELD[[i]] %in% names(cross)) {
+      as.character(cross[[out$FIELD[[i]]]])
     } else {
-      out$FIELD[i]
+      out$FIELD[[i]]
     }
   }, "")
-  out$PRESENT <- ifelse(out$TABLE == "roster", out$FIELD %in% names(roster), NA)
+
+  out$PRESENT <- vapply(seq_len(nrow(out)), function(i) {
+    tbl <- out$TABLE[[i]]
+    if (!tbl %in% names(delivered)) NA else out$FIELD[[i]] %in% delivered[[tbl]]
+  }, TRUE)
   out
 }

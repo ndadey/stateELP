@@ -125,21 +125,11 @@ compute_life_table <- function(data, spec, cohort, start_grade = "K") {
   roster <- el_roster(data)
   .check1_require_fields(roster, "life_table")
 
-  members <- build_cohort(roster, spec, start_grade = start_grade)
-  members <- members[members$COHORT_LABEL == cohort, , drop = FALSE]
-  if (!nrow(members)) {
-    stop("No cohort labelled '", cohort, "' among the ", start_grade,
-         " entry cohorts this panel supports.", call. = FALSE)
-  }
-
-  panel_last <- max(roster$YEAR, na.rm = TRUE)
-  start_year <- members$COHORT_START_YEAR[[1]]
-  n_rows <- as.integer(panel_last - start_year + 1L)
-
-  cohort_rows <- roster[roster$STUDENT_ID %in% members$STUDENT_ID, , drop = FALSE]
-  # The window is the panel's, not the cohort's: a student last seen in the
-  # panel's final year is still enrolled, not disappeared.
-  spans <- build_student_spans(cohort_rows, last_year = panel_last)
+  co <- .check1_cohort_spans(roster, spec, cohort, start_grade)
+  spans <- co$spans
+  cohort_rows <- co$cohort_rows
+  start_year <- co$start_year
+  n_rows <- co$n_rows
 
   # Last year each student was current: the year before the exit year for an
   # exiter, the last observed year for anyone censored.
@@ -163,6 +153,153 @@ compute_life_table <- function(data, spec, cohort, start_grade = "K") {
   out <- dplyr::bind_cols(out, .life_table_rates(out$A, out$B, out$C))
   apply_suppression(out, spec, n_col = "A",
                     cols = c("B", "C", "D", "E", "F"))
+}
+
+# The label for students who never resolve an annual headline, and so have no
+# initial band: alternate-form takers (a different scale entirely, contract
+# 4.4) and anyone untested in their first years. They are shown as their own
+# group, never folded into a band and never silently dropped.
+.CHECK1_NO_BAND <- "No annual headline"
+
+#' The cumulative exit curve for one cohort
+#'
+#' The share of the entry cohort observed to have exited by each year in
+#' status -- the life table's **F** column as a curve, overall or split by a
+#' student-level group.
+#'
+#' `by = "INITIAL_ELP"` splits on the **initial ELP band**, derived here
+#' rather than read from the delivery: the banded headline at the student's
+#' first year with a valid annual headline, which is what
+#' `policy$timelines$initial_elp_source = "first_annual"` declares. A
+#' delivered `INITIAL_ELP` column is a validation input, never the source
+#' (the same treatment `YEAR_IN_STATUS` and `COHORT_LABEL` get). Students with
+#' no annual headline form their own group.
+#'
+#' **The curve is a lower bound.** Censored students -- those who disappeared,
+#' and those still classified at the window's edge -- are not exiters, and
+#' nothing here imputes what they would have done. No mean time in status is
+#' computed: on censored data it is not defined.
+#'
+#' @param data An `el_data` bundle.
+#' @param spec An `el_spec`.
+#' @param cohort A single `COHORT_LABEL`, normally the selected row of
+#'   [compute_cohorts()].
+#' @param start_grade The entry grade those cohorts were built on.
+#' @param by `NULL` for the whole cohort, or `"INITIAL_ELP"` to split by
+#'   initial ELP band.
+#' @return A tibble, one row per group and year in status: `GROUP`,
+#'   `YEAR_IN_STATUS`, `N_AT_ENTRY`, `N_EXITED_CUM`, `CUM_EXIT_RATE`,
+#'   `SUPPRESSED`.
+#' @export
+#' @examples
+#' spec <- read_el_spec("00_SIM_EL_Spec")
+#' bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
+#' co <- compute_cohorts(bundle, spec)
+#' compute_exit_curve(bundle, spec, cohort = co$COHORT_LABEL[co$SELECTED])
+compute_exit_curve <- function(data, spec, cohort, start_grade = "K",
+                               by = NULL) {
+  stopifnot(inherits(data, "el_data"), inherits(spec, "el_spec"),
+            is.character(cohort), length(cohort) == 1L, !is.na(cohort),
+            is.character(start_grade), length(start_grade) == 1L,
+            is.null(by) || (is.character(by) && length(by) == 1L))
+  slot <- if (is.null(by)) "exit_curve" else "exit_curve_by_initial_band"
+  roster <- el_roster(data)
+  .check1_require_fields(roster, slot)
+
+  co <- .check1_cohort_spans(roster, spec, cohort, start_grade)
+  spans <- co$spans
+
+  if (is.null(by)) {
+    spans$GROUP <- "All"
+  } else if (identical(by, "INITIAL_ELP")) {
+    band <- .check1_initial_band(data, spec)
+    spans <- dplyr::left_join(spans, band, by = "STUDENT_ID")
+    spans$GROUP <- ifelse(is.na(spans$ELP_BAND), .CHECK1_NO_BAND,
+                          spans$ELP_BAND)
+  } else {
+    stop("`by` must be NULL or \"INITIAL_ELP\"; got \"", by, "\".",
+         call. = FALSE)
+  }
+
+  groups <- .check1_group_order(unique(spans$GROUP), spec)
+  grid <- expand.grid(YEAR_IN_STATUS = seq_len(co$n_rows), GROUP = groups,
+                      KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+
+  out <- tibble::tibble(
+    GROUP = grid$GROUP,
+    YEAR_IN_STATUS = as.integer(grid$YEAR_IN_STATUS),
+    N_AT_ENTRY = vapply(grid$GROUP,
+                        function(g) sum(spans$GROUP == g), 0L,
+                        USE.NAMES = FALSE),
+    N_EXITED_CUM = vapply(seq_len(nrow(grid)), function(i) {
+      sum(spans$GROUP == grid$GROUP[[i]] & spans$EXITED &
+            spans$EXIT_YEAR_IN_STATUS <= grid$YEAR_IN_STATUS[[i]],
+          na.rm = TRUE)
+    }, 0L)
+  )
+  out$CUM_EXIT_RATE <- ifelse(out$N_AT_ENTRY > 0,
+                              out$N_EXITED_CUM / out$N_AT_ENTRY, NA_real_)
+
+  # cols given explicitly: the default would blank YEAR_IN_STATUS, which is
+  # the row's own index.
+  apply_suppression(out, spec, n_col = "N_AT_ENTRY",
+                    cols = c("N_EXITED_CUM", "CUM_EXIT_RATE"), blank_n = TRUE)
+}
+
+# The initial ELP band per student: the banded headline at the first year one
+# resolves. Read through elp_headline(), the only route to the headline, so
+# the annual-form filter and the spec's bands both apply (CLAUDE.md 4).
+.check1_initial_band <- function(data, spec) {
+  src <- spec$policy$timelines$initial_elp_source
+  if (!is.null(src) && !identical(src, "first_annual")) {
+    stop("`policy$timelines$initial_elp_source` is \"", src, "\"; this ",
+         "package derives the initial band as the first annual headline ",
+         "only.", call. = FALSE)
+  }
+  h <- elp_headline(data, spec)
+  h <- h[!is.na(h$ELP_BAND), c("STUDENT_ID", "YEAR", "ELP_BAND"), drop = FALSE]
+  h <- h[order(h$STUDENT_ID, h$YEAR), , drop = FALSE]
+  h[!duplicated(h$STUDENT_ID), c("STUDENT_ID", "ELP_BAND"), drop = FALSE]
+}
+
+# Display order: the spec's own band order, then the no-band group last. Band
+# labels are never typed here.
+.check1_group_order <- function(groups, spec) {
+  known <- spec_bands(spec)$labels
+  # An instrument with no declared bands gets one band per level, so the
+  # level scale supplies the order instead (CLAUDE.md 5).
+  if (is.null(known) && identical(spec$elp$level_scale$type, "categorical")) {
+    known <- spec$elp$level_scale$levels
+  }
+  ordered <- c(intersect(known, groups),
+               sort(setdiff(groups, c(known, .CHECK1_NO_BAND))))
+  c(ordered, intersect(.CHECK1_NO_BAND, groups))
+}
+
+# One cohort's membership, spans and window. Shared by the life table and the
+# exit curves so the two slots cannot drift apart: the same students, the same
+# dating, the same number of rows.
+.check1_cohort_spans <- function(roster, spec, cohort, start_grade) {
+  members <- build_cohort(roster, spec, start_grade = start_grade)
+  members <- members[members$COHORT_LABEL == cohort, , drop = FALSE]
+  if (!nrow(members)) {
+    stop("No cohort labelled '", cohort, "' among the ", start_grade,
+         " entry cohorts this panel supports.", call. = FALSE)
+  }
+  panel_last <- max(roster$YEAR, na.rm = TRUE)
+  start_year <- members$COHORT_START_YEAR[[1]]
+  cohort_rows <- roster[roster$STUDENT_ID %in% members$STUDENT_ID, , drop = FALSE]
+
+  list(
+    members     = members,
+    cohort_rows = cohort_rows,
+    start_year  = start_year,
+    panel_last  = panel_last,
+    n_rows      = as.integer(panel_last - start_year + 1L),
+    # The window is the panel's, not the cohort's: a student last seen in the
+    # panel's final year is still enrolled, not disappeared.
+    spans       = build_student_spans(cohort_rows, last_year = panel_last)
+  )
 }
 
 # The grade each life-table row falls in, read from the cohort's own rows

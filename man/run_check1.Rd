@@ -18,7 +18,8 @@ A named list of results slots plus \verb{$meta}.
 }
 \description{
 Selects one entry cohort and describes its exit timing. This pass builds
-\verb{$cohorts} and \verb{$life_table}; every later slot is \code{NULL} until its own
+\verb{$cohorts}, \verb{$life_table}, \verb{$exit_curve} and
+\verb{$exit_curve_by_initial_band}; every later slot is \code{NULL} until its own
 pass, and \verb{$meta$pending} names them.
 }
 \details{

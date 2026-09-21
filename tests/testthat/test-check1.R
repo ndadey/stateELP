@@ -235,10 +235,18 @@ test_that("$meta$data_fields is the declaration, filtered to computed slots", {
   res <- check1_sim()
   fields <- res$meta$data_fields
 
-  expect_setequal(fields$FIELD,
-                  .check1_fields_for(c("cohorts", "life_table"))$FIELD)
+  computed <- c("cohorts", "life_table", "exit_curve",
+                "exit_curve_by_initial_band")
+  expect_setequal(fields$FIELD, .check1_fields_for(computed)$FIELD)
   expect_true(all(c("STUDENT_ID", "YEAR", "GRADE", "EL_STATUS") %in%
                     fields$FIELD[fields$KIND == "required"]))
+
+  # The box grows with each pass: the curves' fields are listed now, and were
+  # not when only the first pass's slots existed.
+  first_pass <- .check1_fields_for(c("cohorts", "life_table"))$FIELD
+  expect_true(all(first_pass %in% fields$FIELD))
+  expect_true(all(c("ELP_BAND", "ELP_FORM") %in%
+                    setdiff(fields$FIELD, first_pass)))
   # A slot that did not run drops its rows, so the box grows with later
   # passes rather than promising fields nothing read.
   expect_false(any(grepl("model2", fields$SLOTS)))
@@ -265,10 +273,10 @@ test_that("an absent optional field is reported with its fallback", {
 })
 
 test_that("YOUR_COLUMN resolves through the spec's crosswalk", {
-  roster <- make_check1_roster()
   nj <- read_el_spec("NJ_elp_2023")
+  bundle <- make_check1_bundle(make_check1_roster())
 
-  fields <- .check1_data_fields(roster, nj, c("cohorts", "life_table"))
+  fields <- .check1_data_fields(bundle, nj, c("cohorts", "life_table"))
   expect_identical(fields$YOUR_COLUMN[fields$FIELD == "STUDENT_ID"],
                    "Scrambled_SID")
   # A field the crosswalk does not rename keeps its canonical name ...
@@ -299,10 +307,157 @@ test_that("the stage's tables build from the results object", {
   expect_s3_class(ft_check1_data_fields(res), "flextable")
 })
 
-# ---- later passes ------------------------------------------------------------
+# ---- the exit curves ---------------------------------------------------------
+
+test_that("compute_exit_curve() returns one row per group and year", {
+  cur <- check1_sim()$exit_curve
+
+  expect_s3_class(cur, "tbl_df")
+  expect_identical(names(cur), c("GROUP", "YEAR_IN_STATUS", "N_AT_ENTRY",
+                                 "N_EXITED_CUM", "CUM_EXIT_RATE", "SUPPRESSED"))
+  expect_identical(unique(cur$GROUP), "All")
+  expect_identical(cur$YEAR_IN_STATUS, seq_len(nrow(cur)))
+})
 
 test_that("the cumulative exit rate is reported as a lower bound", {
-  skip("check1 later pass: $exit_curve, $survival_est")
+  res <- check1_sim()
+  cur <- res$exit_curve
+  lt <- res$life_table
+
+  # Exit is absorbing, so the curve only ever rises ...
+  expect_true(all(diff(cur$CUM_EXIT_RATE) >= 0))
+  # ... it counts the cohort, not the survivors ...
+  expect_true(all(cur$N_AT_ENTRY == res$cohorts$N_ENTRY[res$cohorts$SELECTED]))
+  # ... and it stops at what was observed: censored students are not exiters,
+  # so the final value is a lower bound, well short of 1.
+  expect_lt(max(cur$CUM_EXIT_RATE), 1)
+  # The students behind that shortfall are censored, not non-exiters: the
+  # cohort minus the exiters is what the life table's last row censors.
+  expect_identical(max(cur$N_EXITED_CUM) + lt$C[[nrow(lt)]],
+                   cur$N_AT_ENTRY[[1]] - sum(lt$C[-nrow(lt)]))
+
+  # The curve and the life table are two views of one derivation, and must
+  # not drift: F at life-table row t is the share exited by year t + 1
+  # (CLAUDE.md 6's dating), which is the curve one row later.
+  expect_equal(cur$CUM_EXIT_RATE[-1], lt$F[-nrow(lt)])
+  expect_equal(max(cur$CUM_EXIT_RATE), max(lt$F, na.rm = TRUE))
+})
+
+test_that("the curve splits by an initial band derived from the headline", {
+  res <- check1_sim()
+  spec <- check1_spec()
+  bb <- res$exit_curve_by_initial_band
+  first <- bb[bb$YEAR_IN_STATUS == 1L, ]
+
+  # Groups are the spec's own band labels, plus the no-headline group --
+  # never a literal typed here.
+  expect_true(all(bb$GROUP %in% c(spec_bands(spec)$labels, .CHECK1_NO_BAND)))
+  # Band order is the spec's, and the no-headline group sorts last.
+  expect_identical(unique(bb$GROUP),
+                   c(intersect(spec_bands(spec)$labels, bb$GROUP),
+                     .CHECK1_NO_BAND))
+
+  # Every student is in exactly one group: the visible sizes plus what the
+  # suppressed groups can be holding account for the whole cohort.
+  n_cohort <- res$cohorts$N_ENTRY[res$cohorts$SELECTED]
+  hidden <- sum(first$SUPPRESSED)
+  expect_lte(sum(first$N_AT_ENTRY, na.rm = TRUE), n_cohort)
+  expect_lt(n_cohort - sum(first$N_AT_ENTRY, na.rm = TRUE),
+            hidden * spec_min_cell(spec))
+
+  # Each group's own curve is still a cumulative one.
+  for (g in unique(bb$GROUP)) {
+    d <- bb[bb$GROUP == g & !bb$SUPPRESSED, ]
+    if (nrow(d) > 1L) expect_true(all(diff(d$CUM_EXIT_RATE) >= 0), info = g)
+  }
+})
+
+test_that("a band below the minimum cell size is blanked, never dropped", {
+  bb <- check1_sim()$exit_curve_by_initial_band
+  small <- bb[bb$SUPPRESSED, ]
+
+  # sim_contract.md 4.5: for K entrants the bands at 4.0 and above are
+  # near-empty by construction, so this is exercised by the shipped data.
+  expect_gt(nrow(small), 0L)
+  expect_true(all(is.na(small$N_AT_ENTRY)))
+  expect_true(all(is.na(small$CUM_EXIT_RATE)))
+  # The rows survive, so the reader sees which bands were suppressed: every
+  # group still carries one row per year in status, index intact.
+  per_group <- table(bb$GROUP)
+  expect_true(all(per_group == length(unique(bb$YEAR_IN_STATUS))))
+  expect_false(any(is.na(bb$YEAR_IN_STATUS)))
+})
+
+test_that("the derived initial band reproduces the sim's INITIAL_ELP", {
+  # sim_contract.md 3.5 marks INITIAL_ELP D-tier: the package derives the
+  # band from the first annual headline and treats the delivered column as a
+  # validation input, exactly as it does YEAR_IN_STATUS and COHORT_LABEL.
+  b <- make_check1_sim_bundle()
+  band <- .check1_initial_band(b, check1_spec())
+  sim <- el_roster_sim[!duplicated(el_roster_sim$STUDENT_ID),
+                       c("STUDENT_ID", "INITIAL_ELP")]
+  both <- merge(band, sim, by = "STUDENT_ID")
+
+  expect_gt(nrow(both), 50000L)
+  expect_identical(both$ELP_BAND, both$INITIAL_ELP)
+})
+
+test_that("students with no annual headline are their own group, not a band", {
+  spec <- check1_spec()
+  bb <- check1_sim()$exit_curve_by_initial_band
+  no_band <- bb[bb$GROUP == .CHECK1_NO_BAND, ]
+
+  expect_gt(nrow(no_band), 0L)
+  expect_false(.CHECK1_NO_BAND %in% spec_bands(spec)$labels)
+  # Alternate-form students never exit in this sim (contract 3.3), which is a
+  # modelling limitation and not a finding -- but they are still counted.
+  expect_gt(no_band$N_AT_ENTRY[[1]], 0L)
+})
+
+test_that("the split degrades to NULL without a headline, with a note", {
+  spec <- check1_spec()
+  bundle <- make_check1_bundle(make_check1_roster())
+  # A base table whose only component is not the headline: nothing to band.
+  other <- setdiff(spec_components(spec), spec_headline(spec))[[1]]
+  bundle$elp$COMPONENT <- other
+
+  res <- run_check1(bundle, spec)
+  expect_false(is.null(res$exit_curve))          # the overall curve survives
+  expect_null(res$exit_curve_by_initial_band)
+  expect_match(res$meta$band_note, "not split by initial ELP band")
+})
+
+test_that("the curves run against a categorical headline with no bands", {
+  spec <- read_el_spec("00_ELPA21_EL_Spec")
+  b <- make_check1_elpa21_bundle(spec)
+  res <- run_check1(b, spec)
+
+  expect_null(spec_bands(spec))                  # the non-WIDA branch
+  expect_false(is.null(res$exit_curve))
+  expect_true(all(diff(res$exit_curve$CUM_EXIT_RATE) >= 0))
+
+  bb <- res$exit_curve_by_initial_band
+  expect_false(is.null(bb))
+  # Bands default to one per level, so the groups are the level labels in
+  # the level scale's order.
+  expect_true(all(bb$GROUP %in% spec$elp$level_scale$levels))
+  expect_identical(unique(bb$GROUP),
+                   intersect(spec$elp$level_scale$levels, bb$GROUP))
+})
+
+test_that("the curve plots, split and unsplit", {
+  res <- check1_sim()
+  expect_s3_class(plot_exit_curve(res$exit_curve, check1_spec()), "ggplot")
+  expect_s3_class(plot_exit_curve(res$exit_curve_by_initial_band,
+                                  check1_spec()), "ggplot")
+  expect_s3_class(plot_exit_curve(res$exit_curve), "ggplot")   # spec optional
+  expect_error(plot_exit_curve(res$life_table), "matching slot")
+})
+
+# ---- later passes ------------------------------------------------------------
+
+test_that("the discrete-time survival estimate is a labeled companion column", {
+  skip("check1 later pass: $survival_est")
 })
 
 test_that("Model 2 is NULL without the academic table", {
