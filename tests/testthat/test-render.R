@@ -25,9 +25,9 @@ test_that("stage documents name the component, never say \"headline\"", {
   dir <- testthat::test_path("..", "..", "inst", "templates")
   skip_if(!dir.exists(dir), "templates not reachable from the test dir")
 
-  # Prep 2's document is converted when its own session's work lands; this
-  # list should only ever shrink.
-  pending <- "prep2_population.qmd"
+  # Every stage document built so far is guarded. A document mid-conversion
+  # may be parked here, and this list should only ever shrink.
+  pending <- character()
   qmds <- setdiff(list.files(dir, pattern = "\\.qmd$"), pending)
   skip_if(length(qmds) == 0, "no converted stage documents yet")
 

@@ -708,7 +708,11 @@ test_that("run_prep2() runs on the ELPA21 fixture without naming a component", {
                     "WRITING_LEVEL") %in% names(res$criteria_crosswalk$pattern)))
   # No criterion sits on the headline, so there is no cut to window around.
   expect_true(is.na(res$criteria_crosswalk$window[["cut"]]))
-  expect_match(prep2_crosswalk_note(res), "no criterion sits on the headline")
+  # The note names the component the state reports, not the package's word
+  # for it (CLAUDE.md 9).
+  expect_match(prep2_crosswalk_note(res),
+               paste("no criterion sits on the",
+                     spec_headline_label(spec), "level"), fixed = TRUE)
   expect_match(prep2_contested_note(res), "never disagree")
 })
 

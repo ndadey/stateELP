@@ -90,9 +90,12 @@ Two things, not one.
 ## Data coverage
 
 Counts come from the roster only (the base table has rows only where a test
-happened; the roster is the counting frame). "Annual headline level" means an
-annual-form headline row exists in the base table for that student-year;
-alternate-form takers are reported as a group and never banded.
+happened; the roster is the counting frame). Everything counted here is built
+on the **`r spec_headline_label(spec)`** --- the score this state reports as a
+student's overall English language proficiency result. The "Annual
+`r spec_headline_label(spec)`" column counts student-years with an annual-form
+result; alternate-form takers are reported as a group and never banded,
+because their levels are on a different scale.
 
 ```{r}
 #| label: tbl-coverage
@@ -301,14 +304,14 @@ cat("The spec carries no structured long-term definition (`policy$timelines$lt_e
 
 ## 6. Initial ELP level
 
-The headline level at entry, banded per the spec. Only students whose entry is
-observed inside the panel have an initial level. Alternate-form takers are
+The `r spec_headline_label(spec)` level at entry, banded per the spec. Only
+students whose entry is observed inside the panel have an initial level. Alternate-form takers are
 counted as a group and never banded: the alternate scale is a different
 measurement scale.
 
 ```{r}
 #| label: fig-initial-elp
-#| fig-cap: "Initial ELP level (banded headline level), among entrants observed at entry."
+#| fig-cap: !expr sprintf("Initial ELP level (the banded %s level), among entrants observed at entry.", spec_headline_label(spec))
 #| eval: !expr h[["initial_elp"]]
 plot_initial_elp(res$initial_elp)
 ```
@@ -399,7 +402,7 @@ captions would print over empty tables. -->
 ```{r}
 #| output: asis
 #| eval: !expr h[["criteria_crosswalk"]]
-cat("**Pass/fail pattern on each criterion, student-years near the headline cut.**\n\n")
+cat(sprintf("**Pass/fail pattern on each criterion, student-years near the %s cut.**\n\n", spec_headline_label(spec)))
 ```
 
 ```{r}
@@ -427,7 +430,7 @@ cat(prep2_contested_note(res), "\n")
 ```{r}
 #| output: asis
 #| eval: !expr h[["criteria_crosswalk"]]
-cat("**Where the criteria disagree, by headline level** (0.1 bins, window doubled).\n\n")
+cat(sprintf("**Where the criteria disagree, by %s level** (0.1 bins, window doubled).\n\n", spec_headline_label(spec)))
 ```
 
 ```{r}

@@ -862,8 +862,10 @@ compute_initial_elp <- function(data, spec, entry) {
   band_labels <- spec_bands(spec)$labels %||%
     if (identical(ls$type, "categorical")) ls$levels
     else sort(unique(stats::na.omit(h$ELP_BAND)))
-  lab_none <- if (first_annual) "no annual headline level observed"
-              else "no annual headline level in entry year"
+  # Axis tick and table cell: plain words, since the component is named in
+  # the surrounding prose (CLAUDE.md 9).
+  lab_none <- if (first_annual) "no annual score observed"
+              else "no annual score in entry year"
   initial <- dplyr::case_when(form %in% "alternate" ~ .P2_ALT_LABEL,
                               is.na(band)           ~ lab_none,
                               TRUE                  ~ band)
@@ -886,8 +888,9 @@ compute_initial_elp <- function(data, spec, entry) {
     both <- !is.na(delivered) & !is.na(band)
     if (any(both)) {
       notes <- sprintf(paste0(
-        "The band recomputed here from the headline (%s) agrees with the ",
+        "The band recomputed here from the %s (%s) agrees with the ",
         "delivered `INITIAL_ELP` for %s of the %s entrants carrying both."),
+        spec_headline_label(spec),
         if (first_annual) "first annual result at or after entry" else "entry year",
         .p2_fmt_pct(mean(delivered[both] == band[both])),
         format(sum(both), big.mark = ","))

@@ -74,6 +74,7 @@ run_prep2 <- function(data, spec) {
     has_never   = any(roster$EL_STATUS %in% "never"),
     has_former  = any(roster$EL_STATUS %in% "former"),
     min_cell    = spec_min_cell(spec),
+    headline_label = spec_headline_label(spec),
     lt_el_years = spec$policy$timelines$lt_el_years,
     small_district_n = .p2_small_n(spec),
     years_in_status_first_value = if (is.null(entry)) NA_integer_ else entry$yis_first,

@@ -74,6 +74,14 @@ NULL
   results[[slot]]
 }
 
+# The component the state reports, named for the reader: documents say
+# "Overall Composite", never this package's word "headline" (CLAUDE.md 9).
+# Carried in $meta so a results object read back from RDS still knows it.
+.p2_headline_label <- function(results) {
+  lab <- results$meta$headline_label
+  if (is.null(lab) || is.na(lab)) "ELP" else lab
+}
+
 #' @rdname prep2_tables
 #' @export
 ft_prep2_coverage <- function(results) {
@@ -89,11 +97,12 @@ ft_prep2_coverage <- function(results) {
   # Never-ELs are deliberately not a column here: they matter only as the
   # enrollment denominator, which ft_prep2_el_share() shows weighted. They stay
   # in the counts_by_year slot.
-  .p2_flex(out, c(YEAR = "Year", N_CURRENT = "Current ELs",
-                  N_ANNUAL_HEADLINE = "Annual headline level",
-                  N_ALTERNATE = "Alternate form",
-                  N_NO_HEADLINE = "No headline result",
-                  N_FORMER = "Former ELs"))
+  lab <- .p2_headline_label(results)
+  .p2_flex(out, stats::setNames(
+    c("Year", "Current ELs", paste("Annual", lab), "Alternate form",
+      "No annual score", "Former ELs"),
+    c("YEAR", "N_CURRENT", "N_ANNUAL_HEADLINE", "N_ALTERNATE",
+      "N_NO_HEADLINE", "N_FORMER")))
 }
 
 #' @rdname prep2_tables
@@ -263,8 +272,10 @@ ft_prep2_crosswalk_by_level <- function(results) {
   out <- data.frame(LEVEL_BIN = d$LEVEL_BIN, N = .p2_fmt_n(d$N),
                     PCT_DISAGREE = .p2_fmt_pct(d$PCT_DISAGREE),
                     check.names = FALSE)
-  .p2_flex(out, c(LEVEL_BIN = "Headline level", N = "Student-years",
-                  PCT_DISAGREE = "Criteria disagree"))
+  .p2_flex(out, stats::setNames(
+    c(paste(.p2_headline_label(results), "level"), "Student-years",
+      "Criteria disagree"),
+    c("LEVEL_BIN", "N", "PCT_DISAGREE")))
 }
 
 #' @rdname prep2_tables
@@ -275,9 +286,11 @@ prep2_crosswalk_note <- function(results) {
   desc <- sprintf("`%s` (%s %s %s %s%s)", k$CRITERION, k$COMPONENT, k$MEASURE,
                   k$OP, k$VALUE, ifelse(k$EXEMPT_IF_ABSENT, ", exempt if absent", ""))
   win <- if (is.na(cw$window[["cut"]])) {
-    "no criterion sits on the headline level, so every current annual student-year is in the window"
+    sprintf(paste0("no criterion sits on the %s level, so every current ",
+                   "annual student-year is in the window"),
+            .p2_headline_label(results))
   } else {
-    sprintf("headline level within %s%s of the cut %s",
+    sprintf(paste0(.p2_headline_label(results), " level within %s%s of the cut %s"),
             intToUtf8(0x00B1), cw$window[["half_width"]], cw$window[["cut"]])
   }
   paste0("Criteria (", cw$pathway, " pathway): ", paste(desc, collapse = "; "),
@@ -299,8 +312,8 @@ prep2_contested_note <- function(results) {
   paste0("**Contested zone.** Across all ", format(z$n_total, big.mark = ","),
          " current annual student-years, the criteria disagree for ",
          format(z$n_disagree, big.mark = ","), " (",
-         .p2_fmt_pct(z$n_disagree / z$n_total), "). Headline level of ",
-         "disagreeing student-years: ", z$range[1], .P2_ENDASH, z$range[2],
+         .p2_fmt_pct(z$n_disagree / z$n_total), "). ",
+         .p2_headline_label(results), " level of disagreeing student-years: ", z$range[1], .P2_ENDASH, z$range[2],
          " (central 90%: ", round(z$core_90[1], 1), .P2_ENDASH,
          round(z$core_90[2], 1), "). This range carries forward to Data Check 3.")
 }
