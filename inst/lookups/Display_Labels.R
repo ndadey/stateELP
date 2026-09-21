@@ -1,9 +1,25 @@
 # =============================================================================
-# 00_Demographics_Lookups.R  --  display labels for coded demographic values
+# Display_Labels.R  --  display labels for coded roster and analysis values
 # -----------------------------------------------------------------------------
-# Kept out of the el_spec files on purpose: these are presentation labels, not
-# policy or measurement parameters, and several states share them. A spec points
-# here through data$demographics_spec.
+# Presentation labels only: nothing here is a policy or measurement parameter,
+# and no el_spec points at this file. It was formerly
+# inst/specs/00_Demographics_Lookups.R, reached through data$demographics_spec;
+# that pointer is gone from every spec, and the file moved out of inst/specs/
+# because el_spec_files() lists everything in that directory and this file is
+# not a spec -- it had to be skipped by name in test-spec.R.
+#
+# Renamed because the old name described only half the contents. Two kinds of
+# thing live here:
+#
+#   1. Demographic labels -- HOME_LANGUAGE, SERVICE_MODEL, SPED_CLASSIFICATION,
+#      GENDER, FRL_DETAIL. Presentation only; no stage requires them.
+#
+#   2. Analytic vocabulary the stages DO depend on -- EL_STATUS,
+#      EL_STATUS_DETAIL, ELP_FORM, exit_category. `exit_category` is Check 2's
+#      crosstab column set; EL_STATUS carries the locked three-level status and
+#      EL_STATUS_DETAIL the four federal monitoring years; ELP_FORM is the
+#      annual/alternate split behind the "alternate forms never enter headline"
+#      rule. Do not drop these along with the demographics.
 #
 # Every lookup is keyed by the ALL-CAPS roster column it labels
 # (sim_contract.md 3.5) and is a named character vector: names are the VALUES as
@@ -18,7 +34,7 @@
 # Row order is display order. "Other" and "Unknown" sort last by convention.
 # =============================================================================
 
-Demographics_Lookups <- list(
+Display_Labels <- list(
 
   HOME_LANGUAGE = c(
     spa = "Spanish",

@@ -79,7 +79,7 @@ Maintain this table. It starts as the shell inventory.
 | Package skeleton, `DESCRIPTION`, `renv` | **built** | `renv::init()`, explicit snapshot; `NAMESPACE`/`man` generated |
 | `data-raw/el_long_sim.R` + `sim_contract.md` | **written, RUN** | contract **v0.4.0**; every `[FILL IN]` filled from the 2026-09-16 build; values verified identical to the 0.2.0 build after renaming (§2.1) |
 | `data/` (three `.rda`) | **built** | `el_long_sim` (base) / `el_roster_sim` / `academic_long_sim`, 6.84 MB, `sim_contract_version` 0.4.0; `elp_components_sim` retired; regenerate, don't hand-edit |
-| `R/spec.R` + three specs | **built** | SIM (Type 1) / NJ / ELPA21 (Type 6) + demographics lookups; ALL-CAPS `data$columns` crosswalks + `value_maps` |
+| `R/spec.R` + three specs | **built** | SIM (Type 1) / NJ / ELPA21 (Type 6); ALL-CAPS `data$columns` crosswalks + `value_maps`. No `demographics_spec`: display labels moved out of the spec tree to `inst/lookups/Display_Labels.R` and no spec points at them |
 | `R/el_data.R` (bundle, adapter, coverage) | **built** | `as_el_data()` (separate objects, merged single file), `as_el_data_sgp()`, `as_academic_long()`, `elp_headline()`, coverage table |
 | `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below |
@@ -94,11 +94,9 @@ expectations passing, 58 `skip()`ped (the eight per-stage files), 0 failures.
 the 6.5 MB `data/` directory (expected; `sim_contract.md` §9). The
 `as_el_data()` example takes ~9 s on the full sim (reported, not a NOTE).
 
-**Column naming.** Every column the package reads *or creates* is ALL CAPS —
-delivered, derived (`CENSORED`, `EXIT_EVER`, …) and summary (`N`,
-`SUPPRESSED`, `N_NEVER_WEIGHTED`) alike. Values keep their case (`current`,
-`annual`, component and subject keys). `[PROPOSED — CONFIRM]` for the derived
-and summary columns, which §4's prose previously wrote in lowercase.
+**Column naming.** ALL CAPS for every column of every data frame, delivered,
+derived and summary alike — the rule and its rationale live in §4. Confirmed
+2026-09-20.
 
 **Three environment facts a later session will otherwise rediscover the hard
 way** (first recorded 2026-09-15, still true):
@@ -145,6 +143,15 @@ divergences (character `GRADE` carrying `"K"`; numeric/integer
 `ACHIEVEMENT_LEVEL` with labels in the spec; lowercase `COMPONENT`/`SUBJECT`
 values as spec keys) and the alias-collision decisions (`school_code` dropped;
 `FRL_DETAIL`; the derived binary `EL` beside the three-level `EL_STATUS`).
+
+**Every column of every data frame is ALL CAPS**, following the SGP
+`LONG_DATA` convention the family shares — the three delivered tables, every
+derived column (`YEAR_IN_STATUS`, `CENSORED`, `EXIT_EVER`, `ELP_BAND`, …) and
+every summary column a `compute_*()` returns (`N`, `PCT`, `SUPPRESSED`,
+`N_NEVER_WEIGHTED`, the life table's `A`–`F`). Only *values* keep their own
+case: `current`, `annual`, the `COMPONENT` and `SUBJECT` spec keys, band
+labels. Confirmed 2026-09-20; where this file's prose still shows a lowercase
+column name, the ALL-CAPS name is the real one.
 
 | Table | Grain | Sim object | Core columns |
 |---|---|---|---|
@@ -331,8 +338,10 @@ with the real tested grade on the academic row.
 | `data$columns` | `data$columns` | extended: roster, per-component entries, academic table |
 | `as_assessment_spec()` | `el_spec()` | shell constructor; shape stays acceptable to stateSpecs later |
 
-**Three instantiations** under `inst/specs/`, all through `test-spec.R`,
-demographics/lookups in a separate file:
+**Three instantiations** under `inst/specs/`, all through `test-spec.R` — and
+nothing else in that directory, because `el_spec_files()` lists every `.R` there
+and treats it as a spec id. Display labels live outside the spec tree in
+`inst/lookups/Display_Labels.R`; no spec points at them:
 
 1. `00_SIM_EL_Spec.R` — WIDA-shaped, matches the sim; **Type 1**; identity
    crosswalk; `verification$status = "synthetic"`.
@@ -712,7 +721,7 @@ The shell is built across **nine scoped sessions** — the foundation session (`
 
 1. Skeleton: `DESCRIPTION`, generated `NAMESPACE`, `R/globals.R`, `R/data.R`,
    `R/spec.R`, `R/el_data.R`, `inst/specs/` (SIM, NJ, ELPA21),
-   demographics/lookup file, `tests/testthat/` (per stage + spec + el_data),
+   `inst/lookups/Display_Labels.R`, `tests/testthat/` (per stage + spec + el_data),
    `internal_docs/` (`source/` extractions, `steps/` instruction files),
    `dev/render_step.R`, `.Rbuildignore`/`.gitignore` in the ReportR pattern,
    `renv::init()`.

@@ -243,8 +243,7 @@ SIM_EL_Spec <- stateELP::el_spec(
         ),
         GRADE = c("0" = "K")
       )
-    ),
-    demographics_spec = "00_Demographics_Lookups"
+    )
   ),
 
   verification = list(

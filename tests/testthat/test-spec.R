@@ -83,7 +83,6 @@ test_that("NJ spec migrated: renamed components keep their native labels", {
 
 test_that("every policy value carries a source", {
   for (id in el_spec_files()) {
-    if (id == "00_Demographics_Lookups") next
     spec <- read_el_spec(id)
     for (nm in names(spec$policy)) {
       expect_true(is.character(spec$policy[[nm]]$source),
