@@ -4,10 +4,16 @@
 
 #' Run Check 1 -- cohort survival analysis
 #'
-#' Selects one entry cohort and describes its exit timing. This pass builds
-#' `$cohorts`, `$life_table`, `$exit_curve` and
-#' `$exit_curve_by_initial_band`; every later slot is `NULL` until its own
-#' pass, and `$meta$pending` names them.
+#' Selects one entry cohort and describes its exit timing: the candidate
+#' cohorts, the life table, the exit curves, the discrete-time survival
+#' estimate and its median, where the cohort ended up against the timelines,
+#' Model 2, and the experimental weighting index.
+#'
+#' Slots degrade rather than fail. Without an academic table there is no
+#' Model 2, so `$model2` and the selection-strength half of the weighting
+#' index are `NULL` and `$meta$model2_note` says why. `$type3_covariate` is
+#' `NULL` unless the spec declares Type 3 and its non-ELP criterion names a
+#' subject the delivery carries.
 #'
 #' With no qualifying cohort -- a panel too short for any cohort to reach the
 #' maximum timeline plus a year, or every candidate below `min_cell` -- the
@@ -52,11 +58,50 @@ run_check1 <- function(data, spec, start_grade = "K") {
                        start_grade = start_grade, by = "INITIAL_ELP")
   }
 
+  survival_est <- if (is.na(selected)) NULL else {
+    compute_survival_est(data, spec, cohort = selected,
+                         start_grade = start_grade)
+  }
+  years_to_50 <- if (is.null(survival_est)) NULL else {
+    compute_years_to_50(survival_est)
+  }
+  at_max_timeline <- if (is.na(selected)) NULL else {
+    compute_at_max_timeline(data, spec, cohort = selected,
+                            start_grade = start_grade)
+  }
+
+  # Model 2 needs the academic table; without it the slot is NULL and so is
+  # everything downstream of it.
+  model2 <- if (is.na(selected) || is.null(el_academic(data))) NULL else {
+    compute_model2(data, spec, cohort = selected, start_grade = start_grade)
+  }
+
+  # Type-gated: the non-ELP criterion as a Model 2 covariate. Type 3 only,
+  # and it needs the criterion's subject to be one the academic table carries.
+  type3 <- .check1_type3_subject(spec, data)
+  type3_covariate <- if (is.null(model2) || is.na(type3)) NULL else {
+    fit <- compute_model2(data, spec, cohort = selected,
+                          start_grade = start_grade,
+                          add_current_subject = type3)
+    list(criterion_subject = type3, model = fit,
+         caption = paste0(
+           "The exit rule already uses ", type3, ", so it appears again as ",
+           "an outcome in Checks 3-4. Agreement between the criteria and ",
+           "those methods is partly circular, and is captioned there."))
+  }
+
+  weights <- if (is.null(survival_est)) NULL else {
+    compute_grade_weights(survival_est, model2, spec)
+  }
+
   computed <- c(if (!is.null(cohorts)) "cohorts",
                 if (!is.null(life_table)) "life_table",
                 if (!is.null(exit_curve)) "exit_curve",
                 if (!is.null(exit_curve_by_initial_band))
-                  "exit_curve_by_initial_band")
+                  "exit_curve_by_initial_band",
+                if (!is.null(survival_est)) "survival_est",
+                if (!is.null(at_max_timeline)) "at_max_timeline",
+                if (!is.null(model2)) "model2")
 
   list(
     cohorts    = cohorts,
@@ -64,18 +109,19 @@ run_check1 <- function(data, spec, start_grade = "K") {
     exit_curve = exit_curve,
     exit_curve_by_initial_band = exit_curve_by_initial_band,
 
-    # [Later passes -- instruction file: survival column -> years-to-50 /
-    #  at-max -> Model 2 -> experimental weights]
-    survival_est               = NULL,
-    years_to_50                = NULL,
-    at_max_timeline            = NULL,
-    model2                     = NULL,
-    retention_share            = NULL,
-    selection_strength         = NULL,
-    grade_weights              = NULL,
+    survival_est               = survival_est,
+    years_to_50                = years_to_50,
+    at_max_timeline            = at_max_timeline,
+    model2                     = model2,
+
+    # Experimental, and labeled so wherever it renders: untested against the
+    # Indiana pipeline, and used mechanically nowhere.
+    retention_share            = weights$retention_share,
+    selection_strength         = weights$selection_strength,
+    grade_weights              = weights$grade_weights,
 
     # [Type-gated: Type 3 only, and the SIM spec is Type 1]
-    type3_covariate = NULL,
+    type3_covariate = type3_covariate,
 
     meta = list(
       stage                = "check1",
@@ -92,9 +138,13 @@ run_check1 <- function(data, spec, start_grade = "K") {
                "for this cohort, so the exit curve is not split by initial ",
                "ELP band.")
       } else NA_character_,
-      pending              = c("survival_est", "years_to_50", "at_max_timeline",
-                               "model2", "retention_share",
-                               "selection_strength", "grade_weights"),
+      model2_note          = if (is.na(selected)) NA_character_
+                             else if (is.null(el_academic(data))) paste0(
+                               "No academic table in this delivery, so Model 2 ",
+                               "and the selection-strength half of the ",
+                               "weighting index are not computed.")
+                             else NA_character_,
+      pending              = character(),
       sim_contract_version = data$meta$sim_contract_version,
       package_version      = as.character(utils::packageVersion("stateELP")),
       run_date             = Sys.Date()
@@ -140,6 +190,23 @@ run_check1 <- function(data, spec, start_grade = "K") {
     .small_number(nrow(cohorts)), " usable ", start_grade,
     if (nrow(cohorts) == 1L) " cohort" else " cohorts",
     " ", .EM_DASH, " the longest follow-up.")
+}
+
+# Type 3 is "composite plus other source": the exit rule carries a term drawn
+# from the academic table. Returns that subject when the spec declares Type 3,
+# the term is there, and the delivery actually carries the subject; NA
+# otherwise, which leaves the slot NULL.
+.check1_type3_subject <- function(spec, data) {
+  if (!isTRUE(spec_has_type(spec, 3))) return(NA_character_)
+  terms <- unlist(lapply(spec$policy$exit$pathways, function(p) p$terms),
+                  recursive = FALSE)
+  academic <- Filter(function(tm) identical(tm$from, "academic"), terms)
+  if (!length(academic)) return(NA_character_)
+
+  subject <- academic[[1]]$component
+  ac <- el_academic(data)
+  if (is.null(ac) || !subject %in% ac$SUBJECT) return(NA_character_)
+  subject
 }
 
 # Rendered when an analysis slot is empty, so the document says why rather

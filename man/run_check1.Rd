@@ -17,12 +17,18 @@ run_check1(data, spec, start_grade = "K")
 A named list of results slots plus \verb{$meta}.
 }
 \description{
-Selects one entry cohort and describes its exit timing. This pass builds
-\verb{$cohorts}, \verb{$life_table}, \verb{$exit_curve} and
-\verb{$exit_curve_by_initial_band}; every later slot is \code{NULL} until its own
-pass, and \verb{$meta$pending} names them.
+Selects one entry cohort and describes its exit timing: the candidate
+cohorts, the life table, the exit curves, the discrete-time survival
+estimate and its median, where the cohort ended up against the timelines,
+Model 2, and the experimental weighting index.
 }
 \details{
+Slots degrade rather than fail. Without an academic table there is no
+Model 2, so \verb{$model2} and the selection-strength half of the weighting
+index are \code{NULL} and \verb{$meta$model2_note} says why. \verb{$type3_covariate} is
+\code{NULL} unless the spec declares Type 3 and its non-ELP criterion names a
+subject the delivery carries.
+
 With no qualifying cohort -- a panel too short for any cohort to reach the
 maximum timeline plus a year, or every candidate below \code{min_cell} -- the
 analysis slots stay \code{NULL}, \verb{$meta$note} says why, and the document renders

@@ -6,6 +6,12 @@
 \alias{check1_derived_note}
 \alias{ft_check1_life_table}
 \alias{ft_check1_cohorts}
+\alias{ft_check1_survival}
+\alias{ft_check1_timeline}
+\alias{ft_check1_model2}
+\alias{ft_check1_model2_dropped}
+\alias{ft_check1_grade_weights}
+\alias{check1_model2_note}
 \title{Check 1 tables}
 \usage{
 ft_check1_data_fields(results)
@@ -15,6 +21,18 @@ check1_derived_note(results)
 ft_check1_life_table(results)
 
 ft_check1_cohorts(results)
+
+ft_check1_survival(results)
+
+ft_check1_timeline(results)
+
+ft_check1_model2(results)
+
+ft_check1_model2_dropped(results)
+
+ft_check1_grade_weights(results)
+
+check1_model2_note(results)
 }
 \arguments{
 \item{results}{Output of \code{\link[=run_check1]{run_check1()}}.}

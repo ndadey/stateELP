@@ -18,6 +18,20 @@ check1_sim <- local({
   }
 })
 
+# The same run without the academic table: what a delivery that cannot
+# support Model 2 produces. Also built once.
+check1_sim_no_academic <- local({
+  r <- NULL
+  function() {
+    if (is.null(r)) {
+      spec <- check1_spec()
+      r <<- run_check1(as_el_data(el_long_sim, roster = el_roster_sim,
+                                  spec = spec), spec)
+    }
+    r
+  }
+})
+
 # ---- the slide-52 worked numbers --------------------------------------------
 
 test_that("the slide-52 life table reproduces D, E and F to two decimals", {
@@ -236,21 +250,25 @@ test_that("$meta$data_fields is the declaration, filtered to computed slots", {
   fields <- res$meta$data_fields
 
   computed <- c("cohorts", "life_table", "exit_curve",
-                "exit_curve_by_initial_band")
+                "exit_curve_by_initial_band", "survival_est",
+                "at_max_timeline", "model2")
   expect_setequal(fields$FIELD, .check1_fields_for(computed)$FIELD)
   expect_true(all(c("STUDENT_ID", "YEAR", "GRADE", "EL_STATUS") %in%
                     fields$FIELD[fields$KIND == "required"]))
 
-  # The box grows with each pass: the curves' fields are listed now, and were
-  # not when only the first pass's slots existed.
+  # The box has grown with each pass: the first pass's fields are still
+  # listed, and the curves and Model 2 added their own.
   first_pass <- .check1_fields_for(c("cohorts", "life_table"))$FIELD
   expect_true(all(first_pass %in% fields$FIELD))
-  expect_true(all(c("ELP_BAND", "ELP_FORM") %in%
+  expect_true(all(c("ELP_BAND", "ELP_FORM", "SUBJECT", "PERSON_PERIOD") %in%
                     setdiff(fields$FIELD, first_pass)))
-  # A slot that did not run drops its rows, so the box grows with later
-  # passes rather than promising fields nothing read.
-  expect_false(any(grepl("model2", fields$SLOTS)))
   expect_true(all(fields$PRESENT[fields$TABLE == "roster"]))
+
+  # And it tracks what actually ran, not what could have: without the
+  # academic table Model 2 does not run, and its fields leave with it.
+  without <- check1_sim_no_academic()$meta$data_fields
+  expect_false(any(grepl("model2", without$SLOTS)))
+  expect_false(any(c("SUBJECT", "PERSON_PERIOD") %in% without$FIELD))
 })
 
 test_that("an absent optional field is reported with its fallback", {
@@ -454,26 +472,203 @@ test_that("the curve plots, split and unsplit", {
   expect_error(plot_exit_curve(res$life_table), "matching slot")
 })
 
-# ---- later passes ------------------------------------------------------------
 
-test_that("the discrete-time survival estimate is a labeled companion column", {
-  skip("check1 later pass: $survival_est")
+# ---- the survival companion and the timeline statistics ---------------------
+
+test_that("the survival estimate compounds the at-risk rates", {
+  res <- check1_sim()
+  s <- res$survival_est
+  lt <- res$life_table
+
+  expect_identical(s$YEAR_IN_STATUS, lt$YEAR_IN_STATUS)
+  expect_identical(s$A, lt$A)
+  # 1 - prod(1 - D), with the final interval's absent D read as no exits.
+  d <- ifelse(is.na(s$HAZARD), 0, s$HAZARD)
+  expect_equal(s$CUM_EXIT_EST, 1 - cumprod(1 - d))
+  expect_true(all(diff(s$CUM_EXIT_EST) >= 0))          # exit is absorbing
+  expect_true(all(s$SURVIVING >= 0 & s$SURVIVING <= 1))
+
+  # The estimate can only exceed what was observed: censoring can hide
+  # exits, never invent them.
+  both <- !is.na(s$CUM_EXIT_OBS)
+  expect_true(all(s$CUM_EXIT_EST[both] >= s$CUM_EXIT_OBS[both] - 1e-12))
 })
+
+test_that("with nothing censored before the edge, estimate equals observed", {
+  # A property of the shipped sim rather than of the method: no K-cohort
+  # student disappears, so the two columns coincide until the last row. On a
+  # delivery with attrition they separate, and that gap is the point.
+  s <- check1_sim()$survival_est
+  both <- !is.na(s$CUM_EXIT_OBS)
+  expect_equal(s$CUM_EXIT_EST[both], s$CUM_EXIT_OBS[both])
+})
+
+test_that("the survival estimate is computed from unsuppressed counts", {
+  # Suppression blanks D. If the product read a blank as "no exits" it would
+  # flatten the curve silently, so the estimate is built from the counts
+  # before suppression, not from the rendered life table.
+  spec <- check1_spec()
+  spec$policy$suppression$min_cell <- 10000L      # suppress every row
+  b <- make_check1_sim_bundle()
+  s <- compute_survival_est(b, spec, cohort = make_check1_selected())
+
+  expect_true(all(s$SUPPRESSED))
+  expect_true(all(is.na(s$HAZARD)))               # the rendered rate is blank
+  # ... and the underlying estimate still rose, because the counts were real.
+  plain <- compute_survival_est(b, check1_spec(), cohort = make_check1_selected())
+  expect_gt(max(plain$CUM_EXIT_EST), 0.5)
+})
+
+test_that("median years to exit is on the same basis as the exit curve", {
+  res <- check1_sim()
+  y <- res$years_to_50
+  curve <- res$exit_curve
+
+  expect_identical(nrow(y), 2L)
+  expect_true(all(y$REACHED))
+  # The life table's row t accumulates exits dated t + 1, so the median is
+  # converted to exit-year terms; that is what makes it agree with the year
+  # the curve crosses half. Two slots, one answer.
+  crossing <- curve$YEAR_IN_STATUS[which(curve$CUM_EXIT_RATE >= 0.5)[[1]]]
+  observed <- y$YEARS_TO_50[y$BASIS == "Observed exits, against the cohort as it started"]
+  expect_identical(observed, crossing)
+})
+
+test_that("a cohort that never reaches half is reported as such, not as NA years", {
+  s <- tibble::tibble(YEAR_IN_STATUS = 1:4,
+                      CUM_EXIT_OBS = c(0.05, 0.10, 0.15, 0.20),
+                      CUM_EXIT_EST = c(0.05, 0.11, 0.17, 0.22))
+  y <- compute_years_to_50(s)
+  expect_true(all(is.na(y$YEARS_TO_50)))
+  expect_false(any(y$REACHED))
+})
+
+test_that("the timeline outcomes nest, partition, and match the flags", {
+  res <- check1_sim()
+  d <- res$at_max_timeline
+  n <- attr(d, "n_cohort")
+
+  expect_identical(n, res$cohorts$N_ENTRY[res$cohorts$SELECTED])
+  # Nested rows: on time is a subset of within-maximum, which is a subset of
+  # exited at all.
+  nested <- d$N[d$NESTED]
+  expect_true(all(diff(nested) >= 0))
+  # The partition accounts for every student exactly once.
+  expect_identical(d$N[3] + d$N[4] + d$N[5], n)
+  # ... and the exited row is the exit curve's final value.
+  expect_equal(d$PCT[3], max(res$exit_curve$CUM_EXIT_RATE))
+})
+
+test_that("a zero outcome is shown, not suppressed", {
+  # Nobody in this cohort disappears. Blanking that would read as "hidden"
+  # when the finding is "this did not happen", and a count of none discloses
+  # no student.
+  d <- check1_sim()$at_max_timeline
+  disappeared <- d[grepl("Disappeared", d$OUTCOME), ]
+  expect_identical(disappeared$N, 0L)
+  expect_false(disappeared$SUPPRESSED)
+})
+
+# ---- Model 2 ----------------------------------------------------------------
 
 test_that("Model 2 is NULL without the academic table", {
-  skip("check1 later pass: $model2")
+  res <- check1_sim_no_academic()
+
+  expect_null(res$model2)
+  expect_match(res$meta$model2_note, "No academic table")
+  # Model 1 is unaffected, and so is the half of the index it feeds.
+  expect_false(is.null(res$life_table))
+  expect_false(is.null(res$retention_share))
+  expect_true(is.na(res$selection_strength$value))
+  expect_true(all(is.na(res$grade_weights$WEIGHT)))
 })
 
-test_that("2021 person-period rows drop from Model 2 and are never imputed", {
-  # No 2020 academic score exists, so the lagged-ELA covariate is NA there.
-  skip("check1 later pass: $model2")
+test_that("Model 2 fits the person-period frame and reports its ratio", {
+  m <- check1_sim()$model2
+
+  expect_identical(m$subject, spec_academic_subjects(check1_spec())[[1]])
+  expect_true(is.finite(m$ratio))
+  expect_length(m$ci, 2L)
+  expect_lt(m$ci[[1]], m$ratio)
+  expect_gt(m$ci[[2]], m$ratio)
+  expect_gt(m$n_events, 0L)
+  expect_lte(m$n_person_periods, m$n_person_periods_all)
+  expect_true(all(c("ELP_Z", "ACADEMIC_LAG_Z") %in% m$coefficients$TERM))
 })
 
-test_that("the weighting index renders only with an experimental label", {
-  # Untested against the Indiana pipeline; goes nowhere mechanically.
-  skip("check1 later pass: $retention_share, $selection_strength, $grade_weights")
+test_that("rows the model cannot use are counted and never imputed", {
+  m <- check1_sim()$model2
+  d <- m$dropped
+
+  expect_identical(sum(d$N) + m$n_person_periods, m$n_person_periods_all)
+  # The missing assessment year has its own line, separate from the grades
+  # content testing never reaches.
+  gap_row <- grep("no assessment anywhere", d$REASON)
+  expect_length(gap_row, 1L)
+  expect_gt(d$N[gap_row], 0L)
+  expect_match(m$note, "never imputed")
+})
+
+test_that("the sim's exit rule shows up as separation, and is captioned", {
+  # Exit here is a deterministic rule on the ELP score, so the fit pins
+  # probabilities at 0 and 1. The ELP ratio is then uninterpretable, which
+  # the rendered note has to say rather than leave the reader to infer.
+  res <- check1_sim()
+  expect_true(res$model2$quasi_separated)
+  expect_match(check1_model2_note(res), "not interpretable")
 })
 
 test_that("the Type 3 covariate slot is NULL under a Type 1 spec", {
-  skip("check1 later pass: $type3_covariate")
+  expect_null(check1_sim()$type3_covariate)
+  expect_false(spec_has_type(check1_spec(), 3))
+})
+
+test_that("a Type 3 spec puts its non-ELP criterion in the model", {
+  spec <- make_check1_type3_spec()
+  expect_true(spec_has_type(spec, 3))
+
+  res <- run_check1(make_check1_sim_bundle(), spec)
+  t3 <- res$type3_covariate
+
+  expect_false(is.null(t3))
+  expect_identical(t3$criterion_subject, spec_academic_subjects(spec)[[2]])
+  expect_true("CRITERION_Z" %in% t3$model$coefficients$TERM)
+  # The circularity this creates downstream is stated, not left implicit.
+  expect_match(t3$caption, "circular")
+})
+
+# ---- the experimental index -------------------------------------------------
+
+test_that("the weighting index renders only with an experimental label", {
+  res <- check1_sim()
+
+  expect_true(all(res$grade_weights$EXPERIMENTAL))
+  expect_true(res$selection_strength$experimental)
+  expect_equal(res$selection_strength$value, abs(res$model2$ratio - 1))
+  # Retention share is the life table's A against the cohort.
+  expect_equal(res$retention_share$RETENTION_SHARE,
+               res$life_table$A / res$life_table$A[[1]])
+  expect_identical(res$retention_share$RETENTION_SHARE[[1]], 1)
+})
+
+test_that("the hard floor zeroes a year with too few students left", {
+  spec <- check1_spec()
+  spec$policy$suppression$min_cell <- 1000L       # a floor the tail fails
+  b <- make_check1_sim_bundle()
+  s <- compute_survival_est(b, spec, cohort = make_check1_selected())
+  w <- compute_grade_weights(s, check1_sim()$model2, spec)$grade_weights
+
+  expect_true(any(w$BELOW_FLOOR))
+  expect_true(all(w$WEIGHT[w$BELOW_FLOOR] == 0))
+  expect_true(all(w$WEIGHT[!w$BELOW_FLOOR] > 0))
+})
+
+test_that("every Check 1 slot the instruction file names is now filled", {
+  res <- check1_sim()
+  named <- c("cohorts", "life_table", "exit_curve",
+             "exit_curve_by_initial_band", "survival_est", "years_to_50",
+             "at_max_timeline", "model2", "retention_share",
+             "selection_strength", "grade_weights")
+  for (slot in named) expect_false(is.null(res[[slot]]), info = slot)
+  expect_length(res$meta$pending, 0L)
 })

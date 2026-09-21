@@ -128,3 +128,27 @@ make_check1_sim_bundle <- local({
     b
   }
 })
+
+# The selected cohort's label, derived rather than typed: the tests must not
+# name a year any more than the package does.
+make_check1_selected <- function(bundle = make_check1_sim_bundle(),
+                                 spec = make_check1_spec()) {
+  co <- compute_cohorts(bundle, spec)
+  co$COHORT_LABEL[co$SELECTED]
+}
+
+# A Type 3 spec: the SIM rule plus a second criterion drawn from the academic
+# table, which is what "composite plus other source" means. The subject comes
+# from the spec's own academic block, never typed here.
+make_check1_type3_spec <- function() {
+  spec <- make_check1_spec()
+  subject <- spec_academic_subjects(spec)[[2]]
+  spec$policy$exit$types <- 3L
+  spec$policy$exit$pathways[[1]]$terms <- c(
+    spec$policy$exit$pathways[[1]]$terms,
+    list(list(component = subject, from = "academic", measure = "level",
+              op = ">=", value = 3))
+  )
+  validate_el_spec(spec)
+  spec
+}

@@ -43,11 +43,17 @@ have_life_table <- !is.null(res$life_table)
 have_cohorts <- !is.null(res$cohorts)
 have_curve <- !is.null(res$exit_curve)
 have_band_curve <- !is.null(res$exit_curve_by_initial_band)
+have_survival <- !is.null(res$survival_est)
+have_timeline <- !is.null(res$at_max_timeline)
+have_model2 <- !is.null(res$model2)
+have_weights <- !is.null(res$grade_weights)
+have_type3 <- !is.null(res$type3_covariate)
 # Negated forms as their own names: `!expr !have_life_table` reads the second
 # `!` as a second YAML tag and fails to parse.
 no_life_table <- !have_life_table
 no_cohorts <- !have_cohorts
 no_band_curve <- !have_band_curve
+no_model2 <- !have_model2
 ```
 
 ::: {.callout-note appearance="default" icon=false}
@@ -142,6 +148,143 @@ plot_exit_curve(res$exit_curve_by_initial_band, spec)
 cat("> **No split by initial band.** ", res$meta$band_note, "\n", sep = "")
 ```
 
+## How long, and how many
+
+Column **F** answers "how many have exited by now" against the cohort as it
+started, so every student lost along the way holds it down: it is a lower
+bound. Beside it sits the standard discrete-time estimate, which compounds
+each year's at-risk rate to ask what share *would* have exited had nobody
+been lost. Neither is the right number alone, so both are shown.
+
+```{r}
+#| label: tbl-survival
+#| tbl-cap: "Exit rates by year in status. The last two columns answer different questions: the observed share counts against the cohort as it started, the estimate allows for students no longer being observed."
+#| eval: !expr have_survival
+ft_check1_survival(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_survival
+gap <- res$survival_est$CUM_EXIT_EST - res$survival_est$CUM_EXIT_OBS
+if (all(is.na(gap) | abs(gap) < 1e-9)) {
+  cat("The two columns agree exactly here, which they do only when nobody",
+      "leaves the data before the window's edge. On a real delivery they",
+      "will separate, and the gap is the price of censoring.\n")
+}
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_survival
+y <- res$years_to_50
+for (i in seq_len(nrow(y))) {
+  cat(sprintf("- **%s:** %s\n", y$BASIS[i],
+              if (y$REACHED[i]) sprintf("half the cohort has exited by year %d in status.", y$YEARS_TO_50[i])
+              else "half the cohort had not exited inside the window."))
+}
+```
+
+Where the cohort stood when the window closed:
+
+```{r}
+#| label: tbl-timeline
+#| tbl-cap: "Outcomes against the timelines. The first three rows are nested, each a subset of the one below; the last three -- exited, still classified, disappeared -- account for every student once."
+#| eval: !expr have_timeline
+ft_check1_timeline(res)
+```
+
+## Model 2 --- does achievement predict who exits?
+
+Model 1 describes *when* students exit. Model 2 asks a different question:
+once you already know a student's ELP score, does knowing last year's content
+score tell you anything more about whether they exit this year? If it does,
+something other than the language test is shaping who leaves EL status --
+the selection effect this stage exists to catch at the source.
+
+The number to read is the ratio on prior-year achievement. At 1 it adds
+nothing. Away from 1 in either direction, it adds something it should not.
+
+```{r}
+#| label: tbl-model2
+#| tbl-cap: "Discrete-time hazard model on the person-period frame. Ratios are per standard deviation."
+#| eval: !expr have_model2
+ft_check1_model2(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_model2
+cat(check1_model2_note(res), "\n")
+```
+
+```{r}
+#| label: tbl-model2-dropped
+#| tbl-cap: "Person-years the model could not use. Nothing here is imputed."
+#| eval: !expr have_model2
+ft_check1_model2_dropped(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr no_model2
+cat("> **No Model 2.** ", res$meta$model2_note, "\n", sep = "")
+```
+
+::: {.callout-important appearance="default" icon=false}
+## What this model can and cannot say here
+
+On simulated data this is **machinery, not a finding**. Exit in this
+simulation is a rule applied to the ELP score and nothing else, so a ratio
+near 1 on prior achievement is the generator reporting its own design. Run
+against a real delivery, the same table is a genuine test.
+
+Read it as evidence about *selection*, not about students: a ratio away from
+1 says the exit process is responding to something beyond the language test,
+which is a fact about the policy as implemented.
+:::
+
+```{r}
+#| output: asis
+#| eval: !expr have_type3
+cat("### Additional check: the non-ELP criterion\n\n",
+    "This state's exit rule uses a criterion beyond the ELP score, so it ",
+    "enters the model alongside it. ", res$type3_covariate$caption, "\n",
+    sep = "")
+```
+
+## The weighting index (experimental)
+
+::: {.callout-warning appearance="default" icon=false}
+## Not an established statistic
+
+What follows is a **candidate** the Process Overview sketches, not a
+validated method: retention share as a hard floor, selection strength as a
+continuous downweight above it. It has not been tested against real data,
+nothing in this package uses it, and no decision should rest on it until it
+has been checked against the Indiana pipeline.
+:::
+
+```{r}
+#| label: tbl-weights
+#| tbl-cap: "Candidate grade weights. Experimental: shown to be pressure-tested, not used."
+#| eval: !expr have_weights
+ft_check1_grade_weights(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_weights
+s <- res$selection_strength
+if (!is.na(s$value)) {
+  cat(sprintf(paste0("Selection strength is %s, computed as %s. It is a ",
+                     "single number for the whole cohort here; a per-grade ",
+                     "version needs an interaction or a refit at each grade ",
+                     "and is not built.\n"),
+              format(round(s$value, 3)), s$basis))
+}
+```
+
 ## Looking at
 
 Discrete-time survival analysis applied to one entry cohort: students who
@@ -207,15 +350,24 @@ of one entry cohort, never as the state's overall exit rate.
 :::
 
 
-## Still to come
+## What is not here
 
-This pass builds the life table and the exit curves. The rest of Check 1
-arrives in later passes, each with its own session: the discrete-time survival
-estimate as a labeled companion column; median years to exit, the share
-exiting within the ESSA timeline, and the share still classified at the
-window's edge; Model 2 and its hazard ratio on lagged ELA; and, last and only
-with its experimental label, the retention-share / selection-strength
-weighting index.
+Check 1 is complete: the life table, the exit curves, the survival estimate
+and its median, the timeline outcomes, Model 2 and the experimental index all
+render above. Three things are deliberately absent.
+
+**A per-grade selection strength.** The index uses one ratio for the whole
+cohort. The Process Overview asks for it at each grade, which needs either an
+interaction term or a refit through each grade; neither is built, and the
+single number should not be read as if it were per grade.
+
+**Any mechanical use of the index.** It is rendered to be pressure-tested
+against real data, starting with the Indiana pipeline. Nothing downstream
+consumes it.
+
+**Later start grades.** This is one K cohort. Students entering in grade 4,
+or in grade 9 as newcomers, have different trajectories, and the deck's own
+next step is to repeat the analysis for them one starting grade at a time.
 
 ::: {.callout-tip appearance="default" icon=false}
 ## Decide before moving on

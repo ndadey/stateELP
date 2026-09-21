@@ -84,9 +84,10 @@ Maintain this table. It starts as the shell inventory.
 | `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below |
 | `internal_docs/steps/` (8 files) + `dev/prompts/` | **written** | numbered `1_`–`9_` in run order; binding per-stage contracts; refine as stages evolve |
-| `R/check1_*.R` + `check1_survival.qmd` | **first pass + curves built** | `compute_cohorts()` (D1 selection, exported for Check 2), `compute_life_table()` (slide-52 A–F), `compute_exit_curve()` (overall and by initial ELP band, the band derived from `elp_headline()`), `plot_exit_curve()`, `run_check1()`, the D2 data-fields declaration, and `ft_check1_*()` / `check1_derived_note()`; renders docx + html. Remaining later passes: survival column → years-to-50 / at-max → Model 2 → experimental weights |
+| `R/check1_*.R` + `check1_survival.qmd` | **complete** | Every slot the instruction file names is filled: `compute_cohorts()` (D1 selection, exported for Check 2), `compute_life_table()` (slide-52 A–F), `compute_exit_curve()` (overall and by initial ELP band), `compute_survival_est()` + `compute_years_to_50()`, `compute_at_max_timeline()`, `compute_model2()` (person-period hazard model, lagged achievement, quasi-separation flagged), `compute_grade_weights()` (experimental, labeled, used nowhere), the Type 3 gate, `plot_exit_curve()`, `ft_check1_*()`, `run_check1()`. No `skip()`ped tests remain in `test-check1.R`. Decisions beyond the instruction file are in `internal_docs/NOTES-check1.md` `[PROPOSED — CONFIRM]`. **Rendered to docx only; `devtools::check()` not run for the final pass** (see the verification note below). Not built, and recorded as such in the document: per-grade selection strength, later start grades |
 | `R/prep2_*.R` + `prep2_population.qmd` | **full port built** | ported from the standalone draft (`stateData/MT/prep2_population_V2.qmd`), not just the shell's Done-when: every figure and table in the instruction file's list, plus entry dating, time in status and the Type-gated crosswalk; `compute_*()` / `plot_*()` / `ft_prep2_*()` / `run_prep2()`; renders docx + html. Slots and calls beyond the instruction file are in `internal_docs/NOTES-prep2.md` `[PROPOSED — CONFIRM]` |
-| Eight `.qmd` shells | **2 of 8 built** | `check1_survival.qmd`, `prep2_population.qmd`; one stage session each for the rest (§15) |
+| `R/check2_*.R` + `check2_flows.qmd` | **first pass built** | shell Done-when: `compute_exit_flags()` (`$flags`, the student-level nested indicators on Check 1's cohort via the exported `compute_cohorts()`), `compute_crosstab()` (`$crosstab`, the Total block: Total students and % of all across All / Exit_Ever / Exit_Max / Exit_OnTime / No_Exit / Disappeared), `ft_check2_crosstab()`, `run_check2()`; renders docx + html. Row blocks, academic summary, trajectories and the Type-gated `$blocked_groups` are `NULL` with `skip()`ped tests. Calls beyond the instruction file are in `internal_docs/NOTES-check2.md` `[PROPOSED — CONFIRM]` |
+| Eight `.qmd` shells | **3 of 8 built** | `check1_survival.qmd`, `prep2_population.qmd`, `check2_flows.qmd`; one stage session each for the rest (§15) |
 | Fixtures: A–J, slide-52, J-vs-consistency | **A–J + slide-52 built** | A–J + last-current counter-test in `test-utils.R`; slide-52 worked numbers and the cohort rosters in `helper-check1.R`; ELPA21 base + roster pair and SGP / summative fixtures in `helper-el_data.R`; J-vs-consistency lands with Check 4 |
 | Stage analyses (all others) | not built | later passes per instruction file |
 
@@ -110,6 +111,32 @@ run in the copy only: **0 errors, 0 warnings**, the same `data/` NOTE.
 five: survival column, Model 2 ×2, weights, Type 3), 0 failures. `devtools::check()` on a staging copy of the
 working tree, `document()` run in the copy: **0 errors, 0 warnings**, the same
 `data/` NOTE.
+
+**Test count after Check 1 was completed (2026-09-21):** `test-check1.R` 186
+expectations passing across 44 tests, **0 skipped** — the stage has no
+placeholder left; the whole suite 842 passing, 38 `skip()`ped, 0 failing.
+Rendered to **Word only**, and **`devtools::check()` was not run** for this
+pass, per the loop below.
+
+**Verification for the rest of the 2026-09-21 session (directed):**
+`devtools::check()` is **not run**, and stage documents are rendered to
+**Word only — no HTML**. The loop after each change is
+`devtools::document()` → `devtools::load_all()` →
+`devtools::test(filter = "<stage>")`, with one full `devtools::test()` before
+the session ends, and `render_step("<stage>", formats = "docx")`. This
+overrides §11's "`devtools::check()` clean" condition and the stage
+template's for this session only. **Work landed under this loop is
+unchecked and has no HTML render** — say so in its commit, and run both
+before the shell is called done. Everything committed earlier in the session
+(through the component-naming commits) was verified with a clean
+`devtools::check()` and rendered in both formats.
+
+**Test count after Check 2's first pass (2026-09-21):** `test-check2.R` 65
+expectations passing, 3 `skip()`ped (row blocks, academic summary,
+trajectories); the whole suite 767 passing, 44 `skip()`ped, 0 failing when run
+in the working tree. `devtools::check()` on a staging copy of the working tree,
+`document()` run in the tree: **0 errors, 0 warnings**, the `data/` NOTE and
+"unable to verify current time" (no network on this machine). No new `Imports`.
 
 **Column naming.** ALL CAPS for every column of every data frame, delivered,
 derived and summary alike — the rule and its rationale live in §4. Confirmed

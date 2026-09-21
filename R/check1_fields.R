@@ -81,9 +81,26 @@
     "Disappeared (first year absent) or still classified at the window's edge.",
     NA_character_,
 
+    "SCALE_SCORE",     "base",    "optional",  "model2",
+    sprintf("The %s scale score, which Model 2 holds constant while it asks whether achievement predicts exit.",
+            score),
+    "Model 2 is not fitted; Model 1 is unaffected",
+
+    "SUBJECT",         "academic", "optional", "model2",
+    "Selects the content subject whose prior-year score enters Model 2.",
+    "Model 2 is not fitted; Model 1 is unaffected",
+
+    "SCALE_SCORE",     "academic", "optional", "model2",
+    "The prior-year content score: the covariate that tests for skimming, lagged so it cannot be an effect of exiting.",
+    "Model 2 is not fitted; Model 1 is unaffected",
+
     "ELP_BAND",        "derived", "derived",   "exit_curve_by_initial_band",
     sprintf("The initial ELP band: the student's first annual %s level, banded by the spec.",
             score),
+    NA_character_,
+
+    "PERSON_PERIOD",   "derived", "derived",   "model2",
+    "One row per student per year at risk, built on demand for Model 2 and never stored.",
     NA_character_,
 
     "A_TO_F",          "derived", "derived",   "life_table",
