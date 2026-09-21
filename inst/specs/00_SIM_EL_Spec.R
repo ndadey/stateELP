@@ -48,9 +48,12 @@ SIM_EL_Spec <- stateELP::el_spec(
                            native_name = "Literacy"),
       comprehension = list(kind = "composite", measures = c("scale", "level"),
                            from = c(listening = 0.30, reading = 0.70)),
+      # native_name is what the rendered documents call it: reader-facing
+      # text names the component, never the package's word "headline".
       overall       = list(kind = "composite", measures = c("scale", "level"),
                            from = c(listening = 0.15, speaking = 0.15,
-                                    reading = 0.35, writing = 0.35))
+                                    reading = 0.35, writing = 0.35),
+                           native_name = "Overall Composite")
     ),
 
     headline    = "overall",

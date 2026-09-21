@@ -159,7 +159,11 @@ compute_life_table <- function(data, spec, cohort, start_grade = "K") {
 # initial band: alternate-form takers (a different scale entirely, contract
 # 4.4) and anyone untested in their first years. They are shown as their own
 # group, never folded into a band and never silently dropped.
-.CHECK1_NO_BAND <- "No annual headline"
+#
+# It appears in a figure legend, so it says what a reader can check against
+# their own data -- no annual score -- rather than naming this package's
+# abstraction.
+.CHECK1_NO_BAND <- "No annual ELP score"
 
 #' The cumulative exit curve for one cohort
 #'

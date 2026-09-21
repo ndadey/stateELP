@@ -88,8 +88,9 @@ run_check1 <- function(data, spec, start_grade = "K") {
       data_fields          = .check1_data_fields(data, spec, computed),
       note                 = .check1_note(cohorts, spec),
       band_note            = if (!is.na(selected) && !has_band) {
-        paste0("No annual headline resolves for this cohort, so the exit ",
-               "curve is not split by initial ELP band.")
+        paste0("No annual ", spec_headline_label(spec), " score is available ",
+               "for this cohort, so the exit curve is not split by initial ",
+               "ELP band.")
       } else NA_character_,
       pending              = c("survival_est", "years_to_50", "at_max_timeline",
                                "model2", "retention_share",

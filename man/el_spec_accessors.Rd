@@ -4,6 +4,7 @@
 \alias{el_spec_accessors}
 \alias{spec_components}
 \alias{spec_headline}
+\alias{spec_headline_label}
 \alias{spec_bands}
 \alias{spec_min_cell}
 \alias{spec_max_years}
@@ -17,6 +18,8 @@
 spec_components(spec, kind = NULL)
 
 spec_headline(spec)
+
+spec_headline_label(spec)
 
 spec_bands(spec)
 
@@ -39,12 +42,18 @@ spec_academic_grades(spec, subject)
 
 \item{kind}{Optionally \code{"domain"} or \code{"composite"} to filter components.}
 
-\item{type}{An exit-criteria Type number (1-6).}
+\item{type}{An exit-criteria Type number (1-6).
+Reader-facing text never says "headline" -- that is this package's word
+for the abstraction, not a state's word for its score.
+\code{spec_headline_label()} is what a rendered document names instead: the
+state's own name for the component, so the same sentence reads correctly
+for a WIDA composite and for an ELPA21 determination.}
 
 \item{subject}{An academic subject name.}
 }
 \value{
-\code{spec_components()} a character vector; \code{spec_headline()} a string;
+\code{spec_components()} a character vector; \code{spec_headline()} a string
+(the vocabulary key) and \code{spec_headline_label()} its display name;
 \code{spec_bands()} a list or \code{NULL}; \code{spec_min_cell()}, \code{spec_max_years()} and
 \code{spec_essa_years()} whole numbers; \code{spec_exit_types()} a numeric vector;
 \code{spec_has_type()} a flag; \code{spec_academic_subjects()} a character vector;

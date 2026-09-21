@@ -105,9 +105,9 @@ run in the copy only: **0 errors, 0 warnings**, the same `data/` NOTE.
 `ggplot2` joined `Imports` with Prep 2, the first stage to draw a figure;
 `renv::snapshot()` records it.
 
-**Test count after Check 1's curves pass (2026-09-21):** 701 expectations
-passing, 47 `skip()`ped (Check 1 is down to five: survival column, Model 2 ×2,
-weights, Type 3), 0 failures. `devtools::check()` on a staging copy of the
+**Test count after Check 1's curves pass and the component-naming rewording
+(2026-09-21):** 706 expectations passing, 47 `skip()`ped (Check 1's remaining
+five: survival column, Model 2 ×2, weights, Type 3), 0 failures. `devtools::check()` on a staging copy of the
 working tree, `document()` run in the copy: **0 errors, 0 warnings**, the same
 `data/` NOTE.
 
@@ -693,6 +693,19 @@ the output directory, render there, save RDS beside it, remove the copy;
 `_files/` stays out of the source tree. `flextable` for every table (Word
 primary, HTML secondary); `fig-dpi: 300`. Dev helper: `dev/render_step.R` +
 exported `render_step("check1")` — the fifty-times-a-day loop.
+
+**Reader-facing text names the component, never "headline"** (decided
+2026-09-21). "Headline" is this package's word for *which* component a
+state's analyses run on — load-bearing in code, meaningless to a policy
+reader. Documents, figure legends, table cells and `$meta` notes say what the
+state reports instead, through `spec_headline_label()`: the component's
+`native_name` when the spec gives one ("Overall Composite", "Overall
+Performance Determination"), otherwise its vocabulary key and `kind`. The
+name is resolved from the spec, so the rule survives the no-component-literals
+guardrail and reads correctly for any instrument. Introduce it once per
+document, then use the short form. A test in `test-render.R` greps every
+`.qmd` for the word and fails on it. The abstraction keeps its name in code,
+roxygen and this file.
 
 Coding: tidyverse conventions throughout; `data.table`/`collapse` only after
 a measured bottleneck; `Imports:` individual packages only, never

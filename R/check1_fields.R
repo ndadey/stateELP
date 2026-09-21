@@ -18,7 +18,16 @@
 # SLOTS     comma-separated results slots that consume the field
 # USED_FOR  one plain-language line, for the reader of the document
 # FALLBACK  optional fields only: what happens when it is absent
-.check1_field_declaration <- function() {
+#
+# USED_FOR is read by a policy audience, so it names the component the state
+# reports -- "the Overall Composite" -- rather than this package's word for
+# the abstraction. The name comes from the spec (spec_headline_label()), so
+# it is right for any instrument and is never typed here. Without a spec the
+# wording falls back to a component-free phrase, which is what the
+# validation-only callers get.
+.check1_field_declaration <- function(spec = NULL) {
+  score <- if (is.null(spec)) "reported ELP score" else spec_headline_label(spec)
+
   tibble::tribble(
     ~FIELD,            ~TABLE,    ~KIND,       ~SLOTS,                 ~USED_FOR, ~FALLBACK,
 
@@ -43,15 +52,17 @@
     "entrants in the panel's first year are treated as left-truncated and excluded",
 
     "COMPONENT",       "base",    "optional",  "exit_curve_by_initial_band",
-    "Selects the headline component, whose level becomes the student's initial ELP band.",
+    sprintf("Picks out the %s: the counts and bands on this page are built on it.",
+            score),
     "the curve is not split by initial band; the overall curve is unaffected",
 
     "ACHIEVEMENT_LEVEL", "base",  "optional",  "exit_curve_by_initial_band",
-    "The headline level at the student's first year in status, banded into the initial ELP band.",
+    sprintf("The %s level at the student's first year in status, banded into the initial ELP band.",
+            score),
     "the curve is not split by initial band; the overall curve is unaffected",
 
     "ELP_FORM",        "base",    "optional",  "exit_curve_by_initial_band",
-    "Restricts the headline to the annual form: alternate-form levels are a different scale and never enter a band.",
+    "Keeps the annual assessment only: alternate-form levels are on a different scale and never enter a band.",
     "alternate-form students cannot be told apart, and the split is not drawn",
 
     "COHORT_LABEL",    "derived", "derived",   "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
@@ -71,7 +82,8 @@
     NA_character_,
 
     "ELP_BAND",        "derived", "derived",   "exit_curve_by_initial_band",
-    "The initial ELP band: the first annual headline level, banded by the spec.",
+    sprintf("The initial ELP band: the student's first annual %s level, banded by the spec.",
+            score),
     NA_character_,
 
     "A_TO_F",          "derived", "derived",   "life_table",
@@ -106,7 +118,7 @@
 # name when the crosswalk does not rename it); PRESENT answers the optional
 # fields. Derived rows have neither -- nothing delivered them.
 .check1_data_fields <- function(data, spec, slots) {
-  out <- .check1_fields_for(slots)
+  out <- .check1_fields_for(slots, .check1_field_declaration(spec))
   if (!nrow(out)) return(out)
 
   delivered <- list(

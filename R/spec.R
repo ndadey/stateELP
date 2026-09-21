@@ -525,8 +525,15 @@ validate_el_spec <- function(spec) {
 #' @param kind Optionally `"domain"` or `"composite"` to filter components.
 #' @param subject An academic subject name.
 #' @param type An exit-criteria Type number (1-6).
+#' Reader-facing text never says "headline" -- that is this package's word
+#' for the abstraction, not a state's word for its score.
+#' `spec_headline_label()` is what a rendered document names instead: the
+#' state's own name for the component, so the same sentence reads correctly
+#' for a WIDA composite and for an ELPA21 determination.
+#'
 #' @name el_spec_accessors
-#' @return `spec_components()` a character vector; `spec_headline()` a string;
+#' @return `spec_components()` a character vector; `spec_headline()` a string
+#'   (the vocabulary key) and `spec_headline_label()` its display name;
 #'   `spec_bands()` a list or `NULL`; `spec_min_cell()`, `spec_max_years()` and
 #'   `spec_essa_years()` whole numbers; `spec_exit_types()` a numeric vector;
 #'   `spec_has_type()` a flag; `spec_academic_subjects()` a character vector;
@@ -545,6 +552,20 @@ spec_components <- function(spec, kind = NULL) {
 #' @rdname el_spec_accessors
 #' @export
 spec_headline <- function(spec) spec$elp$headline
+
+#' @rdname el_spec_accessors
+#' @export
+spec_headline_label <- function(spec) {
+  headline <- spec_headline(spec)
+  if (is.null(headline)) return(NA_character_)
+  cp <- spec$elp$components[[headline]]
+  # The state's own name for it when the spec gives one -- "Overall
+  # Composite", "Overall Performance Determination". Otherwise the
+  # vocabulary key and its kind, which reads as "overall composite": both
+  # halves come from the spec, so no component name is typed here.
+  if (!is.null(cp$native_name)) return(cp$native_name)
+  if (is.null(cp$kind)) headline else paste(headline, cp$kind)
+}
 
 #' @rdname el_spec_accessors
 #' @export

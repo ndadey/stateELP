@@ -122,13 +122,16 @@ plot_exit_curve(res$exit_curve, spec)
 ```
 
 Splitting the same curve by the band a student started in asks whether exit
-timing is already set at entry. The band is the student's first annual
-headline level, banded by the spec --- it is derived here, not read from a
-delivered column.
+timing is already set at entry. Everything counted on this page is built on
+the **`r spec_headline_label(spec)`** --- the score this state reports as a
+student's overall English language proficiency result --- and a student's
+band is their level on it in the first year they sat the annual assessment.
+That band is derived here from the score itself, not read from a delivered
+column.
 
 ```{r}
 #| label: fig-exit-curve-band
-#| fig-cap: "Cumulative exit rate by initial ELP band. Bands below the minimum cell size are suppressed and not drawn. Students with no annual headline -- alternate-form takers, whose levels are a different scale -- are shown separately rather than folded into a band."
+#| fig-cap: !expr sprintf("Cumulative exit rate by initial ELP band, from each student's first annual %s level. Bands below the minimum cell size are suppressed and not drawn. Students with no annual score -- alternate-form takers, whose levels are on a different scale -- are shown separately rather than folded into a band.", spec_headline_label(spec))
 #| eval: !expr have_band_curve
 plot_exit_curve(res$exit_curve_by_initial_band, spec)
 ```

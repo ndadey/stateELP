@@ -278,6 +278,26 @@ test_that("exit dating is pinned to the first former year", {
   )
 })
 
+test_that("the headline has a display name for the documents to use", {
+  # Rendered text names the component a state reports; "headline" is this
+  # package's word for the abstraction and never reaches a reader.
+  expect_identical(spec_headline_label(read_el_spec("00_SIM_EL_Spec")),
+                   "Overall Composite")
+  expect_identical(spec_headline_label(read_el_spec("NJ_elp_2023")),
+                   "Overall Composite")
+  # The ELPA21 headline is a categorical determination, and its own name
+  # travels with it -- the same sentence has to read correctly for both.
+  expect_identical(spec_headline_label(read_el_spec("00_ELPA21_EL_Spec")),
+                   "Overall Performance Determination")
+
+  # With no native_name the label falls back to the vocabulary key and the
+  # component's kind, so it still reads as a noun phrase.
+  spec <- make_spec_base()
+  expect_identical(spec_headline_label(spec),
+                   paste(spec_headline(spec),
+                         spec$elp$components[[spec_headline(spec)]]$kind))
+})
+
 test_that("the on-time rule and the LTEL year are structured, and checked", {
   expect_error(
     make_spec_base(policy = list(timelines = list(lt_el_years = "six"))),
