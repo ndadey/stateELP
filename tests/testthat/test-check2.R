@@ -494,3 +494,58 @@ test_that("a Type 2-6 rule with no blocked students says so, distinctly", {
   expect_match(res$meta$blocked_note, "more than one criterion")
   expect_no_match(res$meta$blocked_note, "Type 1")
 })
+
+# ---- the band-clock caution (2026-09-21) -------------------------------------
+
+test_that("a flat on-time rule raises no band-clock caution", {
+  # The ordinary case: one deadline for everyone, so the Initial ELP block is
+  # a straight comparison and a warning there would be noise.
+  res <- check2_sim()
+
+  expect_null(check2_spec()$policy$timelines$on_time_rule$by_initial_band)
+  expect_true(is.na(res$meta$band_clock_note))
+})
+
+test_that("an on-time rule keyed by band is caught and its clocks named", {
+  # The rows of the Initial ELP block are the same thing that sets the
+  # deadline, so Exit_OnTime down that block compares each band against its
+  # own clock. Two bands whose students behaved identically can read 100% and
+  # 0%. Nothing in the table shows this, so the note has to.
+  spec <- check2_spec()
+  spec$policy$timelines$on_time_rule$by_initial_band <-
+    c("1.0-1.9" = 7L, "2.0-2.9" = 6L, "3.0-3.9" = 5L,
+      "4.0-4.4" = 4L, "4.5-4.9" = 4L, "5.0+" = 3L)
+
+  res <- run_check2(make_check2_sim_bundle(), spec)
+  note <- res$meta$band_clock_note
+
+  expect_false(is.na(note))
+  # The deadlines themselves, so a reader can see the spread rather than be
+  # told about it.
+  expect_match(note, "1.0-1.9: 7 years", fixed = TRUE)
+  expect_match(note, "5.0+: 3 years", fixed = TRUE)
+  # ... and the column that stays comparable across bands.
+  expect_match(note, "Exit_Max", fixed = TRUE)
+  expect_match(note, as.character(spec_max_years(spec)))
+})
+
+test_that("the band-clock rule really does move the on-time line", {
+  # The caution is only worth rendering if the underlying quantity actually
+  # changes -- otherwise it warns about nothing.
+  spec <- check2_spec()
+  b <- make_check2_sim_bundle()
+  co <- compute_cohorts(b, spec)
+  sel <- co$COHORT_LABEL[co$SELECTED]
+  flat <- compute_exit_flags(b, spec, sel)
+
+  keyed <- spec
+  keyed$policy$timelines$on_time_rule$by_initial_band <-
+    c("1.0-1.9" = 7L, "5.0+" = 3L)
+  varied <- compute_exit_flags(b, keyed, sel)
+
+  expect_length(unique(flat$ON_TIME_YEARS), 1L)
+  expect_gt(length(unique(varied$ON_TIME_YEARS)), 1L)
+  # Exit_Max is the same under both, which is why the note sends readers there.
+  expect_identical(flat$EXIT_MAX, varied$EXIT_MAX)
+  expect_false(identical(flat$EXIT_ONTIME, varied$EXIT_ONTIME))
+})

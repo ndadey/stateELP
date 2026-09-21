@@ -104,12 +104,51 @@ run_check2 <- function(data, spec, start_grade = "K", subject = NULL) {
       other_subjects       = setdiff(subjects, attr(academic, "subject")),
       type_gate_applies    = spec_has_type(spec, 2:6),
       blocked_note         = .check2_blocked_note(blocked, spec),
+      band_clock_note      = .check2_band_clock_note(spec),
       note                 = if (is.na(selected)) .check2_no_cohort_note()
                              else NA_character_,
       sim_contract_version = data$meta$sim_contract_version,
       package_version      = as.character(utils::packageVersion("stateELP")),
       run_date             = Sys.Date()
     )
+  )
+}
+
+# The Initial ELP block and the on-time rule can be the same fact twice.
+#
+# `policy$timelines$on_time_rule$by_initial_band` gives each starting band its
+# own deadline, and the crosstab then breaks the cohort down BY starting band.
+# Where both are true, the Exit_OnTime column down that block measures every
+# band against a different clock: a band allowed seven years is mechanically
+# likelier to be "on time" than one allowed three, whatever its students did.
+# Two bands whose students behaved identically can read 100% and 0%.
+#
+# That is the policy restated, not a finding, and nothing in the table shows
+# it -- so the note carries the deadlines themselves, and points at Exit_Max,
+# which uses one fixed window for every band and stays comparable.
+#
+# `NA` when the rule is flat, which is the ordinary case and needs no caution.
+# `by_start_grade` needs none either: Check 2 analyzes one entry grade, so the
+# allowance is constant within the table.
+#
+# Added 2026-09-21 from the Check 1 session's circularity review; see
+# internal_docs/NOTES-check2.md.
+.check2_band_clock_note <- function(spec) {
+  by_band <- spec$policy$timelines$on_time_rule$by_initial_band
+  if (is.null(by_band) || !length(by_band)) return(NA_character_)
+
+  years <- paste(sprintf("%s: %s years", names(by_band), as.integer(by_band)),
+                 collapse = "; ")
+  paste0(
+    "**The on-time deadline is not the same for every band.** This state ",
+    "sets it by starting ELP band (", years, "), and the rows below are ",
+    "those same bands. The Exit_OnTime column therefore measures each band ",
+    "against its own clock, so a band given more years will show a higher ",
+    "on-time share even if its students exited no sooner. Read **Exit_Max** ",
+    "down this block instead for a comparison across bands: it uses the ",
+    "single ", spec_max_years(spec), "-year maximum timeline for everyone. ",
+    "Exit_OnTime remains the right column everywhere else in this table, ",
+    "where the rows are not what sets the deadline."
   )
 }
 

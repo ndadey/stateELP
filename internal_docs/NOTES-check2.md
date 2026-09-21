@@ -135,3 +135,59 @@ show one at a time).
   academic gap between the exit groups and the over-representation of any
   subgroup are parameters of the generator. The document says so in its closing
   note.
+
+## Circularity review, 2026-09-21 (from the Check 1 session --- not a fix)
+
+Check 1's fitted models were found to be regressing exit on the exit rule's
+own input (`NOTES-check1.md`). Check 2's flag and crosstab logic was read
+against the same question: **is any quantity computed from the thing it is
+meant to explain?** Recorded here rather than changed, because this is
+another prefix.
+
+**The core structure is clean, and deliberately so.**
+`compute_cohort_profile()` takes every disaggregation variable from the
+**entry year's** roster row -- home language, sex, FRL, IEP, service model --
+and derives the district size band from the entry year's own district counts.
+None of them can have been affected by an exit that happens later. That is
+the correct design and it is what Check 1 failed to do.
+
+**One live risk: `policy$timelines$on_time_rule$by_initial_band`.**
+
+`add_exit_flags()` sets `ON_TIME_YEARS` per student from that rule, and
+`EXIT_ONTIME` compares each student's exit year against their own allowance.
+The crosstab then reports an **Initial ELP** row block. For a state that keys
+its on-time timeline by initial band, those two meet: a band allowed seven
+years is mechanically likelier to be "on time" than one allowed three, so the
+on-time rates down that block are partly the state's rule restated, not a
+finding about students. A reader comparing bands would read the policy back
+to itself.
+
+Verified live rather than assumed: `build_student_spans()` does carry
+`INITIAL_ELP`, so setting `by_initial_band` runs without error and produces
+`ON_TIME_YEARS` spread over 4-7 on the sim cohort.
+
+**Dormant today.** `00_SIM_EL_Spec.R` has `by_initial_band = NULL`, so every
+student gets the same five-year allowance and the block means what it appears
+to mean. The distortion appears the first time a real state's rule is keyed
+by band.
+
+Severity is lower than Check 1's, which was active in the shipped default and
+silently removed Model 2's ability to answer its own question. This one is
+off by default and affects the interpretation of one row block. But it is the
+same class of defect, it is invisible in the output, and it will not announce
+itself.
+
+*Suggested, for the Check 2 session to accept or reject:* when
+`by_initial_band` is non-`NULL`, caption the Initial ELP block to say the
+on-time column there is partly definitional -- and consider reporting
+`EXIT_MAX` (a fixed window, the same for every band) beside it, which stays
+comparable across bands whatever the on-time rule does.
+
+`by_start_grade` needs nothing: Check 2 analyzes one entry grade, so the
+allowance is constant within the table and cannot distort a comparison.
+
+**For the unbuilt `$academic_summary`:** comparing achievement between
+on-time and prolonged groups is not circular under a Type 1 rule, but under
+**Type 3** the exit rule itself carries an academic criterion, so the groups
+would be defined partly by the score being compared. Check 1 captions exactly
+this for `$type3_covariate`; the academic summary will need the same gate.

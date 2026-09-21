@@ -56,6 +56,10 @@ min_cell <- spec_min_cell(spec)
 panel_last <- res$meta$panel[[2]]
 component <- spec_headline_label(spec)
 
+# Only when this state's on-time deadline is keyed by starting band, which
+# makes the Initial ELP block a comparison against different clocks.
+have_band_clock <- !is.na(res$meta$band_clock_note)
+
 # Captions are built here, not inline in a chunk header: a colon-space inside
 # an `!expr` value is read as a YAML mapping and the render fails.
 crosstab_cap <- if (h[["crosstab"]]) {
@@ -162,6 +166,14 @@ ft_check2_crosstab(res)
 #| output: asis
 #| eval: !expr n[["crosstab"]]
 cat("> **No crosstab.** ", res$meta$note, "\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_band_clock
+cat("::: {.callout-warning appearance=\"default\" icon=false}\n",
+    "## Reading the Initial ELP block\n\n",
+    res$meta$band_clock_note, "\n:::\n", sep = "")
 ```
 
 The first two rows are the balance of the cohort across exit outcomes. Every
