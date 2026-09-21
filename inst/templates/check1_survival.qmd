@@ -29,7 +29,7 @@ spec <- read_el_spec(params$spec_file)
 # Dev mode by default: the document runs the stage. `results_file` switches to
 # RDS mode, which is how the Decision stage will read what earlier stages
 # produced. Analysis logic lives in R/, never here.
-res <- if (nzchar(params$results_file %||% "")) {
+res <- if (!is.null(params$results_file) && nzchar(params$results_file)) {
   readRDS(params$results_file)
 } else {
   bundle <- as_el_data(el_long_sim, roster = el_roster_sim,

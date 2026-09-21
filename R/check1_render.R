@@ -5,6 +5,15 @@
 # `ft_*()` is a new naming branch for table builders, alongside plot_*() for
 # ggplots: Word is the primary format and every table in it is a flextable.
 # `[PROPOSED - CONFIRM]`
+#
+# Typography for the rendered tables, built from code points: R CMD check
+# requires the sources themselves to be ASCII ("Portable packages must use
+# only ASCII characters in their R code"), and these are display characters,
+# not data.
+.EM_DASH <- intToUtf8(0x2014)
+.EN_DASH <- intToUtf8(0x2013)
+.SIGMA <- intToUtf8(0x03A3)
+.SUB_ONE <- intToUtf8(0x2081)
 
 #' Check 1 tables
 #'
@@ -26,7 +35,7 @@ NULL
 
   used_for <- ifelse(
     delivered$KIND == "optional" & !delivered$PRESENT,
-    paste0("Not delivered — ", delivered$FALLBACK),
+    paste0("Not delivered ", .EM_DASH, " ", delivered$FALLBACK),
     ifelse(delivered$KIND == "optional",
            paste0(delivered$USED_FOR, " (optional)"),
            delivered$USED_FOR))
@@ -66,7 +75,8 @@ check1_derived_note <- function(results) {
   derived <- fields$FIELD[fields$TABLE == "derived"]
   if (!length(derived)) return(NA_character_)
 
-  label <- ifelse(derived == "A_TO_F", "the life table's A–F", derived)
+  label <- ifelse(derived == "A_TO_F",
+                  paste0("the life table's A", .EN_DASH, "F"), derived)
   paste0("Derived by the package, not read from the delivery: ",
          .and_list(label),
          ". These are recomputed from EL_STATUS transitions every run, so a ",
@@ -100,11 +110,11 @@ ft_check1_life_table <- function(results) {
     C = "C\nDisappeared at year's end",
     D = "D\nAnnual exit rate (B/A)",
     E = "E\nAnnual censor rate (C/A)",
-    F = "F\nCumulative exit rate (ΣB/A₁)")
+    F = paste0("F\nCumulative exit rate (", .SIGMA, "B/A", .SUB_ONE, ")"))
   ft <- flextable::colformat_num(ft, j = c("A", "B", "C"), big.mark = ",",
-                                 na_str = "—")
+                                 na_str = .EM_DASH)
   ft <- flextable::colformat_double(ft, j = c("D", "E", "F"), digits = 2,
-                                    na_str = "—")
+                                    na_str = .EM_DASH)
   ft <- flextable::bold(ft, part = "header")
   ft <- flextable::align(ft, j = c("A", "B", "C", "D", "E", "F"),
                          align = "right", part = "all")
@@ -131,7 +141,7 @@ ft_check1_cohorts <- function(results) {
                                      FOLLOWUP_YEARS = "Years of follow-up",
                                      SELECTED = "")
   ft <- flextable::colformat_num(ft, j = "N_ENTRY", big.mark = ",",
-                                 na_str = "—")
+                                 na_str = .EM_DASH)
   ft <- flextable::bold(ft, part = "header")
   ft <- flextable::bold(ft, i = which(co$SELECTED))
   flextable::autofit(ft)

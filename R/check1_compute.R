@@ -91,9 +91,9 @@ compute_cohorts <- function(data, spec, start_grade = "K") {
 #' **A** students enrolled at the year's beginning (at risk), **B** students
 #' who exited at the year's end, **C** students who disappeared at the year's
 #' end, **D** = B/A the at-risk annual exit rate, **E** = C/A the annual
-#' censor rate, **F** = ΣB/A₁ the original-cohort cumulative exit rate.
+#' censor rate, **F** = sum(B)/A_1 the original-cohort cumulative exit rate.
 #'
-#' The recurrence A₍t+1₎ = Aₜ − Bₜ − Cₜ holds by construction. Under the
+#' The recurrence A_(t+1) = A_t - B_t - C_t holds by construction. Under the
 #' package's exit dating -- first former year, counted as a year in status --
 #' "exited at the end of year *t*" means observed as former in year *t+1*'s
 #' data, and "disappeared at the end of year *t*" means last seen in year *t*

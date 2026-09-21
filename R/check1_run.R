@@ -120,7 +120,7 @@ run_check1 <- function(data, spec, start_grade = "K") {
     panel_last, " (", sel$FOLLOWUP_YEARS, " years). The most complete of the ",
     .small_number(nrow(cohorts)), " usable ", start_grade,
     if (nrow(cohorts) == 1L) " cohort" else " cohorts",
-    " — the longest follow-up.")
+    " ", .EM_DASH, " the longest follow-up.")
 }
 
 # Rendered when an analysis slot is empty, so the document says why rather

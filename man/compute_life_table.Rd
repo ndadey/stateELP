@@ -25,10 +25,10 @@ Discrete-time life table by year in status, in the deck's own columns:
 \strong{A} students enrolled at the year's beginning (at risk), \strong{B} students
 who exited at the year's end, \strong{C} students who disappeared at the year's
 end, \strong{D} = B/A the at-risk annual exit rate, \strong{E} = C/A the annual
-censor rate, \strong{F} = ΣB/A₁ the original-cohort cumulative exit rate.
+censor rate, \strong{F} = sum(B)/A_1 the original-cohort cumulative exit rate.
 }
 \details{
-The recurrence A₍t+1₎ = Aₜ − Bₜ − Cₜ holds by construction. Under the
+The recurrence A_(t+1) = A_t - B_t - C_t holds by construction. Under the
 package's exit dating -- first former year, counted as a year in status --
 "exited at the end of year \emph{t}" means observed as former in year \emph{t+1}'s
 data, and "disappeared at the end of year \emph{t}" means last seen in year \emph{t}
