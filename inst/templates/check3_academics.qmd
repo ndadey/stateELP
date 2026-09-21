@@ -1,0 +1,188 @@
+---
+title: "Data Check 3 --- Academic patterns"
+subtitle: "Evaluating and Setting English Learner Exit Thresholds"
+params:
+  pkg_path: "."
+  spec_file: "00_SIM_EL_Spec"
+  results_file: ""
+  min_n: null
+format:
+  docx: default
+  html:
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 300
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+
+spec <- read_el_spec(params$spec_file)
+
+res <- if (!is.null(params$results_file) && nzchar(params$results_file)) {
+  readRDS(params$results_file)
+} else {
+  bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+                       academic = academic_long_sim, spec = spec)
+  run_check3(bundle, spec)
+}
+
+# `h` is "has it", `n` is "is it missing": Quarto reads a second `!` inside
+# `!expr` as a second YAML tag, so the negation needs its own name.
+slots <- c("box_data", "summary_table", "logistic", "landing",
+           "fairness_boxes", "contested_zone_models", "coverage")
+h <- vapply(slots, function(s) !is.null(res[[s]]), TRUE)
+n <- !h
+
+component <- spec_headline_label(spec)
+min_cell <- spec_min_cell(spec)
+
+# Captions are built here, not inline: a colon-space inside an `!expr` value
+# is read as a YAML mapping and the render fails.
+box_cap <- if (h[["box_data"]]) {
+  sprintf(paste("%s scale score by %s band, grade %s, %d.",
+                "Former ELs and the English-only group are references, not bands.",
+                "The diamond is the mean; the red line is the proficiency cut.",
+                "Groups with fewer than %d scores are suppressed and not drawn."),
+          res$meta$subject, component, res$meta$grade, res$meta$year, min_cell)
+} else "Academic scale score by ELP band"
+```
+
+::: {.callout-note appearance="default" icon=false}
+## Sample
+
+`r res$meta$sample`
+:::
+
+## Looking at
+
+Where academic performance sits relative to English language proficiency, at
+one point in time. Each ELP band is a column; beside them sit two reference
+groups the bands are read against --- students who have already exited EL
+status, and students who were never classified.
+
+The question the figure exists for: **at what level of English proficiency
+does language stop being the dominant constraint on content performance?**
+If the distribution in a band clears the proficiency cut, students at that
+level of English are performing on the content test the way the state expects
+of anyone. If it does not, the exit threshold is letting students out --- or
+holding them in --- at a level where the content test is still measuring
+their English as much as their subject knowledge.
+
+## The panel
+
+```{r}
+#| label: fig-box-panel
+#| fig-cap: !expr box_cap
+#| eval: !expr h[["box_data"]]
+plot_box_panel(res$box_data, spec)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["box_data"]]
+cat("> **No panel.** ", res$meta$note, "\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["box_data"]]
+cat(res$meta$pairing_note, "\n")
+```
+
+::: {.callout-warning appearance="default" icon=false}
+## Reading the band axis
+
+```{r}
+#| output: asis
+cat(res$meta$band_axis_note, "\n")
+```
+:::
+
+## Looking for
+
+Three things, read together rather than one at a time.
+
+1. **Where the boxes cross the cut.** The band whose distribution first
+   reaches the proficiency line is the empirical answer to "how much English
+   is enough for this content test" --- at this grade, in this year.
+2. **How that compares to the exit threshold.** A gap in either direction is
+   the finding. Exiting students below the crossing means they leave while
+   the content test is still partly a language test; exiting well above it
+   means the state is holding students longer than its own content standard
+   requires.
+3. **Whether the English-only column clears the cut itself.** If it does not,
+   the bar being asked of ELs is one that English-speaking peers do not meet,
+   which is a construct-validity problem rather than a threshold one. Data
+   Check 3's fairness checks test that directly; they arrive in a later pass.
+
+## Interpreting it
+
+This is a **cross-section, not growth.** A band's distribution describes the
+students in it this year, not a path any student took. Students move between
+bands year to year, and the students in the top band this year are not last
+year's top band plus progress.
+
+The reference columns carry most of the interpretive weight. Former ELs are
+the group the exit rule has already acted on; the English-only group is the
+standard the content test was built around. A band's position between those
+two is more informative than its position against the cut alone.
+
+## What is not here
+
+This pass renders one panel --- `r res$meta$subject`, grade
+`r res$meta$grade` --- as the stage's real element. Four things follow in
+later passes, in this order:
+
+**The summary table.** n, minimum, 25th, median, mean, 75th, maximum and IQR
+per group, in the deck's slide-71 layout, with alternate-assessment takers
+counted in `n` and excluded from the distributions.
+
+**The logistic regression and its landing statistics.** The probability of
+academic proficiency as a function of the `r component` scale score, read at
+its 50% crossing, beside the band where the share at or above the cut first
+reaches half. Convergence between the two corroborates; divergence is read
+against Prep 2's composition findings and Data Check 1's attrition, never
+resolved by picking whichever grade agrees.
+
+**The two fairness checks.** The box plots re-run on an
+economically-comparable English-only group, and the same logistic with the
+bar swapped from the state's proficiency cut to the English-only group's own
+average. A threshold that lands materially lower under the second is a
+construct-validity signal, and it goes to the Decision stage rather than
+being settled here.
+
+**Every grade, not one.** The per-grade loop, so the landing statistics can
+be examined across grades together --- which is where they become evidence
+rather than an anecdote about grade `r res$meta$grade`.
+
+::: {.callout-important appearance="default" icon=false}
+## What this panel can and cannot say here
+
+On simulated data this is **machinery, not a finding.** Every gap between EL
+and English-only students in this simulation is a parameter of the generator,
+not a measurement of anything. The figure demonstrates that the panel builds,
+suppresses and renders correctly; it is not evidence about any state's
+students. Run against a real delivery, the same figure is the stage's
+substantive output.
+:::
+
+::: {.callout-tip appearance="default" icon=false}
+## Decide before moving on
+
+1. Whether the crossing point, once the later passes report it across every
+   grade, is stable enough to inform a threshold --- or whether it moves by
+   grade in ways Prep 2 and Data Check 1 explain.
+2. Whether the English-only comparison should be economically matched or
+   taken whole, and on which variable, given what this delivery carries.
+3. Which grades carry enough students, after suppression, to be read at all.
+:::
