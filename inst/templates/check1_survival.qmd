@@ -1,0 +1,204 @@
+---
+title: "Data Check 1 --- Cohort survival analysis"
+subtitle: "Evaluating and Setting English Learner Exit Thresholds"
+params:
+  pkg_path: "."
+  spec_file: "00_SIM_EL_Spec"
+  results_file: ""
+  min_n: null
+format:
+  docx: default
+  html:
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+fig-dpi: 300
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+
+spec <- read_el_spec(params$spec_file)
+
+# Dev mode by default: the document runs the stage. `results_file` switches to
+# RDS mode, which is how the Decision stage will read what earlier stages
+# produced. Analysis logic lives in R/, never here.
+res <- if (nzchar(params$results_file %||% "")) {
+  readRDS(params$results_file)
+} else {
+  bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+                       academic = academic_long_sim, spec = spec)
+  run_check1(bundle, spec)
+}
+
+have_life_table <- !is.null(res$life_table)
+have_cohorts <- !is.null(res$cohorts)
+# Negated forms as their own names: `!expr !have_life_table` reads the second
+# `!` as a second YAML tag and fails to parse.
+no_life_table <- !have_life_table
+no_cohorts <- !have_cohorts
+```
+
+::: {.callout-note appearance="default" icon=false}
+## Sample
+
+`r res$meta$sample`
+:::
+
+::: {.callout-note appearance="default" icon=false}
+## Data fields used
+
+```{r}
+#| ft.align: left
+ft_check1_data_fields(res)
+```
+
+`r check1_derived_note(res)`
+:::
+
+## Looking at
+
+Discrete-time survival analysis applied to one entry cohort: students who
+entered EL status in the same grade, in the same year, tracked forward across
+subsequent grades. Two models are estimated, named here because the rest of
+the process refers back to them.
+
+**Model 1 --- the unconditional survival model.** The probability that a
+student exits EL status in each subsequent grade, with ELP as the only
+predictor. This is the baseline description of exit timing; no achievement
+data is involved. It is what this pass renders.
+
+**Model 2 --- the ELA-augmented survival model.** The same discrete-time
+setup with lagged ELA achievement added alongside ELP, which exists to test
+whether academic performance is doing selection work that is supposed to
+belong to the language test alone. *(Later pass --- see Still to come.)*
+
+## Looking for
+
+From Model 1: the shape of the time-to-exit distribution --- the typical
+number of years students take to exit, what share of the cohort exits within
+the state's ESSA-expected timeline, and what share appears never to exit,
+still EL-classified many grades later.
+
+The life table below reads one row per year in status. Column **A** is the
+number of students still classified at the start of that year; **B** those
+observed to exit at its end; **C** those who disappear from the data at its
+end. **D** and **E** are those two as rates of the students actually at risk
+that year, and **F** accumulates exits against the original cohort.
+
+```{r}
+#| label: tbl-life-table
+#| tbl-cap: !expr if (have_life_table) paste0("Life table, ", res$meta$cohort, " cohort") else "Life table"
+#| eval: !expr have_life_table
+ft_check1_life_table(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr no_life_table
+cat("> **No life table.** ", res$meta$note, "\n", sep = "")
+```
+
+## Interpreting it
+
+Model 1 tells you the descriptive shape of your state's exit patterns ---
+when, whether, and after how long students are likely to exit under current
+policy and practice. That is useful in its own right, independent of whether
+the current threshold sits at the right level: it sets realistic expectations
+and gives you plain-language material for talking with stakeholders about
+what a typical EL trajectory looks like in your state.
+
+Two cautions carry the weight here.
+
+**Column F is a lower bound, not a completion rate.** Students who disappear
+from the data are censored, not non-exiters: we stop being able to observe
+them, which is not evidence that they stayed in status. The final row is the
+window's edge --- there is no following year in which an exit could be
+observed, so B is empty and everyone still classified is censored there.
+
+**No average time in status appears anywhere in this document**, because on
+censored data it is not defined. The honest summaries are the median years to
+exit and the share exiting within the timeline, both of which arrive in a
+later pass.
+
+::: {.callout-important appearance="default" icon=false}
+## Caution: remember your data structure
+
+This cohort is students who started in `r res$meta$start_grade`. The total
+exit numbers and percentages across *all* students who exit after each grade
+will be different, because later entrants --- including newcomers arriving in
+the upper grades --- are not in this table at all. Read it as the trajectory
+of one entry cohort, never as the state's overall exit rate.
+:::
+
+## Checkpoint
+
+Confirm the selected cohort is large and stable enough to support a
+trustworthy survival curve, and not distorted by an enrollment anomaly such
+as a pandemic-era dip. The candidates are below: the selected cohort is the
+one with the longest observed follow-up that clears the minimum cell size of
+`r spec_min_cell(spec)`.
+
+```{r}
+#| label: tbl-cohorts
+#| tbl-cap: "Candidate entry cohorts"
+#| eval: !expr have_cohorts
+ft_check1_cohorts(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr no_cohorts
+cat("> **No candidate cohorts.** ", res$meta$note, "\n", sep = "")
+```
+
+## Still to come
+
+This pass builds the life table. The rest of Check 1 arrives in later passes,
+each with its own session: the cumulative exit curve overall and by initial
+ELP band; the discrete-time survival estimate as a labeled companion column;
+median years to exit, the share exiting within the ESSA timeline, and the
+share still classified at the window's edge; Model 2 and its hazard ratio on
+lagged ELA; and, last and only with its experimental label, the
+retention-share / selection-strength weighting index.
+
+::: {.callout-tip appearance="default" icon=false}
+## Decide before moving on
+
+How much weight later grade-level findings can carry, based on Model 1 and
+Model 2 together.
+
+The Process Overview sketches a candidate two-part index for making that call:
+*retention share* --- at each grade, what fraction of the original entry
+cohort is still EL-classified, and so still at risk --- as a hard floor,
+following the same logic as the minimum-N suppression thresholds already used
+in this pipeline; and *selection strength* --- how far Model 2's lagged-ELA
+hazard ratio sits from 1 --- as a continuous downweight above that floor. A
+grade can fail on either count independently: thin-but-unselected data, or
+well-populated-but-heavily-selected data.
+
+That index is **an untested proposal, not an established statistic**. It is
+flagged here as something to build and pressure-test against real data before
+it is presented to an SEA audience as anything more than a candidate idea, and
+nothing in this package uses it mechanically.
+:::
+
+```{r}
+#| output: asis
+cat("*Spec: ", res$meta$spec_id, ". Simulated data, contract ",
+    res$meta$sim_contract_version, ". stateELP ", res$meta$package_version,
+    ", run ", format(res$meta$run_date), ".*\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr identical(res$meta$spec_id, "SIM")
+cat("\n*These figures describe a synthetic fixture. No number here describes",
+    "any real state.*\n")
+```

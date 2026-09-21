@@ -84,15 +84,18 @@ Maintain this table. It starts as the shell inventory.
 | `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below |
 | `internal_docs/steps/` (8 files) + `dev/prompts/` | **written** | numbered `1_`–`9_` in run order; binding per-stage contracts; refine as stages evolve |
-| Eight `.qmd` shells | not built | one stage session each (§15) |
-| Fixtures: A–J, slide-52, J-vs-consistency | **A–J built** | A–J + last-current counter-test in `test-utils.R`; ELPA21 base + roster pair and SGP / summative fixtures in `helper-el_data.R`; slide-52 lands with Check 1, J-vs-consistency with Check 4 |
-| Stage analyses (all) | not built | later passes per instruction file |
+| `R/check1_*.R` + `check1_survival.qmd` | **first pass built** | `compute_cohorts()` (D1 selection, exported for Check 2), `compute_life_table()` (slide-52 A–F), `run_check1()`, the D2 data-fields declaration, and `ft_check1_*()` / `check1_derived_note()`; renders docx + html |
+| Eight `.qmd` shells | **1 of 8 built** | `check1_survival.qmd`; one stage session each for the rest (§15) |
+| Fixtures: A–J, slide-52, J-vs-consistency | **A–J + slide-52 built** | A–J + last-current counter-test in `test-utils.R`; slide-52 worked numbers and the cohort rosters in `helper-check1.R`; ELPA21 base + roster pair and SGP / summative fixtures in `helper-el_data.R`; J-vs-consistency lands with Check 4 |
+| Stage analyses (all others) | not built | later passes per instruction file |
 
-**Test count at the end of the foundation session (2026-09-16 rebuild):** 301
-expectations passing, 58 `skip()`ped (the eight per-stage files), 0 failures.
-`devtools::check()` on a clean export of HEAD: **0 errors, 0 warnings**, 1 NOTE —
-the 6.5 MB `data/` directory (expected; `sim_contract.md` §9). The
-`as_el_data()` example takes ~9 s on the full sim (reported, not a NOTE).
+**Test count at the end of Check 1's first pass (2026-09-21):** 375
+expectations passing, 54 `skip()`ped (the seven unbuilt stages, plus Check 1's
+own later passes), 0 failures. `devtools::check()` on a clean export of HEAD:
+**0 errors, 0 warnings**, 1 NOTE — the 6.5 MB `data/` directory (expected;
+`sim_contract.md` §9). The `as_el_data()` example takes ~9 s on the full sim
+(reported, not a NOTE). `flextable` joined `Imports` with Check 1, the first
+stage to render a table; `renv::snapshot()` records it.
 
 **Column naming.** ALL CAPS for every column of every data frame, delivered,
 derived and summary alike — the rule and its rationale live in §4. Confirmed

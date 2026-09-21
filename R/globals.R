@@ -36,6 +36,9 @@ utils::globalVariables(c(
   "EXIT_ONTIME", "NO_EXIT", "DISAPPEARED", "ON_TIME", "PROLONGED",
   "SUPPRESSED",
 
+  # --- Check 1 ---------------------------------------------------------------
+  "N_ENTRY", "FOLLOWUP_YEARS", "SELECTED",
+
   # --- generic summary names -------------------------------------------------
   "N", "N_WEIGHTED", "PCT"
 ))
