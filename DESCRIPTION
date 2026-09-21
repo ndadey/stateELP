@@ -17,6 +17,7 @@ Depends:
 Imports:
     dplyr,
     flextable,
+    ggplot2,
     rlang,
     stats,
     tibble,

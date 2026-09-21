@@ -1,0 +1,448 @@
+---
+title: "Prep Step 2 --- Population analysis"
+subtitle: "Evaluating and Setting English Learner Exit Thresholds"
+params:
+  pkg_path: "."
+  spec_file: "00_SIM_EL_Spec"
+  results_file: ""
+  min_n: null
+format:
+  docx:
+    toc: true
+  html:
+    embed-resources: true
+    toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 300
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+
+spec <- read_el_spec(params$spec_file)
+
+# Dev mode by default: the document runs the stage. `results_file` switches to
+# RDS mode. Analysis logic lives in R/, never here: this file holds the prose,
+# the captions, and one call per figure or table.
+res <- if (!is.null(params$results_file) && nzchar(params$results_file)) {
+  readRDS(params$results_file)
+} else {
+  # Prep 2 reads the roster and the ELP base table; the academic table is not used.
+  bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
+  run_prep2(bundle, spec)
+}
+
+# Which slots came back. `h` is "has it", `n` is "is it missing": Quarto reads
+# a second `!` inside `!expr` as a second YAML tag, so the negation is its own name.
+slots <- c("counts_by_year", "el_share", "by_grade_span", "by_grade",
+           "by_district", "district_bins", "entry_sources", "entry_grade",
+           "entry_by_year", "entry_cohorts", "time_in_status", "initial_elp",
+           "profile", "monitoring", "criteria_crosswalk")
+h <- vapply(slots, function(s) !is.null(res[[s]]), TRUE)
+n <- !h
+
+lt_years <- res$meta$lt_el_years
+min_cell <- res$meta$min_cell
+latest <- res$meta$latest_year
+```
+
+::: {.callout-note appearance="default" icon=false}
+## Sample
+
+`r res$meta$sample`
+
+`r if (res$meta$short_panel) "**Fewer than five years are available. Trends over time will be thin; treat the year-to-year views as provisional.**" else ""`
+:::
+
+## Looking at
+
+Trends over time, grade-level distribution, district variation, entry-grade
+patterns, and demographic profiles (home language, disability status,
+alternate-assessment participation, and newcomer vs. long-term EL indicators
+where the delivery carries them).
+
+## Looking for
+
+Two things, not one.
+
+1. **The shape of the EL population in its own right.** Where EL students
+   concentrate by grade and district, how large the long-term-EL share is,
+   and how uneven entry patterns are. A reclassification policy technically
+   applies to everyone but lands unevenly: some grades and districts will feel
+   a threshold change far more than others, simply because that is where the
+   EL students are.
+2. **The compositional facts that shape the later stages.** Heavily K/1
+   entry, cumulative attrition by grade, and a concentrated long-term-EL
+   presence are what will later justify weighting certain grades' evidence
+   more cautiously, and analyzing newly arrived and long-term ELs as separate
+   groups rather than one pooled population.
+
+## Data coverage
+
+Counts come from the roster only (the base table has rows only where a test
+happened; the roster is the counting frame). "Annual headline level" means an
+annual-form headline row exists in the base table for that student-year;
+alternate-form takers are reported as a group and never banded.
+
+```{r}
+#| label: tbl-coverage
+#| tbl-cap: !expr sprintf("Roster coverage by year. Never-EL counts are weighted by SAMPLE_WEIGHT; cells under %d are suppressed.", min_cell)
+ft_prep2_coverage(res)
+```
+
+## 1. EL counts over time
+
+```{r}
+#| label: fig-counts-year
+#| fig-cap: "Current English learners by year. Dashed line: average across the panel."
+plot_counts_by_year(res$counts_by_year)
+```
+
+```{r}
+#| label: fig-el-share
+#| fig-cap: "Current ELs as a share of total enrollment (weighted by SAMPLE_WEIGHT)."
+#| eval: !expr h[["el_share"]]
+plot_el_share(res$el_share)
+```
+
+```{r}
+#| label: tbl-el-share
+#| tbl-cap: "Total enrollment and the EL share, weighted by SAMPLE_WEIGHT."
+#| eval: !expr h[["el_share"]]
+ft_prep2_el_share(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["el_share"]]
+cat("No never-EL rows were delivered, so total enrollment is unknown here and the EL share of enrollment is not computed (`el_share` is `NULL`).\n")
+```
+
+## 2. Grade-level distribution
+
+```{r}
+#| label: fig-grade-span
+#| fig-cap: "Current ELs by grade span and year (100% stacked)."
+plot_by_grade_span(res$by_grade_span)
+```
+
+```{r}
+#| label: fig-grade-latest
+#| fig-cap: !expr sprintf("Current ELs by grade, %d. The dashed line is the average across grades.", latest)
+plot_by_grade(res$by_grade)
+```
+
+```{r}
+#| label: tbl-grade-shares
+#| tbl-cap: "Share of current ELs in each grade, by year (column percentages). Read down a column for concentration; read across a row for drift."
+ft_prep2_grade_shares(res)
+```
+
+```{r}
+#| output: asis
+if (!is.null(res$meta$notes$grade)) cat(res$meta$notes$grade, "\n")
+```
+
+## 3. District variation
+
+```{r}
+#| label: fig-districts
+#| fig-cap: !expr sprintf("Current ELs by district, ranked (districts are ranked, not named). The dotted line is at %s ELs. The districts to the left of the dashed line hold two-thirds of all current ELs.", if (is.na(res$meta$small_district_n)) "the small-district threshold" else format(res$meta$small_district_n, big.mark = ","))
+#| eval: !expr h[["by_district"]]
+plot_by_district(res$by_district)
+```
+
+```{r}
+#| label: tbl-district-bins
+#| tbl-cap: !expr sprintf("Districts by EL enrollment band, %d. Band edges [PROPOSED -- CONFIRM].", latest)
+#| eval: !expr h[["district_bins"]]
+ft_prep2_district_bins(res)
+```
+
+```{r}
+#| label: tbl-districts
+#| tbl-cap: "Districts that together hold two-thirds of current ELs. These are where a threshold change lands hardest."
+#| eval: !expr h[["by_district"]]
+ft_prep2_districts(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["by_district"]]
+cat("`DISTRICT_ID` was not delivered, so district variation is not computed (`by_district` is `NULL`).\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["by_district"]] && n[["district_bins"]]
+cat("The spec declares no `policy$district_size_bands`, so districts are ranked but not binned (`district_bins` is `NULL`).\n")
+```
+
+## 4. Entry-grade patterns and candidate cohorts
+
+Each student's entry into EL status is dated from the roster, using the first
+of the fields in `spec$data$entry_sources` that is delivered and non-missing
+(by default `LEP_PROGRAM_START_DATE`, `COHORT_START_YEAR`, `YEAR_IN_STATUS`,
+then `ENTRY_GRADE`, which assumes one grade per year). A state's own count of
+years in the program maps onto `YEAR_IN_STATUS` through
+`spec$data$columns$roster`; whether that count codes a student's first year as
+1 or as 0 is detected from entrants the panel observes, unless the spec says.
+A delivered start date reads on the academic calendar (a September date
+belongs to the next spring year) unless `spec$data$entry_date_rule` says
+otherwise. With none of these fields, the panel itself dates entry only when
+the student first turns `current` *after* the panel opens (a student in K in
+the panel's first year is also taken as a K entrant that year). A student
+already EL in the panel's first year with nothing delivered to date them has an
+**unknown** entry: their time in status is a lower bound, and they are excluded
+from the entry views and from any Check 1 cohort.
+
+```{r}
+#| label: tbl-entry-sources
+#| tbl-cap: "How each ever-current student's entry year was resolved. Rows below the delivered fields are what the panel can do on its own."
+#| eval: !expr h[["entry_sources"]]
+ft_prep2_entry_sources(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["entry_sources"]]
+cat(paste(res$meta$notes$entry, collapse = "\n\n"), "\n")
+```
+
+```{r}
+#| label: fig-entry-grade
+#| fig-cap: "Grade at entry into EL status, among students whose entry falls inside the panel."
+#| eval: !expr h[["entry_grade"]]
+plot_entry_grade(res$entry_grade)
+```
+
+```{r}
+#| label: tbl-entry-by-year
+#| tbl-cap: "Students entering EL status, by entry year and grade (entry observed inside the panel)."
+#| eval: !expr h[["entry_by_year"]]
+ft_prep2_entry_by_year(res)
+```
+
+Candidate K-start cohorts for Data Check 1 are below. They are the same cohorts
+Check 1 selects from: membership is the shared cohort derivation, and
+left-truncated students are excluded by construction.
+
+```{r}
+#| label: tbl-entry-cohorts
+#| tbl-cap: !expr sprintf("Candidate K-start cohorts for Data Check 1. Seeing the full exit window needs %d observed years under first-former-year exit dating; shorter cohorts are usable but censored.", spec_max_years(spec) + 1L)
+#| eval: !expr h[["entry_cohorts"]]
+ft_prep2_entry_cohorts(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["entry_cohorts"]]
+cat("No K-start cohort is observed at entry inside the panel (`entry_cohorts` is `NULL`).\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["entry_sources"]]
+cat("The roster carries no `current` rows, so entry is not dated (`entry_sources`, `entry_grade` and `entry_by_year` are `NULL`).\n")
+```
+
+## 5. Time in status: new vs. long-term ELs
+
+Years in status count from the entry year resolved in section 4, not from a
+student's first appearance in the panel. A student whose entry is unknown
+(already EL when the panel opened, nothing delivered to date them) has only a
+lower bound: the years they have been observed as `current`. Such a student
+counts as long-term once observed for `r if (is.null(lt_years)) "the long-term threshold of" else lt_years`+
+years, and is otherwise carried as *unknown*, which is why the long-term share
+is reported as a range (at least / at most). The two bounds meet once every
+student's entry is dated.
+
+Distributions only. Per the slide-38 guardrail, no mean or average time in
+status is computed anywhere in this document: a mean of durations across
+students who entered at different grades, and are censored at different
+points, describes no one.
+
+```{r}
+#| label: tbl-time-year
+#| tbl-cap: !expr sprintf("New and long-term ELs by year. Long-term = %s+ years in status [DERIVED -- VERIFY]. \"At least\" counts students dated or observed current for %s+ years; \"at most\" adds every student whose entry is unknown and could be. First-year shares count dated entries only.", lt_years, lt_years)
+#| eval: !expr h[["time_in_status"]]
+ft_prep2_time_by_year(res)
+```
+
+```{r}
+#| label: fig-time-grade
+#| fig-cap: !expr sprintf("Years in EL status among current ELs, by grade, %d. Grey marks unknown entry, observed for fewer years than the long-term threshold.", latest)
+#| eval: !expr h[["time_in_status"]]
+plot_time_in_status(res$time_in_status)
+```
+
+```{r}
+#| label: tbl-time-grade
+#| tbl-cap: !expr sprintf("New and long-term shares by grade, %d. This is the table that tells you where a pooled all-EL analysis would mix two different populations.", latest)
+#| eval: !expr h[["time_in_status"]]
+ft_prep2_time_by_grade(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["time_in_status"]]
+cat("The spec carries no structured long-term definition (`policy$timelines$lt_el_years`), so time in status is not computed (`time_in_status` is `NULL`).\n")
+```
+
+## 6. Initial ELP level
+
+The headline level at entry, banded per the spec. Only students whose entry is
+observed inside the panel have an initial level. Alternate-form takers are
+counted as a group and never banded: the alternate scale is a different
+measurement scale.
+
+```{r}
+#| label: fig-initial-elp
+#| fig-cap: "Initial ELP level (banded headline level), among entrants observed at entry."
+#| eval: !expr h[["initial_elp"]]
+plot_initial_elp(res$initial_elp)
+```
+
+```{r}
+#| label: tbl-initial-elp
+#| tbl-cap: "Initial ELP at entry. Bands are the spec's [DERIVED -- VERIFY]."
+#| eval: !expr h[["initial_elp"]]
+ft_prep2_initial_elp(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["initial_elp"]]
+cat(paste(res$meta$notes$initial_elp, collapse = "\n\n"), "\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["initial_elp"]]
+cat("No entrant is observed at entry, so there is no initial ELP distribution (`initial_elp` is `NULL`).\n")
+```
+
+## 7. Demographic profile
+
+```{r}
+#| label: tbl-profile
+#| tbl-cap: !expr sprintf("Profile of current ELs, %d. Shares are within-EL and unweighted; cells under %d suppressed; long value lists collapsed to the top entries. Columns not delivered are simply absent.", latest, min_cell)
+ft_prep2_profile(res)
+```
+
+## 8. Former ELs in monitoring
+
+```{r}
+#| label: tbl-monitoring
+#| tbl-cap: "Former ELs by monitoring year [PROPOSED -- CONFIRM view]."
+#| eval: !expr h[["monitoring"]]
+ft_prep2_monitoring(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["monitoring"]]
+cat("Monitoring counts not shown: no former-EL rows, or neither `EL_MONITOR_YEAR` nor `EL_STATUS_DETAIL` was delivered.\n")
+```
+
+## Interpreting
+
+This step is not just a technical prerequisite for choosing analytic samples.
+It is the interpretive backdrop for every Data Check that follows. A
+grade-level finding, a district pattern, or a subgroup difference in Data
+Checks 1--4 has to be read through what this step shows: is that grade,
+district, or subgroup representative of the EL population, or an outlier
+shaped by unusual entry timing, thin N, or a concentrated long-term-EL
+presence? Skipped or skimmed, this step lets later results be taken at face
+value when they actually reflect population idiosyncrasy rather than anything
+about the exit threshold.
+
+::: {.callout-warning appearance="default" icon=false}
+## Resist the urge to average
+
+Nothing above averages across groups, and nothing reports a mean time in
+status. Grade, district, and duration groups are shown as distributions and
+shares so that the concentration itself stays visible. Keep it that way in
+the stages that follow.
+:::
+
+## Additional check --- Types 2--6: criteria crosswalk
+
+```{r}
+#| output: asis
+#| eval: !expr n[["criteria_crosswalk"]]
+cat("The exit rule is declared as Type 1 (a single overall composite), so the criteria crosswalk does not apply. `criteria_crosswalk`, `blocked_groups` and `contested_zone` are `NULL` in the results object. Declare the additional criteria in `spec$policy$exit$pathways` and set `types` to activate this check.\n")
+if (!is.null(res$meta$notes$crosswalk)) cat("\n\n", res$meta$notes$crosswalk, "\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["criteria_crosswalk"]]
+cat(prep2_crosswalk_note(res), "\n")
+```
+
+```{r}
+#| label: tbl-crosswalk-pattern
+#| tbl-cap: "Pass/fail pattern on each criterion, student-years near the headline cut."
+#| eval: !expr h[["criteria_crosswalk"]]
+ft_prep2_crosswalk_pattern(res)
+```
+
+```{r}
+#| label: tbl-crosswalk-blocked
+#| tbl-cap: "Student-years near the cut, by which criteria block them. The single-criterion groups carry forward to Data Check 2."
+#| eval: !expr h[["criteria_crosswalk"]]
+ft_prep2_crosswalk_blocked(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["criteria_crosswalk"]]
+cat(prep2_contested_note(res), "\n")
+```
+
+```{r}
+#| label: tbl-crosswalk-by-level
+#| tbl-cap: "Where the criteria disagree, by headline level (0.1 bins, window doubled)."
+#| eval: !expr h[["criteria_crosswalk"]]
+ft_prep2_crosswalk_by_level(res)
+```
+
+## Decide before moving on
+
+```{r}
+#| output: asis
+cat(paste0("- ", res$analytic_sample_memo, collapse = "\n"), "\n")
+```
+
+::: {.callout-tip appearance="default" icon=false}
+## Decide
+
+- **Which cohorts and subgroups are large and stable enough to analyze reliably?** Is there a clean K-start cohort for Data Check 1 (observed at entry, not pandemic-distorted, N well above the suppression floor)?
+- **Which grades, districts, or subgroups are most likely to be affected by any eventual policy change** and warrant closer attention throughout?
+- **Where would a single pooled "all ELs together" analysis obscure more than it reveals?** Most notably: newly arrived vs. long-term ELs, and the grades where the long-term share is concentrated.
+:::
+
+```{r}
+#| output: asis
+cat("*Spec: ", res$meta$spec_id, ". ",
+    if (identical(res$meta$spec_id, "SIM")) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
+    "stateELP ", res$meta$package_version, ", run ", format(res$meta$run_date), ".*\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr identical(res$meta$spec_id, "SIM")
+cat("\n*These figures describe a synthetic fixture. No number here describes",
+    "any real state.*\n")
+```

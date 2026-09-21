@@ -206,6 +206,12 @@ SIM_EL_Spec <- stateELP::el_spec(
   # Identity crosswalk: the sim already emits the canonical ALL-CAPS names
   # (sim_contract.md 3.5 / 4.2 / 5.1). Each entry is canonical = delivered.
   data = list(
+    # Prep 2's entry dating. The sim stamps LEP_PROGRAM_START_DATE as 15
+    # September of the SPRING-year label (sim_contract.md 3.5), so its calendar
+    # year IS the entry year; the package default reads a date on the academic
+    # calendar, where a September date belongs to the next spring year.
+    entry_date_rule = "calendar_year",
+
     columns = list(
       roster = c(
         STUDENT_ID    = "STUDENT_ID",

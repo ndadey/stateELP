@@ -85,7 +85,8 @@ Maintain this table. It starts as the shell inventory.
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below |
 | `internal_docs/steps/` (8 files) + `dev/prompts/` | **written** | numbered `1_`–`9_` in run order; binding per-stage contracts; refine as stages evolve |
 | `R/check1_*.R` + `check1_survival.qmd` | **first pass built** | `compute_cohorts()` (D1 selection, exported for Check 2), `compute_life_table()` (slide-52 A–F), `run_check1()`, the D2 data-fields declaration, and `ft_check1_*()` / `check1_derived_note()`; renders docx + html |
-| Eight `.qmd` shells | **1 of 8 built** | `check1_survival.qmd`; one stage session each for the rest (§15) |
+| `R/prep2_*.R` + `prep2_population.qmd` | **full port built** | ported from the standalone draft (`stateData/MT/prep2_population_V2.qmd`), not just the shell's Done-when: every figure and table in the instruction file's list, plus entry dating, time in status and the Type-gated crosswalk; `compute_*()` / `plot_*()` / `ft_prep2_*()` / `run_prep2()`; renders docx + html. Slots and calls beyond the instruction file are in `internal_docs/NOTES-prep2.md` `[PROPOSED — CONFIRM]` |
+| Eight `.qmd` shells | **2 of 8 built** | `check1_survival.qmd`, `prep2_population.qmd`; one stage session each for the rest (§15) |
 | Fixtures: A–J, slide-52, J-vs-consistency | **A–J + slide-52 built** | A–J + last-current counter-test in `test-utils.R`; slide-52 worked numbers and the cohort rosters in `helper-check1.R`; ELPA21 base + roster pair and SGP / summative fixtures in `helper-el_data.R`; J-vs-consistency lands with Check 4 |
 | Stage analyses (all others) | not built | later passes per instruction file |
 
@@ -96,6 +97,13 @@ own later passes), 0 failures. `devtools::check()` on a clean export of HEAD:
 `sim_contract.md` §9). The `as_el_data()` example takes ~9 s on the full sim
 (reported, not a NOTE). `flextable` joined `Imports` with Check 1, the first
 stage to render a table; `renv::snapshot()` records it.
+
+**Test count after Prep 2 (2026-09-21):** 698 expectations passing across the
+suite (Prep 2's 280 skip nothing), 48 `skip()`ped, 0 failures.
+`devtools::check()` on a staging copy of the working tree, with `document()`
+run in the copy only: **0 errors, 0 warnings**, the same `data/` NOTE.
+`ggplot2` joined `Imports` with Prep 2, the first stage to draw a figure;
+`renv::snapshot()` records it.
 
 **Column naming.** ALL CAPS for every column of every data frame, delivered,
 derived and summary alike — the rule and its rationale live in §4. Confirmed
