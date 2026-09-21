@@ -772,6 +772,17 @@ test_that("table years are text, so Word never prints 2,015", {
   expect_identical(ft$body$dataset$YEAR[1], "2015")
 })
 
+test_that("Table 1 leaves the never-EL count to the enrollment share", {
+  res <- make_prep2_sim_run()
+  # Never-ELs stay in the slot, weighted ...
+  expect_true("N_NEVER_WEIGHTED" %in% names(res$counts_by_year))
+  # ... but are not a column of the coverage table.
+  shown <- names(ft_prep2_coverage(res)$body$dataset)
+  expect_false(any(grepl("NEVER", shown)))
+  expect_identical(shown, c("YEAR", "N_CURRENT", "N_ANNUAL_HEADLINE",
+                            "N_ALTERNATE", "N_NO_HEADLINE", "N_FORMER"))
+})
+
 # ---- the document ------------------------------------------------------------
 
 test_that("the memo is built from the slots and names the K cohorts", {

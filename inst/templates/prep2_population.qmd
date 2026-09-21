@@ -96,7 +96,7 @@ alternate-form takers are reported as a group and never banded.
 
 ```{r}
 #| label: tbl-coverage
-#| tbl-cap: !expr sprintf("Roster coverage by year. Never-EL counts are weighted by SAMPLE_WEIGHT; cells under %d are suppressed.", min_cell)
+#| tbl-cap: !expr sprintf("Roster coverage by year. Cells under %d are suppressed.", min_cell)
 ft_prep2_coverage(res)
 ```
 
@@ -391,16 +391,29 @@ if (!is.null(res$meta$notes$crosswalk)) cat("\n\n", res$meta$notes$crosswalk, "\
 cat(prep2_crosswalk_note(res), "\n")
 ```
 
+<!-- The three crosswalk tables below carry their titles as plain lead-in lines,
+not numbered captions. Quarto still numbers and captions a chunk that is
+switched off, so on a Type 1 rule (where none of this applies) numbered
+captions would print over empty tables. -->
+
 ```{r}
-#| label: tbl-crosswalk-pattern
-#| tbl-cap: "Pass/fail pattern on each criterion, student-years near the headline cut."
+#| output: asis
+#| eval: !expr h[["criteria_crosswalk"]]
+cat("**Pass/fail pattern on each criterion, student-years near the headline cut.**\n\n")
+```
+
+```{r}
 #| eval: !expr h[["criteria_crosswalk"]]
 ft_prep2_crosswalk_pattern(res)
 ```
 
 ```{r}
-#| label: tbl-crosswalk-blocked
-#| tbl-cap: "Student-years near the cut, by which criteria block them. The single-criterion groups carry forward to Data Check 2."
+#| output: asis
+#| eval: !expr h[["criteria_crosswalk"]]
+cat("**Student-years near the cut, by which criteria block them.** The single-criterion groups carry forward to Data Check 2.\n\n")
+```
+
+```{r}
 #| eval: !expr h[["criteria_crosswalk"]]
 ft_prep2_crosswalk_blocked(res)
 ```
@@ -412,8 +425,12 @@ cat(prep2_contested_note(res), "\n")
 ```
 
 ```{r}
-#| label: tbl-crosswalk-by-level
-#| tbl-cap: "Where the criteria disagree, by headline level (0.1 bins, window doubled)."
+#| output: asis
+#| eval: !expr h[["criteria_crosswalk"]]
+cat("**Where the criteria disagree, by headline level** (0.1 bins, window doubled).\n\n")
+```
+
+```{r}
 #| eval: !expr h[["criteria_crosswalk"]]
 ft_prep2_crosswalk_by_level(res)
 ```

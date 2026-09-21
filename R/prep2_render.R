@@ -85,14 +85,15 @@ ft_prep2_coverage <- function(results) {
     N_ALTERNATE = .p2_fmt_n(d$N_ALTERNATE),
     N_NO_HEADLINE = .p2_fmt_n(d$N_NO_HEADLINE),
     N_FORMER = .p2_fmt_n(d$N_FORMER),
-    N_NEVER_WEIGHTED = .p2_fmt_n(d$N_NEVER_WEIGHTED),
     check.names = FALSE)
+  # Never-ELs are deliberately not a column here: they matter only as the
+  # enrollment denominator, which ft_prep2_el_share() shows weighted. They stay
+  # in the counts_by_year slot.
   .p2_flex(out, c(YEAR = "Year", N_CURRENT = "Current ELs",
                   N_ANNUAL_HEADLINE = "Annual headline level",
                   N_ALTERNATE = "Alternate form",
                   N_NO_HEADLINE = "No headline result",
-                  N_FORMER = "Former ELs",
-                  N_NEVER_WEIGHTED = "Never-ELs (weighted)"))
+                  N_FORMER = "Former ELs"))
 }
 
 #' @rdname prep2_tables
