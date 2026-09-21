@@ -18,8 +18,10 @@ compute_exit_flags(data, spec, cohort, start_grade = "K")
 }
 \value{
 A tibble, one row per student: \code{STUDENT_ID}, \code{COHORT_LABEL},
-\code{EXIT_YEAR_IN_STATUS}, \code{ON_TIME_YEARS}, \code{EXIT_EVER}, \code{EXIT_MAX},
-\code{EXIT_ONTIME}, \code{NO_EXIT}, \code{DISAPPEARED}, \code{ON_TIME}, \code{PROLONGED}.
+\code{COHORT_START_YEAR}, \code{EXIT_YEAR_IN_STATUS}, \code{LAST_YEAR_IN_STATUS},
+\code{ON_TIME_YEARS}, \code{EXIT_EVER}, \code{EXIT_MAX}, \code{EXIT_ONTIME}, \code{NO_EXIT},
+\code{DISAPPEARED}, \code{ON_TIME}, \code{PROLONGED}, \code{EXIT_GROUP} (the three-way
+grouping the academic summary and the trajectories condition on).
 }
 \description{
 One row per student in the entry cohort, carrying the nested exit

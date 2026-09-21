@@ -7,9 +7,11 @@ params:
   results_file: ""
   min_n: null
 format:
-  docx: default
+  docx:
+    toc: true
   html:
     embed-resources: true
+    toc: true
 execute:
   echo: false
   warning: false
@@ -32,37 +34,70 @@ spec <- read_el_spec(params$spec_file)
 # Dev mode by default: the document runs the stage. `results_file` switches to
 # RDS mode, which is how the Decision stage will read what earlier stages
 # produced. Analysis logic lives in R/, never here: this file holds the prose,
-# the captions, and one call per table.
+# the captions, and one call per figure or table.
 res <- if (!is.null(params$results_file) && nzchar(params$results_file)) {
   readRDS(params$results_file)
 } else {
-  # The academic table rides along for the academic summary (a later pass);
-  # this pass reads the roster only.
+  # The roster carries the cohort and its characteristics; the academic table
+  # is what the achievement comparison needs.
   bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
                        academic = academic_long_sim, spec = spec)
   run_check2(bundle, spec)
 }
 
-have_crosstab <- !is.null(res$crosstab)
-# Negated forms as their own names: `!expr !have_crosstab` reads the second
-# `!` as a second YAML tag and fails to parse.
-no_crosstab <- !have_crosstab
+# Which slots came back. `h` is "has it", `n` is "is it missing": Quarto reads a
+# second `!` inside `!expr` as a second YAML tag, so the negation is its own
+# name.
+slots <- c("crosstab", "academic_summary", "trajectories", "blocked_groups")
+h <- vapply(slots, function(s) !is.null(res[[s]]), TRUE)
+n <- !h
 
 min_cell <- spec_min_cell(spec)
 panel_last <- res$meta$panel[[2]]
-gate_applies <- isTRUE(res$meta$type_gate_applies)
-gate_absent <- !gate_applies
+component <- spec_headline_label(spec)
 
-# Built here, not inline in the chunk header: a colon-space inside an `!expr`
-# value is read as a YAML mapping and the render fails.
-crosstab_cap <- if (have_crosstab) {
-  sprintf(paste0("Exit outcomes, %s cohort, observed through %d. Every ",
-                 "indicator is relative to the years observed, so No_Exit ",
-                 "means not observed exiting by %d, not never exiting. ",
-                 "Cells under %d are suppressed."),
-          res$meta$cohort, panel_last, panel_last, min_cell)
+# Captions are built here, not inline in a chunk header: a colon-space inside
+# an `!expr` value is read as a YAML mapping and the render fails.
+crosstab_cap <- if (h[["crosstab"]]) {
+  paste(
+    sprintf("Exit outcomes and the characteristics of each group, %s cohort, observed through %d.",
+            res$meta$cohort, panel_last),
+    # Kept on one line: a test greps this document for the phrase, and a
+    # sprintf split across source lines would hide it.
+    sprintf("Every indicator is relative to the years observed, so No_Exit means not observed exiting by %d, not never exiting.",
+            panel_last),
+    "Blocks below the first two rows are column percentages.",
+    sprintf("Cells under %d are suppressed.", min_cell))
 } else {
   "Exit outcomes"
+}
+
+academic_cap <- if (h[["academic_summary"]]) {
+  sprintf(paste0("%s achievement by exit group at the same year in status, %s ",
+                 "cohort. The grade beside each year is the modal grade of the ",
+                 "students in it."),
+          res$meta$academic_subject, res$meta$cohort)
+} else {
+  "Academic achievement by exit group"
+}
+
+academic_fig_cap <- if (h[["academic_summary"]]) {
+  sprintf(paste0("Share at or above the %s proficiency cut, by exit group and ",
+                 "year in status. A group with nobody left to measure has no ",
+                 "point rather than a zero."),
+          res$meta$academic_subject)
+} else {
+  "Academic proficiency by exit group"
+}
+
+traj_fig_cap <- if (h[["trajectories"]]) {
+  sprintf(paste0("Mean %s level by year in status, drawn separately for each ",
+                 "exit group. There is deliberately no pooled cohort line: see ",
+                 "the caution below. Lines stop where a group no longer has ",
+                 "students being assessed."),
+          component)
+} else {
+  "ELP level by year in status"
 }
 ```
 
@@ -74,13 +109,13 @@ crosstab_cap <- if (have_crosstab) {
 
 ## Looking at
 
-A comparison of two groups from the Data Check 1 cohort --- students who
-exited on time, and students whose EL classification was prolonged --- across
+A comparison of two groups from the Data Check 1 cohort --- students who exited
+on time, and students whose EL classification was prolonged --- across
 demographic and program characteristics: home language, district size, sex,
 socioeconomic status, disability status, the type of EL services received, and
 the ELP band a student started in. Alongside it, a descriptive summary of
-academic achievement (for example, median ELA percentile or proficiency rate)
-at comparable points in each group's trajectory.
+academic achievement at comparable points in each group's trajectory, and the
+ELP levels each group posted on the way there.
 
 The groups are defined against the years actually observed, and all three exit
 indicators are relative to that window:
@@ -119,20 +154,101 @@ Two things.
 ```{r}
 #| label: tbl-crosstab
 #| tbl-cap: !expr crosstab_cap
-#| eval: !expr have_crosstab
+#| eval: !expr h[["crosstab"]]
 ft_check2_crosstab(res)
 ```
 
 ```{r}
 #| output: asis
-#| eval: !expr no_crosstab
+#| eval: !expr n[["crosstab"]]
 cat("> **No crosstab.** ", res$meta$note, "\n", sep = "")
 ```
 
-This is the first row of the slide-63 table: how many students fall into each
-outcome, and what share of the cohort that is. The characteristics of each
-group --- who they are, where they are enrolled, what services they received
---- come below it, one block at a time, as they are built.
+The first two rows are the balance of the cohort across exit outcomes. Every
+block below them is a set of column percentages: read down a block within one
+column to see what that group is made of, and across a row to see how the
+groups differ.
+
+The first two blocks are read differently from the third. Home language,
+district size, service type and initial ELP band **partition** each column, so
+their percentages sum to 100% --- a category for students whose value was not
+reported keeps that true, rather than quietly shrinking the denominator. The
+"other demographics" rows are **independent shares** of each column and sum to
+nothing: a student can be counted in all three or none. Where a value is not
+reported, that student leaves the row's denominator instead of being counted as
+a "no". An exit outcome that no student in this cohort landed in has nobody to
+describe, so its block cells are blank rather than zero --- its count in the
+first row is what tells you the column is empty.
+
+```{r}
+#| output: asis
+#| eval: !expr h[["crosstab"]]
+cat("Characteristics are read **at entry** --- the cohort's own start year, the one year every member is current by construction --- so a block describes who these students were when they entered, not something that moved with them. Two are derived rather than delivered: district size is the entry-year district banded by that district's own EL count, and the initial ELP band is the first annual ", component, " level, taken from the same derivation Data Check 1's band-split curve uses so the two stages cannot disagree.\n", sep = "")
+```
+
+## Academic achievement at comparable points
+
+```{r}
+#| output: asis
+cat(check2_academic_note(res), "\n")
+```
+
+```{r}
+#| label: fig-academic
+#| fig-cap: !expr academic_fig_cap
+#| eval: !expr h[["academic_summary"]]
+plot_academic_summary(res$academic_summary, spec)
+```
+
+```{r}
+#| label: tbl-academic
+#| tbl-cap: !expr academic_cap
+#| eval: !expr h[["academic_summary"]]
+ft_check2_academic(res)
+```
+
+Comparing the groups at the same **year in status** rather than in the same
+calendar year is what makes this readable: two students four years into EL
+status are at the same point in their own trajectories, whoever they are. For a
+cohort that all entered in the same grade, each year in status is mostly a
+single grade, which is why the proficiency rate can be read down the column at
+all; the modal grade is printed beside each year so that assumption stays
+visible rather than implied.
+
+## ELP trajectories, by exit group
+
+```{r}
+#| label: fig-trajectories
+#| fig-cap: !expr traj_fig_cap
+#| eval: !expr h[["trajectories"]]
+plot_trajectories(res$trajectories$levels, spec)
+```
+
+::: {.callout-important appearance="default" icon=false}
+## Caution: do not mistake group change for achievement trajectories
+
+It is not necessarily that the same students are growing less over time. It is
+also that the slowest growers are the ones who stay.
+
+A single cohort-average ELP line over time falls for both reasons at once and
+cannot separate them, so this document does not draw one. The table below is
+the mechanism: it shows who is still being assessed each year. As the on-time
+group exits it stops contributing scores, and the average of whoever is left
+drifts down without any individual student having slowed.
+:::
+
+```{r}
+#| label: tbl-composition
+#| tbl-cap: "Share of the students still being assessed each year in status, by exit group. This is why a pooled cohort average would mislead."
+#| eval: !expr h[["trajectories"]]
+ft_check2_composition(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["trajectories"]]
+cat("Trajectories not shown: no annual ", component, " level resolves for this cohort, or the level scale is categorical and has no mean.\n", sep = "")
+```
 
 ## Interpreting it
 
@@ -153,26 +269,27 @@ programs, population, and exit criteria. The response to findings here is not
 necessarily to change your cut score.
 :::
 
-Three cautions carry the weight here.
+Three more cautions carry the weight here.
 
 **Read a difference between the groups as a description, not a cause.** A
 characteristic that is more common among prolonged students says who the stuck
 population is. It does not say why they are stuck, and two characteristics that
 travel together (district size and type of instructional model, say) cannot be
-told apart in a crosstab.
+told apart in a crosstab. Separating them needs a model that holds the others
+constant, which is a later addition and not in this document.
+
+**Some of the academic gap is definitional.** On-time exiters left because they
+cleared an English proficiency bar, and the content assessment is taken in
+English, so finding them academically stronger is partly built into how the two
+groups were defined. The question worth asking of the table above is whether
+the gap is *larger* than that explains, and whether it is still there at
+similar ELP levels --- which is what the trajectory figure lets you check.
 
 **`No_Exit` is "not observed exiting", and the window is finite.** The
 `r res$meta$cohort` cohort is followed through `r panel_last`. A student
 counted as `No_Exit` was still classified at the window's edge; nothing here
 says they will never exit. Likewise, `Exit_OnTime` and `Exit_Max` are counted
 against the years available, and a caption has to say so.
-
-**Do not mistake group change for achievement trajectories.** It is not
-necessarily that the same students are growing less over time; it is also that
-the slowest growers are the ones who stay. Anything this check later says about
-English proficiency or achievement over time is therefore said *within* an exit
-group --- never as one average for the whole cohort, whose mean drifts down
-simply because the fastest students leave it.
 
 ::: {.callout-important appearance="default" icon=false}
 ## Caution: remember your data structure
@@ -183,36 +300,12 @@ grades, are not in this table at all. Read it as the make-up of one entry
 cohort, never as the state's overall exit picture.
 :::
 
-## Still to come
-
-This pass builds the top of the crosstab. The rest of Check 2 arrives in later
-passes, each with its own session:
-
-- **The characteristic blocks**, one at a time, as column percents within each
-  outcome: primary language; district size band (from the state's own bands,
-  not a tertile split); sex, low SES and special education; type of EL
-  services; and initial ELP band. The highest bands hold very few
-  kindergarten entrants by construction --- a student screening at the exit
-  threshold would not have been identified --- so those cells suppress, and
-  that is the design working.
-- **The descriptive academic summary**: median ELA percentile or proficiency
-  rate for on-time and prolonged students at the same year in status, which
-  needs the academic table.
-- **The trajectories view**: the `r spec_headline_label(spec)` level by year in
-  status, drawn separately for each exit outcome, never as one cohort line.
-
 ## Additional check --- Types 2--6: blocked by one criterion only
 
 ```{r}
 #| output: asis
-#| eval: !expr gate_absent
-cat("The exit rule is declared as Type 1 (a single overall composite), so there are no blocked-by-one-criterion groups to compare and this check does not apply. `blocked_groups` is `NULL` in the results object. Declare the additional criteria in `spec$policy$exit$pathways` and set `types` to activate it.\n")
-```
-
-```{r}
-#| output: asis
-#| eval: !expr gate_applies
-cat("The exit rule declares more than one criterion, so this check applies, but it is not built yet. `blocked_groups` is `NULL` until its own pass.\n")
+#| eval: !expr n[["blocked_groups"]]
+cat(res$meta$blocked_note, "\n")
 ```
 
 When it applies, the groups Prep Step 2 identified as blocked by one criterion
@@ -220,6 +313,28 @@ only are added as further comparison groups alongside the on-time and prolonged
 exiters. A group that looks systematically different --- demographically,
 academically, in program experience --- means that criterion is screening on
 something other than what the main score screens on.
+
+```{r}
+#| label: tbl-blocked
+#| tbl-cap: "Students blocked by exactly one exit criterion, as a share of each exit outcome. A student blocked by different criteria in different years is counted under the one that blocked them most often."
+#| eval: !expr h[["blocked_groups"]]
+ft_check2_blocked_groups(res)
+```
+
+## Still to come
+
+The deck's further views for this data check are recorded and not built:
+repeating the analysis for students who start in later grades, and adding
+starting grade as its own set of crosstab rows, to see whether entry grade
+predicts which group a student lands in; and a statistical model --- logistic
+regression --- to control for the correlations among characteristics that the
+crosstab can only show one at a time. Each is a later addition.
+
+```{r}
+#| output: asis
+#| eval: !expr h[["academic_summary"]] && length(res$meta$other_subjects) > 0
+cat("This document reports ", res$meta$academic_subject, ". The spec also declares ", paste(res$meta$other_subjects, collapse = ", "), ", which `run_check2(subject = ...)` will report instead.\n", sep = "")
+```
 
 ::: {.callout-tip appearance="default" icon=false}
 ## Decide before moving on
@@ -243,5 +358,7 @@ cat("*Spec: ", res$meta$spec_id, ". ",
 #| output: asis
 #| eval: !expr identical(res$meta$spec_id, "SIM")
 cat("\n*These figures describe a synthetic fixture. No number here describes",
-    "any real state.*\n")
+    "any real state. The gap between the exit groups on the content assessment,",
+    "and any difference between them in who is over-represented, are parameters",
+    "of the generator rather than findings.*\n")
 ```

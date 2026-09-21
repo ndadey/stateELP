@@ -4,28 +4,44 @@
 \alias{compute_crosstab}
 \title{The slide-63/64 crosstab}
 \usage{
-compute_crosstab(flags, spec)
+compute_crosstab(flags, spec, profile = NULL)
 }
 \arguments{
 \item{flags}{Output of \code{\link[=compute_exit_flags]{compute_exit_flags()}}.}
 
 \item{spec}{An \code{el_spec}.}
+
+\item{profile}{Output of \code{\link[=compute_cohort_profile]{compute_cohort_profile()}}, or \code{NULL} for the
+\code{"Total"} block alone.
+Row values stay in the delivery's own codes; \code{FIELD} names the roster column
+each came from, so the document can label them through
+\code{inst/lookups/Display_Labels.R} without guessing.}
 }
 \value{
-A tibble: \code{BLOCK}, \code{ROW}, \code{COLUMN} (\code{ALL}, \code{EXIT_EVER},
-\code{EXIT_MAX}, \code{EXIT_ONTIME}, \code{NO_EXIT}, \code{DISAPPEARED}), \code{N}, \code{PCT},
-\code{SUPPRESSED}.
+A tibble: \code{BLOCK}, \code{BLOCK_TYPE}, \code{FIELD}, \code{ROW}, \code{COLUMN} (\code{ALL},
+\code{EXIT_EVER}, \code{EXIT_MAX}, \code{EXIT_ONTIME}, \code{NO_EXIT}, \code{DISAPPEARED}), \code{N},
+\code{N_BASE}, \code{PCT}, \code{SUPPRESSED}.
 }
 \description{
 Columns \strong{All / Exit_Ever / Exit_Max / Exit_OnTime / No_Exit /
-Disappeared}, in long form: one row per block, row and column. This pass
-builds the \code{"Total"} block only -- the count of students in each column
-(\code{N}) and that count as a share of the whole cohort (\code{PCT}, the deck's
-"\% of all EL students" row). The characteristic row blocks (primary
-language, district size band, ...) arrive in later passes and will use the
-same shape, with \code{PCT} the column percent within the block.
+Disappeared}, in long form: one row per block, row and column. The
+\code{"Total"} block is the count of students in each column (\code{N}) and that count
+as a share of the whole cohort (\code{PCT}, the deck's "\% of all EL students"
+row). Passing a \code{profile} adds the characteristic blocks -- primary
+language, district size band, the Male / low-SES / special-education
+indicators, type of EL services, initial ELP band -- as \strong{column
+percentages}: read down a block within one column.
 }
 \details{
+\code{BLOCK_TYPE} says how a block's rows relate to each other, which the deck's
+blank template leaves implicit. A \code{"distribution"} block's rows partition
+the column and sum to 1 (a category for students whose value is not
+reported keeps that true); an \code{"indicator"} block's rows are independent
+shares and sum to nothing. \code{N_BASE} carries the denominator each \code{PCT} was
+taken over, so no share in the table has to be taken on trust: for a
+distribution it is the column total, for an indicator the students in that
+column whose value is reported.
+
 Suppression follows the spec's \code{min_cell}: a nonzero count below it is
 \code{NA}, along with its share, and the row is kept. A count of \strong{zero} is
 shown as zero rather than suppressed: it is not a small cell, and blanking
@@ -37,5 +53,5 @@ spec <- read_el_spec("00_SIM_EL_Spec")
 bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
 co <- compute_cohorts(bundle, spec)
 flags <- compute_exit_flags(bundle, spec, co$COHORT_LABEL[co$SELECTED])
-compute_crosstab(flags, spec)
+compute_crosstab(flags, spec, compute_cohort_profile(bundle, spec, flags))
 }

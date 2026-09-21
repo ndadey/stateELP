@@ -3,17 +3,29 @@
 \name{check2_tables}
 \alias{check2_tables}
 \alias{ft_check2_crosstab}
+\alias{ft_check2_academic}
+\alias{ft_check2_composition}
+\alias{ft_check2_blocked_groups}
+\alias{check2_academic_note}
 \title{Check 2 tables}
 \usage{
 ft_check2_crosstab(results)
+
+ft_check2_academic(results)
+
+ft_check2_composition(results)
+
+ft_check2_blocked_groups(results)
+
+check2_academic_note(results)
 }
 \arguments{
 \item{results}{Output of \code{\link[=run_check2]{run_check2()}}.}
 }
 \value{
-\code{ft_check2_crosstab()} a \code{flextable}.
+\verb{ft_check2_*()} a \code{flextable}; \verb{check2_*_note()} a string.
 }
 \description{
-Flextables built from \code{\link[=run_check2]{run_check2()}}'s results. The document calls these;
-it builds no tables of its own.
+Flextables built from \code{\link[=run_check2]{run_check2()}}'s results, and the sentences that
+caption them. The document calls these; it builds no tables of its own.
 }

@@ -9,6 +9,86 @@
 
 make_check2_spec <- function() read_el_spec("00_SIM_EL_Spec")
 
+# A Type 6 spec whose domain rule can actually be passed. The shipped ELPA21
+# spec asks for level 4 or higher on a three-level scale, so under it every
+# student fails every criterion and nobody is ever blocked by exactly one --
+# which is the wrong shape to test the gated Additional check against. Lowering
+# the terms to the top level of the declared scale is the smallest change that
+# makes the criteria able to disagree, which is what the check is about.
+make_check2_elpa21_spec <- function() {
+  spec <- read_el_spec("00_ELPA21_EL_Spec")
+  top <- length(spec$elp$level_scale$levels)
+  spec$policy$exit$pathways[[1]]$terms <-
+    lapply(spec$policy$exit$pathways[[1]]$terms, function(t) {
+      t$value <- top
+      t
+    })
+  spec
+}
+
+# An ELPA21-shaped cohort carrying all four domain levels, arranged so that the
+# criteria disagree: some students clear every domain, some fail exactly one,
+# some fail two. That is what gives Prep 2's crosswalk a
+# blocked-by-one-criterion group for Check 2 to cross with the exit outcomes.
+#
+# Group sizes sit above min_cell so the Additional check's cells are not all
+# suppressed. Every student's domain levels are constant across years, so the
+# "most often blocked by" resolution has an unambiguous answer to find.
+make_check2_elpa21_blocked_bundle <- function(spec = make_check2_elpa21_spec(),
+                                              panel = 2015:2025) {
+  top <- length(spec$elp$level_scale$levels)
+  domains <- spec_components(spec, "domain")
+  start <- min(panel) + 1L
+  last <- max(panel)
+
+  # Each profile: which domains fall short, and after how many years in status
+  # the student exits (NA = never).
+  profiles <- list(
+    list(tag = "PASS", n = 20L, short = character(), exit_at = 3L),
+    list(tag = "WONLY", n = 15L, short = "writing", exit_at = 8L),
+    list(tag = "RONLY", n = 15L, short = "reading", exit_at = NA_integer_),
+    list(tag = "TWO", n = 12L, short = c("reading", "writing"),
+         exit_at = NA_integer_)
+  )
+
+  roster <- list()
+  base <- list()
+  for (p in profiles) {
+    for (i in seq_len(p$n)) {
+      id <- sprintf("%s_%03d", p$tag, i)
+      if (!is.na(p$exit_at)) {
+        exit_year <- start + p$exit_at - 1L
+        yrs <- start:min(exit_year + 1L, last)
+        status <- ifelse(yrs < exit_year, "current", "former")
+      } else {
+        yrs <- start:last
+        status <- rep("current", length(yrs))
+      }
+      idx <- yrs - start
+      roster[[length(roster) + 1L]] <- tibble::tibble(
+        STUDENT_ID = id, YEAR = as.integer(yrs),
+        GRADE = ifelse(idx == 0L, "K", as.character(idx)),
+        EL_STATUS = status, ELP_FORM = "annual", LEFT_TRUNCATED = FALSE,
+        HOME_LANGUAGE = c("spa", "por")[(i %% 2L) + 1L],
+        GENDER = c("M", "F")[(i %% 2L) + 1L])
+
+      cur <- as.integer(yrs[status == "current"])
+      for (d in domains) {
+        base[[length(base) + 1L]] <- tibble::tibble(
+          STUDENT_ID = id, YEAR = cur, COMPONENT = d, ELP_FORM = "annual",
+          SCALE_SCORE = NA_real_,
+          ACHIEVEMENT_LEVEL = if (d %in% p$short) top - 1L else top)
+      }
+      base[[length(base) + 1L]] <- tibble::tibble(
+        STUDENT_ID = id, YEAR = cur, COMPONENT = spec_headline(spec),
+        ELP_FORM = "annual", SCALE_SCORE = NA_real_,
+        ACHIEVEMENT_LEVEL = if (length(p$short)) top - 1L else top)
+    }
+  }
+  as_el_data(dplyr::bind_rows(base), roster = dplyr::bind_rows(roster),
+             spec = spec)
+}
+
 # One usable K cohort. Under the SIM spec the maximum timeline is 6 years and
 # the on-time timeline 5, so the groups are:
 #   on time        exit in year in status 3       (Exit_OnTime, Exit_Max, Exit_Ever)

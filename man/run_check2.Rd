@@ -4,7 +4,7 @@
 \alias{run_check2}
 \title{Run Check 2 -- on-time vs. prolonged exiters}
 \usage{
-run_check2(data, spec, start_grade = "K")
+run_check2(data, spec, start_grade = "K", subject = NULL)
 }
 \arguments{
 \item{data}{An \code{el_data} bundle.}
@@ -12,6 +12,9 @@ run_check2(data, spec, start_grade = "K")
 \item{spec}{An \code{el_spec}.}
 
 \item{start_grade}{Entry grade defining the cohorts, e.g. \code{"K"}.}
+
+\item{subject}{Academic subject for \verb{$academic_summary}. Defaults to the
+spec's first.}
 }
 \value{
 A named list of results slots plus \verb{$meta}.
@@ -19,19 +22,22 @@ A named list of results slots plus \verb{$meta}.
 \description{
 Takes the cohort Check 1 analyzes -- the selected row of
 \code{\link[=compute_cohorts]{compute_cohorts()}}, not a second selection -- and classifies each student
-by exit outcome. This pass builds \verb{$flags} (the student-level indicators)
-and \verb{$crosstab} (the Total block of the slide-63/64 crosstab); every later
-slot is \code{NULL} until its own pass, and \verb{$meta$pending} names them.
+by exit outcome: \verb{$flags} (the student-level indicators), \verb{$crosstab} (the
+slide-63/64 crosstab, Total block plus the characteristic blocks),
+\verb{$academic_summary} (achievement at comparable points in each group's
+trajectory) and \verb{$trajectories} (ELP level by year in status, conditioned on
+exit group).
 }
 \details{
 With no qualifying cohort -- the same condition under which Check 1 selects
 none -- every analysis slot stays \code{NULL} and \verb{$meta$note} says why. Never a
-crash, never an invented denominator.
+crash, never an invented denominator. \verb{$academic_summary} needs the academic
+table and is \code{NULL} without it.
 
 \verb{$blocked_groups} is the Type-gated Additional check and is \code{NULL} for a
 Type 1 spec. \verb{$meta$type_gate_applies} says whether the spec declares a
-Type it would apply to, so the document can tell "does not apply" from "not
-built yet".
+Type it would apply to, so the document can tell "does not apply" from
+"applies, but this delivery yields no groups".
 }
 \examples{
 spec <- read_el_spec("00_SIM_EL_Spec")
