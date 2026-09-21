@@ -10,8 +10,13 @@
 \alias{ft_check1_timeline}
 \alias{ft_check1_model2}
 \alias{ft_check1_model2_dropped}
+\alias{ft_check1_model1}
+\alias{ft_check1_model1_dropped}
 \alias{ft_check1_grade_weights}
 \alias{check1_model2_note}
+\alias{check1_model1_note}
+\alias{check1_model1_baseline_note}
+\alias{check1_nested_note}
 \title{Check 1 tables}
 \usage{
 ft_check1_data_fields(results)
@@ -30,9 +35,19 @@ ft_check1_model2(results)
 
 ft_check1_model2_dropped(results)
 
+ft_check1_model1(results)
+
+ft_check1_model1_dropped(results)
+
 ft_check1_grade_weights(results)
 
 check1_model2_note(results)
+
+check1_model1_note(results)
+
+check1_model1_baseline_note(results)
+
+check1_nested_note(results)
 }
 \arguments{
 \item{results}{Output of \code{\link[=run_check1]{run_check1()}}.}

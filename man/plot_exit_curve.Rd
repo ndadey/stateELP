@@ -4,7 +4,7 @@
 \alias{plot_exit_curve}
 \title{The cumulative exit curve}
 \usage{
-plot_exit_curve(x, spec = NULL)
+plot_exit_curve(x, spec = NULL, survival_est = NULL)
 }
 \arguments{
 \item{x}{\verb{$exit_curve} or \verb{$exit_curve_by_initial_band} from
@@ -12,6 +12,9 @@ plot_exit_curve(x, spec = NULL)
 
 \item{spec}{An \code{el_spec}, optional. Supplies the maximum-timeline marker
 and the band display order.}
+
+\item{survival_est}{\verb{$survival_est} from \code{\link[=run_check1]{run_check1()}}, optional. Ignored
+when \code{x} is split by group.}
 }
 \value{
 A \code{ggplot}.
@@ -27,10 +30,18 @@ The curve is a lower bound -- censored students are not exiters -- and the
 caption in the stage document says so. When a spec is given, the maximum
 timeline is marked, because "exited within the timeline" is read off this
 curve at that year.
+
+Passing \code{survival_est} draws the at-risk estimate and its confidence band
+alongside the observed curve, which is the honest way to show what
+censoring costs: the two answer different questions, so they are labeled
+and never merged. It applies to the whole-cohort curve only. The estimate
+is computed for the cohort as a whole, and drawing one band behind several
+band-specific curves would attach it to each of them.
 }
 \examples{
 spec <- read_el_spec("00_SIM_EL_Spec")
 bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
 res <- run_check1(bundle, spec)
 plot_exit_curve(res$exit_curve, spec)
+plot_exit_curve(res$exit_curve, spec, survival_est = res$survival_est)
 }

@@ -84,9 +84,9 @@ Maintain this table. It starts as the shell inventory.
 | `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below |
 | `internal_docs/steps/` (8 files) + `dev/prompts/` | **written** | numbered `1_`–`9_` in run order; binding per-stage contracts; refine as stages evolve |
-| `R/check1_*.R` + `check1_survival.qmd` | **complete** | Every slot the instruction file names is filled: `compute_cohorts()` (D1 selection, exported for Check 2), `compute_life_table()` (slide-52 A–F), `compute_exit_curve()` (overall and by initial ELP band), `compute_survival_est()` + `compute_years_to_50()`, `compute_at_max_timeline()`, `compute_model2()` (person-period hazard model, lagged achievement, quasi-separation flagged), `compute_grade_weights()` (experimental, labeled, used nowhere), the Type 3 gate, `plot_exit_curve()`, `ft_check1_*()`, `run_check1()`. No `skip()`ped tests remain in `test-check1.R`. Decisions beyond the instruction file are in `internal_docs/NOTES-check1.md` `[PROPOSED — CONFIRM]`. **Rendered to docx only; `devtools::check()` not run for the final pass** (see the verification note below). Not built, and recorded as such in the document: per-grade selection strength, later start grades |
+| `R/check1_*.R` + `check1_survival.qmd` | **complete** | Every slot the instruction file names is filled: `compute_cohorts()` (D1 selection, exported for Check 2), `compute_life_table()` (slide-52 A–F), `compute_exit_curve()` (overall and by initial ELP band), `compute_survival_est()` + `compute_years_to_50()` (with a Greenwood interval on the estimate, cloglog scale; F never banded), `compute_at_max_timeline()`, **`compute_model1()`** (the ELP-only person-period hazard model — Model 1's fitted half, the baseline Model 2 is nested in) and `compute_model2()` (the same through one shared `.check1_fit_hazard()`, lagged achievement added, quasi-separation flagged), `compute_grade_weights()` (experimental, labeled, used nowhere), the Type 3 gate, `plot_exit_curve()` (optional banded estimate on the whole-cohort curve), `ft_check1_*()`, `run_check1()`. No `skip()`ped tests remain in `test-check1.R`. Decisions beyond the instruction file are in `internal_docs/NOTES-check1.md` `[PROPOSED — CONFIRM]`. Not built, and recorded as such in the document: per-grade selection strength, later start grades |
 | `R/prep2_*.R` + `prep2_population.qmd` | **full port built** | ported from the standalone draft (`stateData/MT/prep2_population_V2.qmd`), not just the shell's Done-when: every figure and table in the instruction file's list, plus entry dating, time in status and the Type-gated crosswalk; `compute_*()` / `plot_*()` / `ft_prep2_*()` / `run_prep2()`; renders docx + html. Slots and calls beyond the instruction file are in `internal_docs/NOTES-prep2.md` `[PROPOSED — CONFIRM]` |
-| `R/check2_*.R` + `check2_flows.qmd` | **first pass built** | shell Done-when: `compute_exit_flags()` (`$flags`, the student-level nested indicators on Check 1's cohort via the exported `compute_cohorts()`), `compute_crosstab()` (`$crosstab`, the Total block: Total students and % of all across All / Exit_Ever / Exit_Max / Exit_OnTime / No_Exit / Disappeared), `ft_check2_crosstab()`, `run_check2()`; renders docx + html. Row blocks, academic summary, trajectories and the Type-gated `$blocked_groups` are `NULL` with `skip()`ped tests. Calls beyond the instruction file are in `internal_docs/NOTES-check2.md` `[PROPOSED — CONFIRM]` |
+| `R/check2_*.R` + `check2_flows.qmd` | **complete** | Every slot the instruction file names is filled: `compute_exit_flags()` (the nested indicators on Check 1's cohort via the exported `compute_cohorts()`, plus the three-way `EXIT_GROUP`), `compute_cohort_profile()` (characteristics at entry; district size and initial ELP band derived, never delivered), `compute_crosstab()` (the slide-63/64 table: Total block plus five characteristic blocks, `BLOCK_TYPE` distinguishing a partition from independent indicators and `N_BASE` carrying every denominator), `compute_academic_summary()` (proficiency at the same `YEAR_IN_STATUS`), `compute_trajectories()` (`$levels` + `$composition`, the slide-81 mechanism as data), `compute_blocked_groups()` (Types 2–6, via Prep 2's `compute_criteria_crosswalk()`), `plot_academic_summary()`, `plot_trajectories()`, `ft_check2_*()`, `run_check2()`; renders docx + html. No `skip()`ped tests remain in `test-check2.R`. **First code in the package to read `inst/lookups/Display_Labels.R`** (render-side only; slots stay in the delivery's own codes). Decisions beyond the instruction file are in `internal_docs/NOTES-check2.md` `[PROPOSED — CONFIRM]`. Not built, and recorded as such in the document: later start grades, starting grade as crosstab rows, the logistic regression for correlated characteristics |
 | Eight `.qmd` shells | **3 of 8 built** | `check1_survival.qmd`, `prep2_population.qmd`, `check2_flows.qmd`; one stage session each for the rest (§15) |
 | Fixtures: A–J, slide-52, J-vs-consistency | **A–J + slide-52 built** | A–J + last-current counter-test in `test-utils.R`; slide-52 worked numbers and the cohort rosters in `helper-check1.R`; ELPA21 base + roster pair and SGP / summative fixtures in `helper-el_data.R`; J-vs-consistency lands with Check 4 |
 | Stage analyses (all others) | not built | later passes per instruction file |
@@ -116,7 +116,11 @@ working tree, `document()` run in the copy: **0 errors, 0 warnings**, the same
 expectations passing across 44 tests, **0 skipped** — the stage has no
 placeholder left; the whole suite 842 passing, 38 `skip()`ped, 0 failing.
 Rendered to **Word only**, and **`devtools::check()` was not run** for this
-pass, per the loop below.
+pass, per the loop below. **Both were run afterwards**, on HEAD at
+`2ba4e0c` (Check 1 complete + Check 2's first pass): `devtools::check()` on a
+clean export — 0 errors, 0 warnings, 2 NOTEs (the 6.5 MB `data/`; "unable to
+verify current time", no network on this machine) — and the Check 1 HTML
+render, clean. The debt that paragraph recorded is discharged.
 
 **Verification for the rest of the 2026-09-21 session (directed):**
 `devtools::check()` is **not run**, and stage documents are rendered to
@@ -131,12 +135,45 @@ before the shell is called done. Everything committed earlier in the session
 (through the component-naming commits) was verified with a clean
 `devtools::check()` and rendered in both formats.
 
+**Lifted, later the same day.** `check()` and the HTML render were run on
+`2ba4e0c`, clearing the debt above, and the full loop — `document()` →
+`load_all()` → `test()` → `render_step()` in both formats →
+`devtools::check()` on a clean export — is back in force from the Model 1
+work onward.
+
+**Test count after Model 1 was corrected (2026-09-21):** `test-check1.R` 261
+expectations across 53 tests, 0 skipped; the whole suite **989 passing, 35
+`skip()`ped, 0 failing, 0 warnings**. Rendered to docx and html; `check()` on
+a staging copy of the working tree. The jump from 968 is Check 1's new
+guardrails: the same-year-covariate ban, the life-table identity, the
+clustered-interval check.
+
 **Test count after Check 2's first pass (2026-09-21):** `test-check2.R` 65
 expectations passing, 3 `skip()`ped (row blocks, academic summary,
 trajectories); the whole suite 767 passing, 44 `skip()`ped, 0 failing when run
 in the working tree. `devtools::check()` on a staging copy of the working tree,
 `document()` run in the tree: **0 errors, 0 warnings**, the `data/` NOTE and
 "unable to verify current time" (no network on this machine). No new `Imports`.
+
+**Test count after Check 2 was completed (2026-09-21):** `test-check2.R` 137
+expectations passing across 29 tests, **0 skipped** — the stage has no
+placeholder left; the whole suite 963 passing, 36 `skip()`ped (the five unbuilt
+stages), 0 failing. Rendered to **docx and html**. `devtools::check()` on a
+staging copy of HEAD plus only this stage's files: **0 errors, 0 warnings**, the
+same two NOTEs. No new `Imports`.
+
+**Concurrent-session note (2026-09-21).** Check 1's Model 1 pass and Check 2's
+completion were built in two sessions running at the same time, which is worth
+recording because two *generated* files are shared. `NAMESPACE` is regenerated
+wholesale by `document()`, so each session's run picked up the other's
+uncommitted exports; Check 2's commit carries a `NAMESPACE` generated from HEAD
+plus its own files only, because committing the working copy would have exported
+`compute_model1` and friends before the code defining them was committed. The
+same applies to §3 of this file: Check 2 edited its own row in the working tree
+and did not stage the file, so that row lands with the Check 1 session's commit.
+A full-suite run during the overlap also failed twice in `test-check1.R` purely
+because the other session was mid-edit; it passed on re-run. **Regenerate
+`NAMESPACE` and re-read §3 before committing when another session is live.**
 
 **Column naming.** ALL CAPS for every column of every data frame, delivered,
 derived and summary alike — the rule and its rationale live in §4. Confirmed
@@ -482,20 +519,45 @@ in year *t+1*'s data; a student EL six years and reclassified in the seventh
 is *not* within a six-year timeline. Two named models (the rest of the
 process refers to them by name):
 
-- **Model 1 — unconditional survival.** The descriptive shape of exit timing.
-  Rendering backbone is the slide-52 life table (columns **A** enrolled at
-  year's beginning, **B** exited, **C** disappeared, **D** = B/A at-risk
-  annual exit rate, **E** = C/A, **F** = ΣB/A_K original-cohort cumulative —
-  the headline, a lower bound; recurrence A_{t+1} = A_t − B_t − C_t; last
-  year B empty, C = A), plus the cumulative exit curve overall and by initial
-  ELP band, the discrete-time survival estimate 1 − Π(1 − D_t) as a labeled
-  companion column, median years to exit, % within the ESSA timeline, and %
-  still classified at the window's edge. Censored ≠ non-exiter; **no
-  mean/average time-in-status anywhere**.
-- **Model 2 — ELA-augmented survival.** The same discrete-time setup as a
-  person-period hazard model (derived frame, never stored) with **lagged
-  ELA/content achievement** added alongside ELP — the formal test for
-  skimming bias. Headline: the hazard ratio on lagged ELA; ≈1 means exit
+- **Model 1 — unconditional survival. Two halves, both built (2026-09-21).**
+  *Descriptive*: the slide-52 life table (columns **A** enrolled at year's
+  beginning, **B** exited, **C** disappeared, **D** = B/A at-risk annual exit
+  rate, **E** = C/A, **F** = ΣB/A_K original-cohort cumulative — the headline,
+  a lower bound; recurrence A_{t+1} = A_t − B_t − C_t; last year B empty,
+  C = A), the cumulative exit curve overall and by initial ELP band, the
+  discrete-time survival estimate 1 − Π(1 − D_t) as a labeled companion
+  column **with a Greenwood interval on the complementary log-log scale**
+  (the estimate only — F is a censoring-biased count, not an estimator, and
+  is never banded), median years to exit, % within the ESSA timeline, and %
+  still classified at the window's edge. No predictor anywhere in it; the
+  band split groups students, it does not model them. *Fitted*, in two steps:
+  **`$model1`** is unconditional — `EXITED ~ factor(YEAR_IN_STATUS)`, no
+  covariate, saturated, so its fitted hazards **are** column D (a test
+  asserts the identity); it needs no score and runs wherever a cohort does.
+  **`$model1_baseline`** adds the student's **entry** score, fixed for their
+  whole run, and is `NULL` with a note when the headline carries no scale
+  (ELPA21). Censored ≠ non-exiter; **no mean/average time-in-status
+  anywhere**.
+- **Model 2 — ELA-augmented survival.** `$model1_baseline` (derived frame,
+  never stored) with **lagged ELA/content achievement** added alongside the
+  entry score — the formal test for skimming bias. All three fits run through
+  one internal fitter, so the dropped-row accounting and the standardisation
+  mean the same thing in each; the frames differ on purpose (Model 2 needs a
+  prior-year score and keeps far fewer rows), and the rendered comparison
+  states both n's rather than implying a like-for-like refit.
+
+**No covariate is ever the current year's ELP score** (decided 2026-09-21,
+after the first build used one; `internal_docs/NOTES-check1.md` has the
+evidence, a test is the guardrail). The exit rule is applied to that year's
+result, so a contemporaneous score is the decision restated: it separates the
+fit, and — the reason this matters — it conditions every other covariate on
+the outcome's own cause. Beside it, lagged achievement came out at 1.05
+whatever was true, so Model 2's "ratio ≈ 1 ⇒ exit is driven by ELP as
+intended" was guaranteed by the specification rather than found. Every
+covariate is fixed at entry or lagged. **Standard errors are cluster-robust
+(CR1) on `STUDENT_ID`**, computed in-package rather than via `sandwich`;
+estimates are unchanged, intervals count students, and the rendered n leads
+with students. Headline: the hazard ratio on lagged ELA; ≈1 means exit
   timing is driven by ELP as intended and Checks 3–4 can be read at face
   value; away from 1 means academic performance is shaping exit independent
   of English proficiency, caught at the source. Needs the academic table
@@ -516,7 +578,8 @@ the non-ELP criterion as a Model 2 covariate — does it predict exit timing
 independent of ELP; if it's an achievement measure also used in the exit
 rule, Checks 3–4 "consistency" with it is partly circular and captioned so.
 Slots: `$cohorts`, `$life_table`, `$exit_curve`, `$exit_curve_by_initial_band`,
-`$survival_est`, `$years_to_50`, `$at_max_timeline`, `$model2`,
+`$survival_est`, `$years_to_50`, `$at_max_timeline`, `$model1`,
+`$model1_baseline`, `$model2`,
 `$grade_weights` (+ components above), `$type3_covariate`.
 
 **Check 2 — On-time vs. prolonged exiters** (`run_check2(data, spec,

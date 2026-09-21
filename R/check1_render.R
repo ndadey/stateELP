@@ -154,6 +154,15 @@ ft_check1_cohorts <- function(results) {
   flextable::autofit(ft)
 }
 
+# One column rather than two, because the pair is read as an interval and
+# splitting it across columns invites reading a bound on its own. A row whose
+# estimate is suppressed, or whose variance ran out with its risk set, shows a
+# dash.
+.check1_ci_text <- function(lo, hi) {
+  ifelse(is.na(lo) | is.na(hi), .EM_DASH,
+         sprintf("%.2f%s%.2f", lo, .EN_DASH, hi))
+}
+
 #' @rdname check1_tables
 #' @export
 ft_check1_survival <- function(results) {
@@ -165,6 +174,7 @@ ft_check1_survival <- function(results) {
     HAZARD = s$HAZARD,
     CUM_EXIT_OBS = s$CUM_EXIT_OBS,
     CUM_EXIT_EST = s$CUM_EXIT_EST,
+    CI = .check1_ci_text(s$CI_LO, s$CI_HI),
     check.names = FALSE)
 
   ft <- flextable::flextable(out)
@@ -174,7 +184,8 @@ ft_check1_survival <- function(results) {
     A = "At risk at year's start",
     HAZARD = "Exit rate that year (D)",
     CUM_EXIT_OBS = "Exited, against the starting cohort (F)",
-    CUM_EXIT_EST = "Exited, at-risk estimate")
+    CUM_EXIT_EST = "Exited, at-risk estimate",
+    CI = "95% CI on the estimate")
   ft <- flextable::colformat_num(ft, j = "A", big.mark = ",",
                                  na_str = .EM_DASH)
   ft <- flextable::colformat_double(ft, j = c("HAZARD", "CUM_EXIT_OBS",
@@ -182,7 +193,7 @@ ft_check1_survival <- function(results) {
                                     digits = 2, na_str = .EM_DASH)
   ft <- flextable::bold(ft, part = "header")
   ft <- flextable::align(ft, j = c("A", "HAZARD", "CUM_EXIT_OBS",
-                                   "CUM_EXIT_EST"),
+                                   "CUM_EXIT_EST", "CI"),
                          align = "right", part = "all")
   flextable::autofit(ft)
 }
@@ -217,12 +228,44 @@ ft_check1_timeline <- function(results) {
 ft_check1_model2 <- function(results) {
   stopifnot(is.list(results), !is.null(results$model2))
   m <- results$model2
-  cf <- m$coefficients[m$coefficients$FOCAL, , drop = FALSE]
+  .check1_ft_model(m, .check1_term_labels(m))
+}
 
-  label <- ifelse(cf$TERM == "ACADEMIC_LAG_Z",
-                  paste("Prior-year", m$subject, "score"),
-                  ifelse(cf$TERM == "ELP_Z", "ELP score that year",
-                         "Exit-rule criterion, same year"))
+#' @rdname check1_tables
+#' @export
+ft_check1_model2_dropped <- function(results) {
+  stopifnot(is.list(results), !is.null(results$model2))
+  .check1_ft_dropped(results$model2$dropped)
+}
+
+#' @rdname check1_tables
+#' @export
+ft_check1_model1 <- function(results) {
+  stopifnot(is.list(results), !is.null(results$model1_baseline))
+  m <- results$model1_baseline
+  .check1_ft_model(m, .check1_term_labels(m))
+}
+
+#' @rdname check1_tables
+#' @export
+ft_check1_model1_dropped <- function(results) {
+  stopifnot(is.list(results), !is.null(results$model1_baseline))
+  .check1_ft_dropped(results$model1_baseline$dropped)
+}
+
+# All three fits render the same way, and they are meant to be read as a
+# sequence, so they share the table rather than resembling each other.
+.check1_term_labels <- function(m) {
+  c(INITIAL_ELP_Z = "ELP score at entry",
+    ACADEMIC_LAG_Z = paste("Prior-year", m$subject, "score"),
+    CRITERION_Z = "Exit-rule criterion, same year")
+}
+
+.check1_ft_model <- function(m, labels) {
+  cf <- m$coefficients[m$coefficients$FOCAL, , drop = FALSE]
+  label <- unname(labels[cf$TERM])
+  label[is.na(label)] <- cf$TERM[is.na(label)]
+
   out <- data.frame(
     TERM = label, RATIO = cf$RATIO, CI_LO = cf$CI_LO, CI_HI = cf$CI_HI,
     P_VALUE = cf$P_VALUE, check.names = FALSE)
@@ -239,11 +282,7 @@ ft_check1_model2 <- function(results) {
   flextable::autofit(ft)
 }
 
-#' @rdname check1_tables
-#' @export
-ft_check1_model2_dropped <- function(results) {
-  stopifnot(is.list(results), !is.null(results$model2))
-  d <- results$model2$dropped
+.check1_ft_dropped <- function(d) {
   out <- data.frame(REASON = d$REASON, N = d$N, check.names = FALSE)
 
   ft <- flextable::flextable(out)
@@ -282,20 +321,86 @@ ft_check1_grade_weights <- function(results) {
 check1_model2_note <- function(results) {
   m <- results$model2
   if (is.null(m)) return(results$meta$model2_note)
+  paste(c(.check1_fitted_on(m), m$note, .check1_separation_note(m)),
+        collapse = " ")
+}
 
-  parts <- c(sprintf(paste0("Fitted on %s person-years from %s students, ",
-                            "carrying %s exits."),
-                     format(m$n_person_periods, big.mark = ","),
-                     format(m$n_students, big.mark = ","),
-                     format(m$n_events, big.mark = ",")),
-             m$note)
-  if (isTRUE(m$quasi_separated)) {
-    parts <- c(parts, paste0(
-      "The model's fitted probabilities reach 0 and 1, which happens when a ",
-      "covariate almost perfectly decides the outcome. Here that is the ELP ",
-      "score, because exit in this data is a rule applied to it; its ratio ",
-      "is therefore not interpretable, while the prior-achievement ratio -- ",
-      "the question this model exists to answer -- still is."))
+#' @rdname check1_tables
+#' @export
+check1_model1_note <- function(results) {
+  m <- results$model1
+  if (is.null(m)) return(results$meta$model1_note)
+  paste(c(.check1_fitted_on(m), m$note, .check1_separation_note(m)),
+        collapse = " ")
+}
+
+#' @rdname check1_tables
+#' @export
+check1_model1_baseline_note <- function(results) {
+  m <- results$model1_baseline
+  if (is.null(m)) return(results$meta$model1_note)
+  paste(c(.check1_fitted_on(m), m$note, .check1_separation_note(m)),
+        collapse = " ")
+}
+
+# The student count leads: it is the number of people the estimate is about,
+# and the rows are an artifact of writing one of them per year.
+.check1_fitted_on <- function(m) {
+  sprintf(paste0("Fitted on %s students, one row per year at risk (%s rows), ",
+                 "carrying %s exits. Intervals are clustered on the student, ",
+                 "so they count students rather than rows."),
+          format(m$n_students, big.mark = ","),
+          format(m$n_person_periods, big.mark = ","),
+          format(m$n_events, big.mark = ","))
+}
+
+# Separation is no longer expected -- the covariates are all fixed at entry or
+# lagged, so none of them is the exit decision restated -- but a delivery
+# could still produce it, and silence would be the wrong way to find out.
+.check1_separation_note <- function(m) {
+  if (!isTRUE(m$quasi_separated)) return(NULL)
+  paste0("The fitted probabilities reach 0 and 1, which means a covariate is ",
+         "deciding the outcome almost perfectly. Its ratio is not ",
+         "interpretable. Check whether that covariate is, or stands in for, ",
+         "the rule being used to exit students.")
+}
+
+#' @rdname check1_tables
+#' @export
+check1_nested_note <- function(results) {
+  m1 <- results$model1_baseline
+  m2 <- results$model2
+  if (is.null(m1) || is.null(m2)) return(NA_character_)
+
+  elp1 <- m1$coefficients$RATIO[match("INITIAL_ELP_Z", m1$coefficients$TERM)]
+  elp2 <- m2$coefficients$RATIO[match("INITIAL_ELP_Z", m2$coefficients$TERM)]
+  if (is.na(elp1) || is.na(elp2)) return(NA_character_)
+
+  # The two fits do not run on the same rows -- Model 2 needs a prior-year
+  # content score and the model before it does not -- so this is a comparison
+  # between two samples as much as between two models, and saying so is the
+  # difference between a reading and a claim.
+  out <- sprintf(paste0(
+    "The entry-score ratio is %s on its own and %s once prior achievement ",
+    "joins it. The two fits do not use the same rows: Model 2 keeps only the ",
+    "%s rows that carry a prior-year score, against %s. Read the movement as ",
+    "a direction, not a measurement."),
+    .check1_ratio_text(elp1), .check1_ratio_text(elp2),
+    format(m2$n_person_periods, big.mark = ","),
+    format(m1$n_person_periods, big.mark = ","))
+
+  if (isTRUE(m1$quasi_separated) || isTRUE(m2$quasi_separated)) {
+    out <- paste(out, paste0(
+      "One of the fits separates, so the ratio it reports is not a quantity ",
+      "and neither is the movement between them."))
   }
-  paste(parts, collapse = " ")
+  out
+}
+
+# A ratio that has run away from separation should not be dressed up in two
+# decimal places as though it were measured.
+.check1_ratio_text <- function(x) {
+  if (!is.finite(x)) return("not estimable")
+  if (abs(x) >= 1000) return(format(round(x), big.mark = ",", scientific = FALSE))
+  sprintf("%.2f", x)
 }

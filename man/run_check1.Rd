@@ -20,14 +20,26 @@ A named list of results slots plus \verb{$meta}.
 Selects one entry cohort and describes its exit timing: the candidate
 cohorts, the life table, the exit curves, the discrete-time survival
 estimate and its median, where the cohort ended up against the timelines,
-Model 2, and the experimental weighting index.
+both fitted models, and the experimental weighting index.
 }
 \details{
-Slots degrade rather than fail. Without an academic table there is no
-Model 2, so \verb{$model2} and the selection-strength half of the weighting
-index are \code{NULL} and \verb{$meta$model2_note} says why. \verb{$type3_covariate} is
-\code{NULL} unless the spec declares Type 3 and its non-ELP criterion names a
-subject the delivery carries.
+Model 1 is two things, and both are here. \verb{$life_table}, \verb{$exit_curve},
+\verb{$survival_est} and their statistics are its descriptive half, computed
+from counts with no predictor of any kind. \verb{$model1} is the same thing
+written as a model -- year-in-status terms and no covariate, whose fitted
+hazards reproduce the life table's annual exit rates -- and
+\verb{$model1_baseline} adds where the student started. Together they are the
+nested sequence \verb{$model2} extends.
+
+Slots degrade rather than fail. A headline reported as a level with no
+scale behind it leaves \verb{$model1_baseline} and \verb{$model2} \code{NULL} with
+\verb{$meta$model1_note}, since neither has a covariate to fit; the
+unconditional \verb{$model1} is unaffected, because it asks for no score.
+Without an academic table there is no Model 2, so \verb{$model2} and the
+selection-strength half of the weighting index are \code{NULL} and
+\verb{$meta$model2_note} says why. \verb{$type3_covariate} is \code{NULL} unless the spec
+declares Type 3 and its non-ELP criterion names a subject the delivery
+carries.
 
 With no qualifying cohort -- a panel too short for any cohort to reach the
 maximum timeline plus a year, or every candidate below \code{min_cell} -- the

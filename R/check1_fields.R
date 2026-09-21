@@ -25,29 +25,45 @@
 # it is right for any instrument and is never typed here. Without a spec the
 # wording falls back to a component-free phrase, which is what the
 # validation-only callers get.
+
+# Every slot that lives on the roster alone, named once because the four
+# required roster fields all serve all of them. Leaving a slot out here is not
+# cosmetic: `.check1_require_fields()` matches on this list, so an unlisted
+# slot validates nothing at all, and the rendered box does not grow when that
+# slot runs.
+.CHECK1_ROSTER_SLOTS <- paste(
+  "cohorts", "life_table", "exit_curve", "exit_curve_by_initial_band",
+  "survival_est", "years_to_50", "at_max_timeline", "model1",
+  "model1_baseline", "model2",
+  sep = ",")
+
+# The same list without cohort selection, which dates nothing: every slot that
+# reads a student's exit and censoring timing.
+.CHECK1_TIMING_SLOTS <- sub("^cohorts,", "", .CHECK1_ROSTER_SLOTS)
+
 .check1_field_declaration <- function(spec = NULL) {
   score <- if (is.null(spec)) "reported ELP score" else spec_headline_label(spec)
 
   tibble::tribble(
     ~FIELD,            ~TABLE,    ~KIND,       ~SLOTS,                 ~USED_FOR, ~FALLBACK,
 
-    "STUDENT_ID",      "roster",  "required",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
+    "STUDENT_ID",      "roster",  "required",  .CHECK1_ROSTER_SLOTS,
     "Follows one student across years, and counts the cohort once per student.",
     NA_character_,
 
-    "YEAR",            "roster",  "required",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
+    "YEAR",            "roster",  "required",  .CHECK1_ROSTER_SLOTS,
     "Places each row in the panel: sets the follow-up window, and each student's year in status.",
     NA_character_,
 
-    "GRADE",           "roster",  "required",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
+    "GRADE",           "roster",  "required",  .CHECK1_ROSTER_SLOTS,
     "Fixes the entry grade that defines the cohort, and labels each life-table row.",
     NA_character_,
 
-    "EL_STATUS",       "roster",  "required",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
+    "EL_STATUS",       "roster",  "required",  .CHECK1_ROSTER_SLOTS,
     "The current / former transitions that date entry, exit and censoring.",
     NA_character_,
 
-    "LEFT_TRUNCATED",  "roster",  "optional",  "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
+    "LEFT_TRUNCATED",  "roster",  "optional",  .CHECK1_ROSTER_SLOTS,
     "Excludes students already in EL status when the panel opened, whose time in status cannot be measured.",
     "entrants in the panel's first year are treated as left-truncated and excluded",
 
@@ -65,45 +81,48 @@
     "Keeps the annual assessment only: alternate-form levels are on a different scale and never enter a band.",
     "alternate-form students cannot be told apart, and the split is not drawn",
 
-    "COHORT_LABEL",    "derived", "derived",   "cohorts,life_table,exit_curve,exit_curve_by_initial_band",
+    "COHORT_LABEL",    "derived", "derived",   .CHECK1_ROSTER_SLOTS,
     "Entry grade and entry year, the cohort key.",
     NA_character_,
 
-    "YEAR_IN_STATUS",  "derived", "derived",   "life_table,exit_curve,exit_curve_by_initial_band",
+    "YEAR_IN_STATUS",  "derived", "derived",   .CHECK1_TIMING_SLOTS,
     "Years since the first year observed as an EL, counting the exit year.",
     NA_character_,
 
-    "EXIT_YEAR",       "derived", "derived",   "life_table,exit_curve,exit_curve_by_initial_band",
+    "EXIT_YEAR",       "derived", "derived",   .CHECK1_TIMING_SLOTS,
     "The first year observed as a former EL; exit is absorbing.",
     NA_character_,
 
-    "CENSOR_TYPE",     "derived", "derived",   "life_table,exit_curve,exit_curve_by_initial_band",
+    "CENSOR_TYPE",     "derived", "derived",   .CHECK1_TIMING_SLOTS,
     "Disappeared (first year absent) or still classified at the window's edge.",
     NA_character_,
 
-    "SCALE_SCORE",     "base",    "optional",  "model2",
-    sprintf("The %s scale score, which Model 2 holds constant while it asks whether achievement predicts exit.",
+    "SCALE_SCORE",     "base",    "optional",  "model1_baseline,model2",
+    sprintf(paste0("The %s scale score at the student's FIRST year in status: ",
+                   "where they started, which the fitted models use as a ",
+                   "covariate. The current year's score is deliberately not ",
+                   "used -- the exit rule is applied to it."),
             score),
-    "Model 2 is not fitted; Model 1 is unaffected",
+    "the unconditional model still runs; the entry-score model and Model 2 do not",
 
     "SUBJECT",         "academic", "optional", "model2",
     "Selects the content subject whose prior-year score enters Model 2.",
-    "Model 2 is not fitted; Model 1 is unaffected",
+    "Model 2 is not fitted; both Model 1 fits are unaffected",
 
     "SCALE_SCORE",     "academic", "optional", "model2",
     "The prior-year content score: the covariate that tests for skimming, lagged so it cannot be an effect of exiting.",
-    "Model 2 is not fitted; Model 1 is unaffected",
+    "Model 2 is not fitted; both Model 1 fits are unaffected",
 
     "ELP_BAND",        "derived", "derived",   "exit_curve_by_initial_band",
     sprintf("The initial ELP band: the student's first annual %s level, banded by the spec.",
             score),
     NA_character_,
 
-    "PERSON_PERIOD",   "derived", "derived",   "model2",
-    "One row per student per year at risk, built on demand for Model 2 and never stored.",
+    "PERSON_PERIOD",   "derived", "derived",   "model1,model1_baseline,model2",
+    "One row per student per year at risk, built on demand for the fitted models and never stored.",
     NA_character_,
 
-    "A_TO_F",          "derived", "derived",   "life_table",
+    "A_TO_F",          "derived", "derived",   "life_table,survival_est",
     "The life table's own columns: at risk, exited, disappeared, and the three rates.",
     NA_character_
   )

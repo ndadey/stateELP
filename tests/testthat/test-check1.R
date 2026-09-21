@@ -265,10 +265,14 @@ test_that("$meta$data_fields is the declaration, filtered to computed slots", {
   expect_true(all(fields$PRESENT[fields$TABLE == "roster"]))
 
   # And it tracks what actually ran, not what could have: without the
-  # academic table Model 2 does not run, and its fields leave with it.
+  # academic table Model 2 does not run, and the fields only it reads -- the
+  # academic ones -- leave with it. Model 1 fits on the language score alone,
+  # so it and its person-period frame stay.
   without <- check1_sim_no_academic()$meta$data_fields
-  expect_false(any(grepl("model2", without$SLOTS)))
-  expect_false(any(c("SUBJECT", "PERSON_PERIOD") %in% without$FIELD))
+  expect_false(any(without$TABLE == "academic"))
+  expect_false("SUBJECT" %in% without$FIELD)
+  expect_true("PERSON_PERIOD" %in% without$FIELD)
+  expect_true("SCALE_SCORE" %in% without$FIELD[without$TABLE == "base"])
 })
 
 test_that("an absent optional field is reported with its fallback", {
@@ -593,7 +597,7 @@ test_that("Model 2 fits the person-period frame and reports its ratio", {
   expect_gt(m$ci[[2]], m$ratio)
   expect_gt(m$n_events, 0L)
   expect_lte(m$n_person_periods, m$n_person_periods_all)
-  expect_true(all(c("ELP_Z", "ACADEMIC_LAG_Z") %in% m$coefficients$TERM))
+  expect_true(all(c("INITIAL_ELP_Z", "ACADEMIC_LAG_Z") %in% m$coefficients$TERM))
 })
 
 test_that("rows the model cannot use are counted and never imputed", {
@@ -609,13 +613,44 @@ test_that("rows the model cannot use are counted and never imputed", {
   expect_match(m$note, "never imputed")
 })
 
-test_that("the sim's exit rule shows up as separation, and is captioned", {
-  # Exit here is a deterministic rule on the ELP score, so the fit pins
-  # probabilities at 0 and 1. The ELP ratio is then uninterpretable, which
-  # the rendered note has to say rather than leave the reader to infer.
+test_that("no fitted model uses a score from the year it predicts", {
+  # THE guardrail on this stage (2026-09-21). The exit rule is applied to
+  # that year's ELP result, so a contemporaneous score is the decision
+  # restated: it separates the fit, and -- far worse -- it conditions every
+  # other covariate on the outcome's own cause, which drove Model 2's
+  # achievement ratio to 1 and left the skimming test unable to detect
+  # skimming. Every covariate must be fixed at entry or lagged.
+  b <- make_check1_sim_bundle()
+  spec <- check1_spec()
+  pp <- .check1_person_period(b, spec, make_check1_selected(), "K",
+                              subject = spec_academic_subjects(spec)[[1]])
+
+  # INITIAL_ELP is one value per student, so it cannot be that year's score.
+  per_student <- tapply(pp$INITIAL_ELP, pp$STUDENT_ID,
+                        function(x) length(unique(x[!is.na(x)])))
+  expect_true(all(per_student <= 1L))
+  expect_false("ELP_SCALE" %in% names(pp))
+
+  # And the consequence, which is the reason the guardrail exists: nothing
+  # separates, so every ratio is a quantity a reader can use.
   res <- check1_sim()
-  expect_true(res$model2$quasi_separated)
-  expect_match(check1_model2_note(res), "not interpretable")
+  expect_false(res$model1$quasi_separated)
+  expect_false(res$model1_baseline$quasi_separated)
+  expect_false(res$model2$quasi_separated)
+})
+
+test_that("the skimming test can register achievement either way", {
+  # The defect this replaced made the answer a foregone conclusion: beside a
+  # same-year language score, lagged achievement came out at 1.05 whatever
+  # was true. The test has power when the ratio is free to move, which is
+  # what is asserted here -- not any particular value, since on sim data the
+  # value is a generator parameter (sim_contract.md 5.2-5.3).
+  m <- check1_sim()$model2
+  lag <- m$coefficients[m$coefficients$TERM == "ACADEMIC_LAG_Z", ]
+
+  expect_true(is.finite(lag$RATIO))
+  expect_true(is.finite(lag$CI_LO) && is.finite(lag$CI_HI))
+  expect_lt(lag$CI_HI / lag$CI_LO, 10)     # an identified, usable interval
 })
 
 test_that("the Type 3 covariate slot is NULL under a Type 1 spec", {
@@ -671,4 +706,240 @@ test_that("every Check 1 slot the instruction file names is now filled", {
              "selection_strength", "grade_weights")
   for (slot in named) expect_false(is.null(res[[slot]]), info = slot)
   expect_length(res$meta$pending, 0L)
+})
+
+# ---- Model 1's fitted half ---------------------------------------------------
+
+test_that("the unconditional fit reproduces the life table exactly", {
+  # The whole reason to fit a model with no covariate: being saturated, its
+  # fitted hazards ARE column D. That identity is what ties the fitted half
+  # to the descriptive half -- otherwise they are two accounts of one cohort
+  # with nothing holding them together.
+  res <- check1_sim()
+  m <- res$model1
+  lt <- res$life_table
+
+  yrs <- as.integer(sub("^factor\\(YEAR_IN_STATUS\\)", "",
+                        grep("YEAR_IN_STATUS", m$coefficients$TERM,
+                             value = TRUE)))
+  intercept <- m$coefficients$ESTIMATE[m$coefficients$TERM == "(Intercept)"]
+  # The reference level is the earliest year the frame still holds, and a
+  # year with no exits is not in the frame at all -- so it is the first year
+  # anyone exited, not the first year in the table.
+  first <- min(lt$YEAR_IN_STATUS[!is.na(lt$B) & lt$B > 0])
+
+  # Tolerance is glm's own convergence epsilon, not a fudge: the identity is
+  # exact in the algebra and the fit stops iterating at about eight
+  # significant figures.
+  inv_logit <- function(x) 1 / (1 + exp(-x))
+  expect_equal(inv_logit(intercept), lt$D[[first]], tolerance = 1e-6)
+  for (i in seq_along(yrs)) {
+    fitted <- inv_logit(intercept +
+                          m$coefficients$ESTIMATE[m$coefficients$TERM ==
+                            paste0("factor(YEAR_IN_STATUS)", yrs[i])])
+    expect_equal(fitted, lt$D[[yrs[i]]], tolerance = 1e-6)
+  }
+})
+
+test_that("the unconditional fit carries no covariate and keeps every row", {
+  m <- check1_sim()$model1
+
+  expect_false(m$baseline_elp)
+  expect_true(is.na(m$ratio))                    # nothing to report a ratio for
+  expect_false(any(m$coefficients$FOCAL))
+  expect_false(any(grepl("ELP|ACADEMIC", m$coefficients$TERM)))
+  expect_true(any(grepl("YEAR_IN_STATUS", m$coefficients$TERM)))
+  # It asks nothing of a student but being at risk, so the only rows it loses
+  # are years with no exits to identify a term.
+  expect_identical(nrow(m$dropped), 1L)
+  expect_match(m$dropped$REASON, "no exits")
+  expect_identical(sum(m$dropped$N) + m$n_person_periods,
+                   m$n_person_periods_all)
+})
+
+test_that("the entry-score fit reports a ratio on where students started", {
+  m <- check1_sim()$model1_baseline
+
+  expect_true(m$baseline_elp)
+  expect_true(is.finite(m$ratio))
+  expect_lt(m$ci[[1]], m$ratio)
+  expect_gt(m$ci[[2]], m$ratio)
+  expect_true("INITIAL_ELP_Z" %in% m$coefficients$TERM)
+  # The lag is Model 2's term; this fit is the step before it.
+  expect_false("ACADEMIC_LAG_Z" %in% m$coefficients$TERM)
+  expect_match(m$note, "never imputed")
+  expect_identical(sum(m$dropped$N) + m$n_person_periods,
+                   m$n_person_periods_all)
+})
+
+test_that("each fit keeps the rows its own covariates need, and no fewer", {
+  # Requiring a prior-year content score costs rows that the earlier
+  # questions never needed, which is why the three are fitted separately
+  # rather than one being read off another.
+  res <- check1_sim()
+
+  expect_gt(res$model1$n_person_periods, res$model1_baseline$n_person_periods)
+  expect_gt(res$model1_baseline$n_person_periods, res$model2$n_person_periods)
+  expect_identical(res$model1$n_person_periods_all,
+                   res$model2$n_person_periods_all)
+  expect_gt(sum(res$model2$dropped$N[grep("prior-year",
+                                          res$model2$dropped$REASON)]), 0L)
+})
+
+test_that("the nested note compares the two fits and names the row gap", {
+  res <- check1_sim()
+  note <- check1_nested_note(res)
+
+  expect_false(is.na(note))
+  expect_match(note, "do not use the same rows")
+  expect_match(note, format(res$model2$n_person_periods, big.mark = ","),
+               fixed = TRUE)
+  # With only one of the two fitted there is nothing to compare.
+  expect_true(is.na(check1_nested_note(check1_sim_no_academic())))
+})
+
+test_that("intervals are clustered on the student, not on the row", {
+  # A student contributes about four and a half rows. Model-based errors
+  # would count each as an independent observation; the CR1 sandwich counts
+  # students. It widens the interval here, and the note says so.
+  res <- check1_sim()
+  m <- res$model1_baseline
+  focal <- m$coefficients[m$coefficients$TERM == "INITIAL_ELP_Z", ]
+
+  b <- make_check1_sim_bundle()
+  spec <- check1_spec()
+  pp <- .check1_person_period(b, spec, make_check1_selected(), "K")
+  pp <- pp[!is.na(pp$INITIAL_ELP), ]
+  pp <- .check1_drop_eventless(pp)$frame
+  pp$INITIAL_ELP_Z <- .check1_z(pp$INITIAL_ELP)
+  plain <- glm(EXITED_THIS_YEAR ~ factor(YEAR_IN_STATUS) + INITIAL_ELP_Z,
+               data = pp, family = binomial())
+  naive <- summary(plain)$coefficients["INITIAL_ELP_Z", "Std. Error"]
+
+  expect_equal(focal$ESTIMATE,
+               unname(coef(plain)["INITIAL_ELP_Z"]))   # estimates untouched
+  expect_gt(focal$SE, naive)                            # intervals widened
+  expect_match(check1_model1_baseline_note(res), "clustered on the student")
+})
+
+test_that("a headline with no scale keeps the fit that needs no score", {
+  # ELPA21 reports a determination: a level and nothing behind it. The two
+  # models carrying an ELP term have no covariate to fit -- but the
+  # unconditional one never needed a score, and losing it would cost the
+  # stage its link between the life table and the fitted half for no reason.
+  spec <- read_el_spec("00_ELPA21_EL_Spec")
+  res <- run_check1(make_check1_elpa21_bundle(spec), spec)
+
+  expect_false(is.null(res$model1))
+  expect_null(res$model1_baseline)
+  expect_null(res$model2)
+  expect_match(res$meta$model1_note, "no scale score")
+  expect_false(is.null(res$life_table))
+  expect_false(is.null(res$survival_est))
+
+  # D2: the box lists what ran. The score no model could use is not claimed
+  # as a field that did any work.
+  fields <- res$meta$data_fields
+  expect_false("SCALE_SCORE" %in% fields$FIELD[fields$TABLE == "base"])
+  expect_true("PERSON_PERIOD" %in% fields$FIELD)   # the unconditional fit's
+})
+
+test_that("a cohort with no exits degrades to NULL rather than erroring", {
+  # Nobody in this fixture ever exits, so there is no model to fit. A stage
+  # must never crash on a thin delivery (CLAUDE.md 8).
+  spec <- check1_spec()
+  res <- run_check1(make_check1_bundle(make_check1_roster()), spec)
+
+  expect_null(res$model1)
+  expect_match(res$meta$model1_note, "cannot be fitted")
+  expect_false(is.null(res$life_table))
+})
+
+test_that("an unfittable model raises its own condition, not a bare error", {
+  # run_check1() catches exactly this class. A blanket tryCatch() there would
+  # swallow real bugs, so the class has to exist and be the one raised.
+  spec <- check1_spec()
+  bundle <- make_check1_bundle(make_check1_roster())
+
+  expect_error(
+    compute_model1(bundle, spec,
+                   cohort = compute_cohorts(bundle, spec)$COHORT_LABEL[1]),
+    class = "check1_unfittable")
+})
+
+# ---- the confidence band -----------------------------------------------------
+
+test_that("Greenwood's band brackets the estimate and stays in [0, 1]", {
+  s <- check1_sim()$survival_est
+
+  expect_true(all(s$CI_LO <= s$CUM_EXIT_EST + 1e-12, na.rm = TRUE))
+  expect_true(all(s$CI_HI >= s$CUM_EXIT_EST - 1e-12, na.rm = TRUE))
+  expect_true(all(s$CI_LO >= 0 & s$CI_HI <= 1, na.rm = TRUE))
+  expect_true(all(s$SE >= 0, na.rm = TRUE))
+  expect_false(any(is.nan(c(s$SE, s$CI_LO, s$CI_HI))))
+
+  # Before any exit the estimate is 0 with no variance: a band there would be
+  # inventing uncertainty about something the data settles.
+  first <- which(s$CUM_EXIT_EST == 0)
+  if (length(first)) {
+    expect_equal(s$CI_LO[first], rep(0, length(first)))
+    expect_equal(s$CI_HI[first], rep(0, length(first)))
+  }
+})
+
+test_that("Greenwood's variance matches the formula on a worked table", {
+  # Two intervals, by hand: sigma^2 = sum B / (A (A - B)).
+  A <- c(100, 80)
+  B <- c(20, 10)
+  surviving <- cumprod(1 - B / A)
+  out <- .check1_greenwood(A, B, surviving)
+
+  sigma2 <- cumsum(B / (A * (A - B)))
+  expect_equal(out$SE, surviving * sqrt(sigma2))
+
+  # ... and the interval is the complementary log-log one, not a symmetric
+  # band on the share, which would run outside [0, 1] at the ends.
+  half <- stats::qnorm(0.975) * sqrt(sigma2) / -log(surviving)
+  expect_equal(out$CI_LO, 1 - surviving^exp(-half))
+  expect_equal(out$CI_HI, 1 - surviving^exp(half))
+})
+
+test_that("only the estimate is banded, never the observed share", {
+  # The observed column counts against the starting cohort, which includes
+  # students nobody is following any more. It is not an estimator, so it gets
+  # no interval -- a structural guard, because adding one would be easy and
+  # wrong.
+  s <- check1_sim()$survival_est
+
+  expect_true(all(c("SE", "CI_LO", "CI_HI") %in% names(s)))
+  expect_false(any(grepl("OBS", c("SE", "CI_LO", "CI_HI"))))
+  expect_false(any(c("CUM_EXIT_OBS_LO", "CUM_EXIT_OBS_HI") %in% names(s)))
+})
+
+test_that("a suppressed row suppresses its band with it", {
+  spec <- check1_spec()
+  spec$policy$suppression$min_cell <- 10000L
+  s <- compute_survival_est(make_check1_sim_bundle(), spec,
+                            cohort = make_check1_selected())
+
+  expect_true(all(s$SUPPRESSED))
+  expect_true(all(is.na(s$CI_LO)))
+  expect_true(all(is.na(s$CI_HI)))
+})
+
+test_that("the banded curve plots, and the split curve ignores the band", {
+  res <- check1_sim()
+
+  banded <- plot_exit_curve(res$exit_curve, check1_spec(),
+                            survival_est = res$survival_est)
+  expect_s3_class(banded, "ggplot")
+  expect_true(any(vapply(banded$layers,
+                         function(l) inherits(l$geom, "GeomRibbon"), TRUE)))
+
+  # The estimate is a whole-cohort number; drawing one band behind several
+  # band-specific curves would attach it to each of them.
+  split <- plot_exit_curve(res$exit_curve_by_initial_band, check1_spec(),
+                           survival_est = res$survival_est)
+  expect_false(any(vapply(split$layers,
+                          function(l) inherits(l$geom, "GeomRibbon"), TRUE)))
 })

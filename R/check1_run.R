@@ -7,13 +7,25 @@
 #' Selects one entry cohort and describes its exit timing: the candidate
 #' cohorts, the life table, the exit curves, the discrete-time survival
 #' estimate and its median, where the cohort ended up against the timelines,
-#' Model 2, and the experimental weighting index.
+#' both fitted models, and the experimental weighting index.
 #'
-#' Slots degrade rather than fail. Without an academic table there is no
-#' Model 2, so `$model2` and the selection-strength half of the weighting
-#' index are `NULL` and `$meta$model2_note` says why. `$type3_covariate` is
-#' `NULL` unless the spec declares Type 3 and its non-ELP criterion names a
-#' subject the delivery carries.
+#' Model 1 is two things, and both are here. `$life_table`, `$exit_curve`,
+#' `$survival_est` and their statistics are its descriptive half, computed
+#' from counts with no predictor of any kind. `$model1` is the same thing
+#' written as a model -- year-in-status terms and no covariate, whose fitted
+#' hazards reproduce the life table's annual exit rates -- and
+#' `$model1_baseline` adds where the student started. Together they are the
+#' nested sequence `$model2` extends.
+#'
+#' Slots degrade rather than fail. A headline reported as a level with no
+#' scale behind it leaves `$model1_baseline` and `$model2` `NULL` with
+#' `$meta$model1_note`, since neither has a covariate to fit; the
+#' unconditional `$model1` is unaffected, because it asks for no score.
+#' Without an academic table there is no Model 2, so `$model2` and the
+#' selection-strength half of the weighting index are `NULL` and
+#' `$meta$model2_note` says why. `$type3_covariate` is `NULL` unless the spec
+#' declares Type 3 and its non-ELP criterion names a subject the delivery
+#' carries.
 #'
 #' With no qualifying cohort -- a panel too short for any cohort to reach the
 #' maximum timeline plus a year, or every candidate below `min_cell` -- the
@@ -70,10 +82,44 @@ run_check1 <- function(data, spec, start_grade = "K") {
                             start_grade = start_grade)
   }
 
-  # Model 2 needs the academic table; without it the slot is NULL and so is
-  # everything downstream of it.
-  model2 <- if (is.na(selected) || is.null(el_academic(data))) NULL else {
-    compute_model2(data, spec, cohort = selected, start_grade = start_grade)
+  # The unconditional fit needs no score at all, so it runs wherever a cohort
+  # does; only the two models carrying an ELP term need one. Where the state's
+  # reported result is a level or a determination and nothing else, those two
+  # stay NULL and everything else is unaffected.
+  fittable <- !is.na(selected)
+  has_scale <- fittable && .check1_has_headline_scale(data, spec)
+  # A cohort with no exits in it has no model in it either, and that is a
+  # finding rather than a failure -- so the one condition the compute
+  # functions raise for it is caught, and its message becomes the note the
+  # document renders in the slot's place. Any other error still stops.
+  unfittable1 <- NULL
+  unfittable2 <- NULL
+
+  model1 <- if (!fittable) NULL else {
+    tryCatch(
+      compute_model1(data, spec, cohort = selected, start_grade = start_grade),
+      check1_unfittable = function(e) {
+        unfittable1 <<- conditionMessage(e)
+        NULL
+      })
+  }
+
+  model1_baseline <- if (!has_scale) NULL else {
+    tryCatch(
+      compute_model1(data, spec, cohort = selected, start_grade = start_grade,
+                     baseline_elp = TRUE),
+      check1_unfittable = function(e) NULL)
+  }
+
+  # Model 2 needs the academic table as well; without it the slot is NULL and
+  # so is everything downstream of it.
+  model2 <- if (!has_scale || is.null(el_academic(data))) NULL else {
+    tryCatch(
+      compute_model2(data, spec, cohort = selected, start_grade = start_grade),
+      check1_unfittable = function(e) {
+        unfittable2 <<- conditionMessage(e)
+        NULL
+      })
   }
 
   # Type-gated: the non-ELP criterion as a Model 2 covariate. Type 3 only,
@@ -100,7 +146,10 @@ run_check1 <- function(data, spec, start_grade = "K") {
                 if (!is.null(exit_curve_by_initial_band))
                   "exit_curve_by_initial_band",
                 if (!is.null(survival_est)) "survival_est",
+                if (!is.null(years_to_50)) "years_to_50",
                 if (!is.null(at_max_timeline)) "at_max_timeline",
+                if (!is.null(model1)) "model1",
+                if (!is.null(model1_baseline)) "model1_baseline",
                 if (!is.null(model2)) "model2")
 
   list(
@@ -112,6 +161,8 @@ run_check1 <- function(data, spec, start_grade = "K") {
     survival_est               = survival_est,
     years_to_50                = years_to_50,
     at_max_timeline            = at_max_timeline,
+    model1                     = model1,
+    model1_baseline            = model1_baseline,
     model2                     = model2,
 
     # Experimental, and labeled so wherever it renders: untested against the
@@ -138,11 +189,23 @@ run_check1 <- function(data, spec, start_grade = "K") {
                "for this cohort, so the exit curve is not split by initial ",
                "ELP band.")
       } else NA_character_,
-      model2_note          = if (is.na(selected)) NA_character_
+      model1_note          = if (is.na(selected)) NA_character_
+                             else if (!is.null(unfittable1)) unfittable1
+                             else if (!has_scale) paste0(
+                               "The ", spec_headline_label(spec), " is ",
+                               "reported as a level with no scale score ",
+                               "behind it, so there is nothing to use as a ",
+                               "predictor: the model with baseline ELP, and ",
+                               "Model 2, are not fitted. The unconditional ",
+                               "model, the life table, the exit curves and ",
+                               "the survival estimate are unaffected.")
+                             else NA_character_,
+      model2_note          = if (is.na(selected) || !has_scale) NA_character_
                              else if (is.null(el_academic(data))) paste0(
                                "No academic table in this delivery, so Model 2 ",
                                "and the selection-strength half of the ",
                                "weighting index are not computed.")
+                             else if (!is.null(unfittable2)) unfittable2
                              else NA_character_,
       pending              = character(),
       sim_contract_version = data$meta$sim_contract_version,
@@ -190,6 +253,21 @@ run_check1 <- function(data, spec, start_grade = "K") {
     .small_number(nrow(cohorts)), " usable ", start_grade,
     if (nrow(cohorts) == 1L) " cohort" else " cohorts",
     " ", .EM_DASH, " the longest follow-up.")
+}
+
+# Can the fitted models run at all? Both use the headline scale score as a
+# covariate, and some instruments report the headline as a level or a
+# determination with no scale behind it (the spec says which, through the
+# component's `measures`). The spec is asked first and the delivery second:
+# a spec that declares a scale but a delivery that carries none is the same
+# dead end, and the guard exists so the slot degrades to NULL instead of the
+# compute function stopping.
+.check1_has_headline_scale <- function(data, spec) {
+  headline <- spec_headline(spec)
+  measures <- spec$elp$components[[headline]]$measures
+  if (!is.null(measures) && !"scale" %in% measures) return(FALSE)
+  h <- elp_headline(data, spec)
+  nrow(h) > 0L && any(!is.na(h$SCALE_SCORE))
 }
 
 # Type 3 is "composite plus other source": the exit rule carries a term drawn

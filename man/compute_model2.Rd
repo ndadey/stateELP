@@ -35,7 +35,9 @@ A list: \verb{$coefficients}, \verb{$ratio}, \verb{$ci}, the \verb{n_*} counts,
 A discrete-time hazard model on the person-period frame: does prior-year
 content achievement tell you anything about who exits, once the ELP score
 is already in the model? That is the formal test for skimming bias, caught
-at the source rather than inferred from downstream results.
+at the source rather than inferred from downstream results. It is
+\code{\link[=compute_model1]{compute_model1()}} with one term added, and the two are meant to be read
+against each other.
 }
 \details{
 The headline is the ratio on lagged achievement. At 1 it adds nothing and

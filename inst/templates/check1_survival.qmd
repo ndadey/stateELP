@@ -45,7 +45,11 @@ have_curve <- !is.null(res$exit_curve)
 have_band_curve <- !is.null(res$exit_curve_by_initial_band)
 have_survival <- !is.null(res$survival_est)
 have_timeline <- !is.null(res$at_max_timeline)
+have_model1 <- !is.null(res$model1)
+have_model1_baseline <- !is.null(res$model1_baseline)
 have_model2 <- !is.null(res$model2)
+have_nested <- have_model1_baseline && have_model2 &&
+  !is.na(check1_nested_note(res))
 have_weights <- !is.null(res$grade_weights)
 have_type3 <- !is.null(res$type3_covariate)
 # Negated forms as their own names: `!expr !have_life_table` reads the second
@@ -53,6 +57,8 @@ have_type3 <- !is.null(res$type3_covariate)
 no_life_table <- !have_life_table
 no_cohorts <- !have_cohorts
 no_band_curve <- !have_band_curve
+no_model1 <- !have_model1
+no_model1_baseline <- !have_model1_baseline
 no_model2 <- !have_model2
 ```
 
@@ -118,13 +124,16 @@ cat("> **No life table.** ", res$meta$note, "\n", sep = "")
 
 Column **F** as a picture: the share of the entry cohort observed to have
 exited by each year in status. The dashed line marks the state's maximum
-timeline, which is where "exited within the timeline" is read off.
+timeline, which is where "exited within the timeline" is read off. The grey
+line is the at-risk estimate described in the next section, with its
+confidence interval; where the two run together, nobody had left the data
+yet.
 
 ```{r}
 #| label: fig-exit-curve
-#| fig-cap: !expr if (have_curve) sprintf("Cumulative exit rate, %s cohort. Censored students are not exiters, so this is a lower bound.", res$meta$cohort) else "Cumulative exit rate"
+#| fig-cap: !expr if (have_curve) sprintf("Cumulative exit rate, %s cohort. Censored students are not exiters, so the observed line is a lower bound. The interval covers sampling variability in this cohort's exit rates; it says nothing about whether this cohort stands for any other.", res$meta$cohort) else "Cumulative exit rate"
 #| eval: !expr have_curve
-plot_exit_curve(res$exit_curve, spec)
+plot_exit_curve(res$exit_curve, spec, survival_est = res$survival_est)
 ```
 
 Splitting the same curve by the band a student started in asks whether exit
@@ -156,9 +165,16 @@ bound. Beside it sits the standard discrete-time estimate, which compounds
 each year's at-risk rate to ask what share *would* have exited had nobody
 been lost. Neither is the right number alone, so both are shown.
 
+Only the estimate carries a confidence interval, and only the estimate should.
+The observed column is not an estimate of anything --- it is a count against a
+denominator that quietly includes students nobody is following any more ---
+and putting an interval around it would advertise precision about the wrong
+quantity. The interval covers sampling variability in this cohort's own exit
+rates. It is not a claim that this cohort speaks for the next one.
+
 ```{r}
 #| label: tbl-survival
-#| tbl-cap: "Exit rates by year in status. The last two columns answer different questions: the observed share counts against the cohort as it started, the estimate allows for students no longer being observed."
+#| tbl-cap: "Exit rates by year in status. The observed share counts against the cohort as it started; the estimate allows for students no longer being observed, and is the only column an interval belongs to."
 #| eval: !expr have_survival
 ft_check1_survival(res)
 ```
@@ -194,16 +210,80 @@ Where the cohort stood when the window closed:
 ft_check1_timeline(res)
 ```
 
+## Model 1 --- the fitted baseline
+
+Everything above this line is descriptive: counts, and arithmetic on counts.
+Where the curve was split by initial band, that was a way of grouping
+students, not a variable in a model.
+
+Model 1's other half fits the same thing, so that Model 2 has something to be
+measured against. It runs in two steps.
+
+**Unconditional --- no covariate at all.** The odds of exiting in each year in
+status, and nothing else. This is the life table written as a model, and it
+should agree with the life table exactly: the fitted annual hazards *are*
+column **D**. Nothing new is learned here; what it provides is the baseline
+every later term is added to.
+
+```{r}
+#| output: asis
+#| eval: !expr have_model1
+cat(check1_model1_note(res), "\n")
+```
+
+**Adding where the student started.** The same model with the student's
+**first** `r spec_headline_label(spec)` score --- the one they entered on,
+fixed for their whole run --- as a single covariate. It asks whether entry
+proficiency already sets exit timing.
+
+It is deliberately *not* the current year's score. The exit rule is applied to
+that year's result, so a model of exit on it would restate the rule rather
+than test anything, and every other covariate beside it would be conditioned
+on the outcome's own cause.
+
+```{r}
+#| label: tbl-model1
+#| tbl-cap: "Discrete-time hazard model with the entry score as the only covariate. The ratio is per standard deviation of entry score; each year in status carries its own term."
+#| eval: !expr have_model1_baseline
+ft_check1_model1(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_model1_baseline
+cat(check1_model1_baseline_note(res), "\n")
+```
+
+```{r}
+#| label: tbl-model1-dropped
+#| tbl-cap: "Rows the model could not use. Nothing here is imputed."
+#| eval: !expr have_model1_baseline
+ft_check1_model1_dropped(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr no_model1_baseline
+cat("> **No entry-score model.** ", res$meta$model1_note, "\n", sep = "")
+```
+
 ## Model 2 --- does achievement predict who exits?
 
 Model 1 describes *when* students exit. Model 2 asks a different question:
-once you already know a student's ELP score, does knowing last year's content
-score tell you anything more about whether they exit this year? If it does,
-something other than the language test is shaping who leaves EL status --
-the selection effect this stage exists to catch at the source.
+once you already know where a student started in English, does knowing last
+year's content score tell you anything more about whether they exit this
+year? If it does, something other than the language test is shaping who
+leaves EL status --- the selection effect this stage exists to catch at the
+source.
 
 The number to read is the ratio on prior-year achievement. At 1 it adds
 nothing. Away from 1 in either direction, it adds something it should not.
+
+Both covariates are measured *before* the decision they are used to predict:
+the language score at entry, the content score a year back. That is what
+makes the question answerable. Put the current year's language score in
+instead and the model would be conditioning on the exit rule itself, and this
+ratio would be driven to 1 no matter what was true.
 
 ```{r}
 #| label: tbl-model2
@@ -227,6 +307,12 @@ ft_check1_model2_dropped(res)
 
 ```{r}
 #| output: asis
+#| eval: !expr have_nested
+cat("**Against the baseline.** ", check1_nested_note(res), "\n", sep = "")
+```
+
+```{r}
+#| output: asis
 #| eval: !expr no_model2
 cat("> **No Model 2.** ", res$meta$model2_note, "\n", sep = "")
 ```
@@ -234,10 +320,13 @@ cat("> **No Model 2.** ", res$meta$model2_note, "\n", sep = "")
 ::: {.callout-important appearance="default" icon=false}
 ## What this model can and cannot say here
 
-On simulated data this is **machinery, not a finding**. Exit in this
-simulation is a rule applied to the ELP score and nothing else, so a ratio
-near 1 on prior achievement is the generator reporting its own design. Run
-against a real delivery, the same table is a genuine test.
+On simulated data this is **machinery, not a finding** --- and that holds
+whichever way the ratio comes out. Exit in this simulation is a rule applied
+to the language score, and how closely content achievement tracks that score
+is a parameter of the generator. Whatever this table reports, it is reporting
+the generator's own design back. It is not evidence that any state's exit
+process is or is not selecting on achievement. Run against a real delivery,
+the same table is a genuine test.
 
 Read it as evidence about *selection*, not about students: a ratio away from
 1 says the exit process is responding to something beyond the language test,
@@ -289,18 +378,30 @@ if (!is.na(s$value)) {
 
 Discrete-time survival analysis applied to one entry cohort: students who
 entered EL status in the same grade, in the same year, tracked forward across
-subsequent grades. Two models are estimated, named here because the rest of
-the process refers back to them.
+subsequent grades. Two models are named here because the rest of the process
+refers back to them.
 
-**Model 1 --- the unconditional survival model.** The probability that a
-student exits EL status in each subsequent grade, with ELP as the only
-predictor. This is the baseline description of exit timing; no achievement
-data is involved. It is what this pass renders.
+**Model 1 --- the unconditional survival model.** How long students stay in
+EL status, with nothing held constant. It comes in two parts, and they answer
+the same question in different registers. The *descriptive* part is the life
+table, the curves and the at-risk estimate: no predictor at all, only counts
+of who was at risk, who exited and who was lost, with the split by initial
+band a way of grouping students rather than a variable in a model. The
+*fitted* part runs in two steps: first the odds of exiting in each year in
+status with no covariate at all, which is the life table written as a model;
+then the same thing with the student's entry score added. Neither involves
+achievement data.
 
-**Model 2 --- the ELA-augmented survival model.** The same discrete-time
-setup with lagged ELA achievement added alongside ELP, which exists to test
-whether academic performance is doing selection work that is supposed to
-belong to the language test alone. *(Later pass --- see Still to come.)*
+**Model 2 --- the ELA-augmented survival model.** The second of those with
+lagged content achievement added, to test whether academic performance is
+doing selection work that is supposed to belong to the language test alone.
+Model 1 is what it is compared against, which is why all three are fitted.
+
+Every covariate in these models is measured **before** the exit decision it
+is used to predict --- fixed at entry, or lagged a year. The current year's
+language score is what the exit rule is applied to, so including it would
+restate the rule rather than test anything, and would strip Model 2 of its
+ability to answer the question it exists for.
 
 ## Looking for
 
@@ -353,8 +454,13 @@ of one entry cohort, never as the state's overall exit rate.
 ## What is not here
 
 Check 1 is complete: the life table, the exit curves, the survival estimate
-and its median, the timeline outcomes, Model 2 and the experimental index all
-render above. Three things are deliberately absent.
+and its median, the timeline outcomes, both fitted models and the
+experimental index all render above. Four things are deliberately absent.
+
+**A confidence interval on anything but the estimate.** The life table's own
+columns are counts, and the observed cumulative share is a count against a
+denominator that includes students nobody is following any more. Only the
+at-risk estimate is an estimator, and only it is banded.
 
 **A per-grade selection strength.** The index uses one ratio for the whole
 cohort. The Process Overview asks for it at each grade, which needs either an

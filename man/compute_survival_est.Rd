@@ -17,7 +17,7 @@ compute_survival_est(data, spec, cohort, start_grade = "K")
 }
 \value{
 A tibble by \code{YEAR_IN_STATUS}: \code{A}, \code{HAZARD} (D), \code{SURVIVING},
-\code{CUM_EXIT_EST}, \code{CUM_EXIT_OBS}, \code{SUPPRESSED}.
+\code{CUM_EXIT_EST}, \code{SE}, \code{CI_LO}, \code{CI_HI}, \code{CUM_EXIT_OBS}, \code{SUPPRESSED}.
 }
 \description{
 The life table's \strong{F} column counts exits against the cohort as it
@@ -31,6 +31,15 @@ been lost to follow-up.
 Both are reported side by side, labeled, because neither is the right
 number alone: the observed share is what happened, the estimate is what the
 hazards imply. The gap between them is the price of censoring.
+
+\strong{Only the estimate carries a confidence interval.} \code{SE}, \code{CI_LO} and
+\code{CI_HI} come from Greenwood's variance, taken through the complementary
+log-log scale so the bounds stay inside [0, 1]. The observed column has
+none: it counts exits against the cohort as it started, which is a
+censoring-biased lower bound rather than an estimator of anything, and an
+interval around it would advertise precision about the wrong quantity. The
+interval covers sampling variability in this cohort's exit rates only --
+not whether the cohort represents any other.
 }
 \examples{
 spec <- read_el_spec("00_SIM_EL_Spec")
