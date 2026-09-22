@@ -40,18 +40,32 @@ run_check3 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
   panel <- if (!has_academic) NULL else {
     compute_panel(data, spec, subject = subject, grade = grade, year = year)
   }
-  box_data <- if (is.null(panel)) NULL else compute_box_data(data, spec, panel)
+
+  # Every tested grade x subject, each its own panel. Grades are never pooled
+  # (instruction file, tested), so the loop binds a keyed long table rather
+  # than merging anything: the landing statistics only become evidence when
+  # they can be read across grades together, and one grade is an anecdote.
+  panels <- if (!has_academic) list() else {
+    .check3_all_panels(data, spec, panel, subject = subject, year = year)
+  }
+  fits <- lapply(panels, function(p) .check3_one_panel(data, spec, p))
+
+  box_data <- .check3_bind(fits, "box_data", panels)
+  summary_table <- .check3_bind(fits, "summary_table", panels)
+  fairness_boxes <- .check3_bind(fits, "fairness_boxes", panels)
+  logistic <- .check3_bind(fits, "logistic", panels)
+  landing <- .check3_bind(fits, "landing", panels)
+  fairness_logistic <- .check3_bind(fits, "fairness_logistic", panels)
 
   list(
-    box_data = box_data,
-
-    # [Later pass -- instruction file: summary table, then logistic +
-    #  landing, then the two fairness checks]
-    summary_table      = NULL,
-    logistic           = NULL,
-    landing            = NULL,
-    fairness_boxes     = NULL,
-    fairness_logistic  = NULL,
+    # All panels, long and keyed. One grade is a filter of this, which is why
+    # the figure takes a selector rather than a separate slot.
+    box_data           = box_data,
+    summary_table      = summary_table,
+    logistic           = logistic,
+    landing            = landing,
+    fairness_boxes     = fairness_boxes,
+    fairness_logistic  = fairness_logistic,
 
     # [Type-gated: Types 2/4/5/6 only, and the SIM spec is Type 1. It also
     #  needs Prep 2's contested zone, which is NULL under the same gate.]
@@ -78,8 +92,8 @@ run_check3 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
                                       "pairing of academic scores with ",
                                       "roster status, so the stage has ",
                                       "nothing to report."),
-      pending              = c("summary_table", "logistic", "landing",
-                               "fairness_boxes", "fairness_logistic"),
+      panels               = length(panels),
+      pending              = character(),
       sim_contract_version = data$meta$sim_contract_version,
       package_version      = as.character(utils::packageVersion("stateELP")),
       run_date             = Sys.Date()
@@ -137,4 +151,68 @@ run_check3 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
     "same cells instead hold students that criterion is blocking, which is a ",
     "different population again. Read the top of this axis with that in ",
     "mind, and read the Former ELs column beside it.")
+}
+
+# Every tested grade x subject the spec declares, as panels. The focal panel
+# is placed first so a reader of the long tables meets the figure's grade at
+# the top; the rest follow in the spec's own order.
+.check3_all_panels <- function(data, spec, focal, subject = NULL, year = NULL) {
+  subjects <- if (is.null(subject)) spec_academic_subjects(spec) else subject
+  out <- list()
+  for (sb in subjects) {
+    grades <- spec_academic_grades(spec, sb)
+    if (is.null(grades)) {
+      ac <- el_academic(data)
+      grades <- sort(unique(as.character(ac$GRADE[ac$SUBJECT %in% sb])))
+    }
+    for (g in grades) {
+      p <- tryCatch(compute_panel(data, spec, subject = sb, grade = g,
+                                  year = year),
+                    error = function(e) NULL)
+      if (!is.null(p) && !is.na(p$year)) out[[length(out) + 1L]] <- p
+    }
+  }
+  if (is.null(focal)) return(out)
+
+  same <- vapply(out, function(p) {
+    identical(p$subject, focal$subject) && identical(p$grade, focal$grade)
+  }, TRUE)
+  c(out[same], out[!same])
+}
+
+# One panel's five results. Each is independent of the others except that the
+# summary table and the landing statistics read the box data rather than
+# recomputing it.
+.check3_one_panel <- function(data, spec, panel) {
+  box <- compute_box_data(data, spec, panel)
+  logistic <- compute_logistic(data, spec, panel)
+  list(
+    box_data          = box,
+    summary_table     = compute_summary_table(data, spec, panel,
+                                              box_data = box),
+    logistic          = logistic,
+    landing           = compute_landing(box, logistic, spec),
+    fairness_boxes    = compute_fairness_boxes(data, spec, panel),
+    fairness_logistic = compute_fairness_logistic(data, spec, panel))
+}
+
+# Bind one slot across panels into a long table keyed by subject and grade.
+# The keys are added here rather than inside each compute function, so a
+# single panel's result stays readable on its own.
+.check3_bind <- function(fits, slot, panels) {
+  parts <- list()
+  for (i in seq_along(fits)) {
+    x <- fits[[i]][[slot]]
+    if (is.null(x) || !nrow(x)) next
+    if (!"SUBJECT" %in% names(x)) {
+      x <- dplyr::bind_cols(
+        tibble::tibble(SUBJECT = panels[[i]]$subject,
+                       GRADE = panels[[i]]$grade,
+                       YEAR = panels[[i]]$year),
+        x)
+    }
+    parts[[length(parts) + 1L]] <- x
+  }
+  if (!length(parts)) return(NULL)   # [no panel produced this slot]
+  dplyr::bind_rows(parts)
 }

@@ -39,7 +39,8 @@ res <- if (!is.null(params$results_file) && nzchar(params$results_file)) {
 # `h` is "has it", `n` is "is it missing": Quarto reads a second `!` inside
 # `!expr` as a second YAML tag, so the negation needs its own name.
 slots <- c("box_data", "summary_table", "logistic", "landing",
-           "fairness_boxes", "contested_zone_models", "coverage")
+           "fairness_boxes", "fairness_logistic", "contested_zone_models",
+           "coverage")
 h <- vapply(slots, function(s) !is.null(res[[s]]), TRUE)
 n <- !h
 
@@ -55,6 +56,18 @@ box_cap <- if (h[["box_data"]]) {
                 "Groups with fewer than %d scores are suppressed and not drawn."),
           res$meta$subject, component, res$meta$grade, res$meta$year, min_cell)
 } else "Academic scale score by ELP band"
+
+summary_cap <- if (h[["summary_table"]]) {
+  sprintf(paste("The same panel as numbers: %s, grade %s, %d.",
+                "n counts everyone in the group; n scored is how many scores the",
+                "statistics rest on."),
+          res$meta$subject, res$meta$grade, res$meta$year)
+} else "Summary statistics"
+
+fairness_box_cap <- if (h[["fairness_boxes"]]) {
+  paste("The same panel with the English-only group restricted to",
+        "economically disadvantaged students. A crude filter, not a match.")
+} else "SES-filtered comparison"
 ```
 
 ::: {.callout-note appearance="default" icon=false}
@@ -108,6 +121,81 @@ cat(res$meta$band_axis_note, "\n")
 ```
 :::
 
+```{r}
+#| label: tbl-summary
+#| tbl-cap: !expr summary_cap
+#| eval: !expr h[["summary_table"]]
+ft_check3_summary(res)
+```
+
+## Where each grade lands
+
+Two readings of the same question. The **band** column is the first ELP band
+whose students reach the cut at least half the time --- equivalently, the
+first band whose median clears it. The **crossing** is the ELP scale score at
+which a fitted logistic passes 50%. Agreement between them is the evidence;
+disagreement says the answer depends on how you ask, and has to be read
+against Prep 2's composition findings and Data Check 1's attrition.
+
+```{r}
+#| label: tbl-landing
+#| tbl-cap: "Where each grade lands. A dash means no band reached half; the next column says how far the highest band got. Bold marks a landing at or above the band the exit threshold falls in."
+#| eval: !expr h[["landing"]]
+ft_check3_landing(res)
+```
+
+```{r}
+#| label: fig-landing
+#| fig-cap: "The same, read across grades. Triangles mark landings at or above the exit band."
+#| eval: !expr h[["landing"]]
+plot_landing(res$landing, spec)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["landing"]]
+cat(check3_landing_note(res), "\n")
+```
+
+## The fairness check
+
+Is the bar being asked of English learners one that English-speaking peers
+themselves clear? Two ways of asking, both of which change something the main
+analysis holds fixed.
+
+**(a) A comparable reference group.** The English-only column above is every
+English-only student in the grade. Restricting it to economically
+disadvantaged students narrows a comparison that otherwise confounds language
+with poverty. The filter is crude --- this delivery carries one
+free-and-reduced-lunch flag and no parental education --- and a matched
+version is a later addition.
+
+```{r}
+#| label: tbl-fairness-boxes
+#| tbl-cap: !expr fairness_box_cap
+#| eval: !expr h[["fairness_boxes"]]
+ft_check3_summary(res, slot = "fairness_boxes")
+```
+
+**(b) A different bar.** The identical logistic, with the outcome swapped
+from "reached the state's cut" to "reached the English-only group's own
+average". If the ELP level implied by that bar sits below the one implied by
+the state's cut, the state is asking of ELs something the average
+English-speaking peer does not manage.
+
+```{r}
+#| label: tbl-fairness
+#| tbl-cap: "The state's cut against the English-only average, and the ELP crossing each implies."
+#| eval: !expr h[["fairness_logistic"]]
+ft_check3_fairness(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["fairness_logistic"]]
+cat(check3_fairness_note(res), "\n")
+```
+
 ## Looking for
 
 Three things, read together rather than one at a time.
@@ -122,8 +210,8 @@ Three things, read together rather than one at a time.
    requires.
 3. **Whether the English-only column clears the cut itself.** If it does not,
    the bar being asked of ELs is one that English-speaking peers do not meet,
-   which is a construct-validity problem rather than a threshold one. Data
-   Check 3's fairness checks test that directly; they arrive in a later pass.
+   which is a construct-validity problem rather than a threshold one. That is
+   what the fairness check above tests directly.
 
 ## Interpreting it
 
@@ -139,31 +227,29 @@ two is more informative than its position against the cut alone.
 
 ## What is not here
 
-This pass renders one panel --- `r res$meta$subject`, grade
-`r res$meta$grade` --- as the stage's real element. Four things follow in
-later passes, in this order:
+All `r res$meta$panels` grade-and-subject panels are computed; the figure
+draws one of them and the tables carry them all. Four things are still
+absent.
 
-**The summary table.** n, minimum, 25th, median, mean, 75th, maximum and IQR
-per group, in the deck's slide-71 layout, with alternate-assessment takers
-counted in `n` and excluded from the distributions.
+**A matched English-only group.** The fairness check filters on a single
+free-and-reduced-lunch flag. Propensity matching --- and, where a delivery
+carries it, parental education --- would make the comparison a comparison
+rather than a narrowing. This delivery has no parental-education field, so
+the crude version is the ceiling here.
 
-**The logistic regression and its landing statistics.** The probability of
-academic proficiency as a function of the `r component` scale score, read at
-its 50% crossing, beside the band where the share at or above the cut first
-reaches half. Convergence between the two corroborates; divergence is read
-against Prep 2's composition findings and Data Check 1's attrition, never
-resolved by picking whichever grade agrees.
+**The contested-zone models.** Type-gated, and this spec is Type 1: with a
+single overall criterion there is no second criterion to disagree with it, so
+there is no contested zone to model. A Type 2--6 state would get box plots
+split by the second criterion within band, and one logistic with an
+interaction presented as two predicted curves.
 
-**The two fairness checks.** The box plots re-run on an
-economically-comparable English-only group, and the same logistic with the
-bar swapped from the state's proficiency cut to the English-only group's own
-average. A threshold that lands materially lower under the second is a
-construct-validity signal, and it goes to the Decision stage rather than
-being settled here.
+**Confidence around the crossings.** The logistic reports a point. A
+delivery-quality answer wants an interval around it, and the intervals would
+be wide wherever the crossing is already an extrapolation.
 
-**Every grade, not one.** The per-grade loop, so the landing statistics can
-be examined across grades together --- which is where they become evidence
-rather than an anecdote about grade `r res$meta$grade`.
+**A year dimension.** Each panel takes the most recent year the pairing is
+available. Whether the landing moves year to year is a question this stage
+could answer and does not yet ask.
 
 ::: {.callout-important appearance="default" icon=false}
 ## What this panel can and cannot say here

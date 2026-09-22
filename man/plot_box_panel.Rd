@@ -4,14 +4,20 @@
 \alias{plot_box_panel}
 \title{The slide-73 box plot for one panel}
 \usage{
-plot_box_panel(x, spec = NULL)
+plot_box_panel(x, spec = NULL, subject = NULL, grade = NULL)
 }
 \arguments{
-\item{x}{Output of \code{\link[=compute_box_data]{compute_box_data()}}.}
+\item{x}{Output of \code{\link[=compute_box_data]{compute_box_data()}}, or \verb{$box_data} from
+\code{\link[=run_check3]{run_check3()}}, which carries every panel.}
 
 \item{spec}{An \code{el_spec}, optional. Supplies the band display order and the
 cut when \code{x} has lost its attributes (e.g. after a round-trip through
 RDS).}
+
+\item{subject, grade}{Which panel to draw when \code{x} holds more than one.
+Defaults to the first, which \code{\link[=run_check3]{run_check3()}} orders to be the focal panel.
+A selector matching no panel is an error rather than a silent fallback to
+a different grade.}
 }
 \value{
 A \code{ggplot}.

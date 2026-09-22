@@ -4,6 +4,10 @@
 
 check3_spec <- function() make_check3_spec()
 
+# The focal panel out of a long, keyed slot. Most single-panel assertions read
+# better against one panel than against all eighteen.
+check3_focal <- function(x) .c3_one_panel(x)
+
 # run_check3() on the full sim, once for the file.
 check3_sim <- local({
   r <- NULL
@@ -53,7 +57,7 @@ test_that("a subject the spec does not declare is refused", {
 
 test_that("compute_box_data() returns one row per group, in spec order", {
   spec <- check3_spec()
-  bd <- check3_sim()$box_data
+  bd <- check3_focal(check3_sim()$box_data)
 
   expect_s3_class(bd, "tbl_df")
   expect_identical(bd$GROUP, .check3_group_levels(spec))
@@ -72,7 +76,7 @@ test_that("the reference groups are present and are not bands", {
   # Former and never-EL students have no ELP rows at all, so they cannot be
   # banded; if they were missing the figure would lose the two columns that
   # carry its interpretation.
-  bd <- check3_sim()$box_data
+  bd <- check3_focal(check3_sim()$box_data)
   spec <- check3_spec()
 
   expect_true(all(c("Former ELs", "English-only") %in% bd$GROUP))
@@ -155,7 +159,7 @@ test_that("suppression keys on the plotted n, not the group total", {
 test_that("the never-EL n is reported weighted as well as raw", {
   # Never-ELs are a 10% sample (contract 5.1). An unweighted count presented
   # as a population figure is the error this guards.
-  bd <- check3_sim()$box_data
+  bd <- check3_focal(check3_sim()$box_data)
   eo <- bd[bd$GROUP == "English-only", ]
 
   expect_true("N_WEIGHTED" %in% names(bd))
@@ -192,7 +196,7 @@ test_that("the proficiency cut comes from the spec, never a literal", {
 
   expect_identical(.check3_cut(spec, subject),
                    as.numeric(spec$academic[[subject]]$cuts[[lvl - 1L]]))
-  expect_identical(attr(check3_sim()$box_data, "cut"),
+  expect_identical(attr(compute_box_data(make_check3_sim_bundle(), spec), "cut"),
                    .check3_cut(spec, subject))
 
   # A spec with no benchmark yields no line rather than a guessed one.
@@ -222,8 +226,8 @@ test_that("band labels and group names are never hardcoded in the sources", {
 test_that("the panel plots from summary statistics alone", {
   # No student-level data may be in scope where a figure is built
   # (CLAUDE.md 8), which is why compute_box_data() returns five numbers.
-  bd <- check3_sim()$box_data
-  p <- plot_box_panel(bd, check3_spec())
+  bd <- check3_focal(check3_sim()$box_data)
+  p <- plot_box_panel(check3_sim()$box_data, check3_spec())
 
   expect_s3_class(p, "ggplot")
   expect_identical(nrow(p$data), sum(!is.na(bd$Y_MEDIAN)))
@@ -241,16 +245,34 @@ test_that("plot_box_panel() refuses anything but the matching slot", {
 
 # ---- assembly ---------------------------------------------------------------
 
-test_that("run_check3() fills the shell's slot and marks the rest pending", {
+test_that("run_check3() fills every slot the instruction file names", {
   res <- check3_sim()
 
-  expect_false(is.null(res$box_data))
-  expect_false(is.null(res$coverage))
-  for (s in c("summary_table", "logistic", "landing", "fairness_boxes",
-              "fairness_logistic")) {
-    expect_null(res[[s]])
-    expect_true(s %in% res$meta$pending)
+  for (s in c("box_data", "summary_table", "logistic", "landing",
+              "fairness_boxes", "fairness_logistic", "coverage")) {
+    expect_false(is.null(res[[s]]), info = s)
   }
+  expect_length(res$meta$pending, 0L)
+  # Type-gated, and this spec is Type 1: with one overall criterion there is
+  # no second criterion to disagree with it, so no contested zone exists.
+  expect_null(res$contested_zone_models)
+})
+
+test_that("every tested grade and subject gets its own panel", {
+  spec <- check3_spec()
+  res <- check3_sim()
+
+  expected <- sum(vapply(spec_academic_subjects(spec),
+                         function(s) length(spec_academic_grades(spec, s)),
+                         1L))
+  expect_identical(res$meta$panels, as.integer(expected))
+  expect_identical(nrow(res$landing), as.integer(expected))
+  # Keyed, not pooled: one row per panel and no duplicates.
+  expect_identical(anyDuplicated(paste(res$landing$SUBJECT,
+                                       res$landing$GRADE)), 0L)
+  # The focal panel leads, so the figure's grade is the first a reader meets.
+  expect_identical(res$landing$SUBJECT[[1]], res$meta$subject)
+  expect_identical(res$landing$GRADE[[1]], res$meta$grade)
 })
 
 test_that("results are keyed by grade and never pooled across grades", {
@@ -305,23 +327,238 @@ test_that("without an academic table every slot is NULL, with a note", {
 
 # ---- later passes -----------------------------------------------------------
 
-test_that("the landing band is where the share at or above the cut reaches 50%", {
-  skip("check3 later pass: $landing")
-})
 
-test_that("the logistic reports the scale score where fitted probability crosses 50%", {
-  skip("check3 later pass: $logistic")
-})
 
-test_that("fairness-check output is captioned as a generator parameter on sim data", {
-  # Every EL/EO gap in the sim is a parameter; the machinery is real, the
-  # number is by construction.
-  skip("check3 later pass: $fairness_boxes, $fairness_logistic")
-})
+
+
+
 
 test_that("contested-zone models are NULL under a Type 1 spec", {
   # Structural now, and it stays NULL when the models are built: the SIM spec
   # is Type 1 and Prep 2's contested zone is NULL under the same gate.
   expect_null(check3_sim()$contested_zone_models)
   expect_false(spec_has_type(check3_spec(), 2:6))
+})
+
+# ---- later pass: the summary table -------------------------------------------
+
+test_that("the summary table is the figure's own numbers, not a second count", {
+  # Recomputing would let the table and the figure disagree about the same
+  # panel, which is the failure mode a reader cannot detect.
+  spec <- check3_spec()
+  b <- make_check3_sim_bundle()
+  p <- compute_panel(b, spec)
+  bd <- compute_box_data(b, spec, p)
+  st <- compute_summary_table(b, spec, p, box_data = bd)
+
+  expect_identical(st$GROUP, bd$GROUP)
+  expect_identical(st$Y_MEDIAN, bd$Y_MEDIAN)
+  expect_identical(st$N, bd$N)
+  expect_equal(st$Y_IQR, bd$Y_P75 - bd$Y_P25)
+  expect_true(all(c("N_ALTERNATE", "N_WEIGHTED", "PCT_AT_CUT",
+                    "SUPPRESSED") %in% names(st)))
+})
+
+# ---- later pass: the logistic ------------------------------------------------
+
+test_that("the logistic reports the scale score where probability crosses 50%", {
+  spec <- check3_spec()
+  lg <- check3_focal(check3_sim()$logistic)
+
+  expect_identical(nrow(lg), 1L)
+  expect_true(is.finite(lg$SLOPE))
+  # The crossing is -a/b by construction, which is the whole statistic.
+  expect_equal(lg$CROSSING, -lg$INTERCEPT / lg$SLOPE)
+  expect_identical(lg$THRESHOLD,
+                   .check3_cut(spec, spec_academic_subjects(spec)[[1]]))
+  expect_identical(lg$THRESHOLD_KIND, "state proficiency cut")
+  expect_gt(lg$N, 0L)
+})
+
+test_that("the logistic runs on current ELs, the only group with an ELP score", {
+  spec <- check3_spec()
+  b <- make_check3_sim_bundle()
+  p <- compute_panel(b, spec)
+  rows <- .check3_panel_rows(b, spec, p)
+  lg <- compute_logistic(b, spec, p)
+
+  eligible <- sum(rows$EL_STATUS %in% "current" & !rows$ALTERNATE &
+                    !is.na(rows$ELP_SCALE) & !is.na(rows$SCALE_SCORE))
+  expect_identical(lg$N, as.integer(eligible))
+  # Former and never-EL students have no ELP score to regress on, so the fit
+  # cannot have used them.
+  expect_lt(lg$N, nrow(rows))
+})
+
+test_that("a crossing outside the observed scores is flagged, not hidden", {
+  # Reading the fitted curve past its data gives a number nobody was seen at.
+  # It is still worth reporting -- it says the bar is above everyone -- but
+  # only labelled as the extrapolation it is.
+  l <- check3_sim()$logistic
+  out <- l[!l$CROSSING_IN_RANGE %in% TRUE & !is.na(l$CROSSING), ]
+
+  expect_true("CROSSING_IN_RANGE" %in% names(l))
+  expect_gt(nrow(out), 0L)             # the sim does produce some
+  expect_true(all(is.finite(out$CROSSING)))
+})
+
+test_that("a panel where the outcome never varies returns no crossing", {
+  # Everyone above the bar, or nobody: there is no curve. That is a fact
+  # about the grade, so the row comes back empty rather than erroring.
+  spec <- check3_spec()
+  b <- make_check3_bundle()
+  p <- compute_panel(b, spec)
+  lg <- compute_logistic(b, spec, p, threshold = -Inf)   # everyone clears it
+
+  expect_identical(nrow(lg), 1L)
+  expect_true(is.na(lg$CROSSING))
+  expect_identical(lg$N_ABOVE, lg$N)
+})
+
+# ---- later pass: the landing statistics --------------------------------------
+
+test_that("the landing band is where the share at or above the cut reaches 50%", {
+  spec <- check3_spec()
+  res <- check3_sim()
+  bd <- check3_focal(res$box_data)
+  ld <- check3_focal(res$landing)
+  bands <- spec_bands(spec)$labels
+  cut <- .check3_cut(spec, spec_academic_subjects(spec)[[1]])
+
+  b <- bd[match(bands, bd$GROUP), ]
+  first <- which(!is.na(b$PCT_AT_CUT) & b$PCT_AT_CUT >= 0.5)[1]
+  expect_identical(ld$LANDING_BAND,
+                   if (is.na(first)) NA_character_ else bands[[first]])
+
+  # "At or above the cut for half" and "the median clears the cut" are the
+  # same statement, and the instruction file says so. Check they agree.
+  by_median <- which(!is.na(b$Y_MEDIAN) & b$Y_MEDIAN >= cut)[1]
+  expect_identical(is.na(first), is.na(by_median))
+})
+
+test_that("no band reaching half is an answer, not a failure", {
+  res <- check3_sim()
+  none <- res$landing[is.na(res$landing$LANDING_BAND), ]
+  skip_if(nrow(none) == 0, "every panel landed in this delivery")
+
+  # The row survives, and says how far the highest band did get -- otherwise
+  # an empty landing is unreadable.
+  expect_true(all(!is.na(none$TOP_BAND_PCT)))
+  expect_true(all(none$TOP_BAND_PCT < 0.5))
+  expect_false(any(is.na(none$GRADE)))
+})
+
+test_that("a landing inside the exit bands is flagged", {
+  # Those bands hold students the exit rule is about to remove, so a landing
+  # there describes a population the rule constitutes. The flag is what stops
+  # the statistic being quoted flat.
+  spec <- check3_spec()
+  l <- check3_sim()$landing
+
+  expect_identical(unique(l$EXIT_BAND), .check3_exit_band(spec))
+  bands <- spec_bands(spec)$labels
+  landed <- l[!is.na(l$LANDING_BAND), ]
+  expect_identical(
+    landed$LANDING_AT_OR_ABOVE_EXIT,
+    match(landed$LANDING_BAND, bands) >= match(landed$EXIT_BAND, bands))
+})
+
+test_that("the exit band is read from the rule, never typed", {
+  spec <- check3_spec()
+  band <- .check3_exit_band(spec)
+
+  expect_true(band %in% spec_bands(spec)$labels)
+  # Move the rule's threshold and the band moves with it.
+  lower <- spec
+  lower$policy$exit$pathways[[1]]$terms[[1]]$value <- 2.5
+  expect_false(identical(.check3_exit_band(lower), band))
+})
+
+# ---- later pass: the two fairness checks -------------------------------------
+
+test_that("the SES filter narrows the reference group and nothing else", {
+  spec <- check3_spec()
+  b <- make_check3_sim_bundle()
+  p <- compute_panel(b, spec)
+  full <- compute_box_data(b, spec, p)
+  fair <- compute_fairness_boxes(b, spec, p)
+
+  eo <- fair$GROUP == "English-only"
+  expect_lt(fair$N[eo], full$N[eo])          # the reference group shrinks ...
+  expect_identical(fair$N[!eo], full$N[!eo]) # ... and no other group moves
+  expect_match(attr(fair, "filter"), "crude filter, not a match")
+})
+
+test_that("the SES filter reads whatever the delivery calls yes", {
+  # A crosswalk state may send 1/0 or TRUE/FALSE. None of those should
+  # silently filter the reference group down to nobody.
+  expect_true(all(.check3_is_disadvantaged(c("Y", "yes", "1", "TRUE", "t"))))
+  expect_false(any(.check3_is_disadvantaged(c("N", "no", "0", "FALSE", NA))))
+})
+
+test_that("the second fairness check swaps the bar and keeps the model", {
+  res <- check3_sim()
+  f <- check3_focal(res$fairness_logistic)
+  l <- check3_focal(res$logistic)
+
+  expect_identical(f$THRESHOLD_KIND, "English-only average")
+  expect_identical(f$STATE_CUT, l$THRESHOLD)
+  expect_false(identical(f$THRESHOLD, l$THRESHOLD))
+  # Same universe, same n: only the outcome's definition changed.
+  expect_identical(f$N, l$N)
+})
+
+test_that("the English-only bar is weighted, never a raw sample mean", {
+  # Never-ELs are a 10% sample; an unweighted average is a sample statistic
+  # presented as a population one.
+  spec <- check3_spec()
+  b <- make_check3_sim_bundle()
+  p <- compute_panel(b, spec)
+  rows <- .check3_panel_rows(b, spec, p)
+  eo <- rows[rows$GROUP == "English-only" & !is.na(rows$SCALE_SCORE), ]
+
+  f <- compute_fairness_logistic(b, spec, p)
+  expect_equal(f$THRESHOLD,
+               stats::weighted.mean(eo$SCALE_SCORE, eo$SAMPLE_WEIGHT))
+  expect_identical(f$N_REFERENCE, nrow(eo))
+})
+
+test_that("fairness output is captioned as a generator parameter on sim data", {
+  # Every EL/EO gap in the sim is a parameter; the machinery is real, the
+  # number is by construction.
+  note <- check3_fairness_note(check3_sim())
+
+  expect_match(note, "construct-validity signal")
+  expect_match(note, "not a threshold recommendation")
+  expect_match(note, "Decision stage")
+})
+
+# ---- the generated prose -----------------------------------------------------
+
+test_that("the landing note counts what it claims to count", {
+  res <- check3_sim()
+  note <- check3_landing_note(res)
+  l <- res$landing
+
+  expect_match(note, as.character(nrow(l)))
+  expect_match(note, as.character(sum(is.na(l$LANDING_BAND))))
+  if (all(l$LANDING_AT_OR_ABOVE_EXIT[!is.na(l$LANDING_BAND)] %in% TRUE)) {
+    expect_match(note, "Every panel that lands")
+  }
+})
+
+test_that("the tables render for every panel and the plots build", {
+  res <- check3_sim()
+  spec <- check3_spec()
+
+  expect_s3_class(ft_check3_summary(res), "flextable")
+  expect_s3_class(ft_check3_landing(res), "flextable")
+  expect_s3_class(ft_check3_fairness(res), "flextable")
+  expect_s3_class(plot_landing(res$landing, spec), "ggplot")
+
+  # A named panel is drawable, and a panel that does not exist is refused
+  # rather than silently falling back to another grade.
+  g <- res$landing$GRADE[[2]]
+  expect_s3_class(plot_box_panel(res$box_data, spec, grade = g), "ggplot")
+  expect_error(plot_box_panel(res$box_data, spec, grade = "99"), "No panel")
 })

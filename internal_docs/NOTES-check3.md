@@ -97,3 +97,68 @@ the contested-zone models.
 `document()` → `load_all()` → `test(filter = "check3")` → full
 `devtools::test()` → `render_step("check3")` in both formats →
 `devtools::check()` on a clean export.
+
+## The later passes (2026-09-21)
+
+All four built in one pass, against the decisions in the instruction file
+rather than waiting on the open questions recorded above: the proficiency cut
+is taken from the spec as-is and renders with its `[DERIVED - VERIFY]` flag,
+the SES comparison is the crude filter the instruction file specifies, and
+every declared grade is covered.
+
+**Slots are long and keyed, not one panel.** `$box_data`, `$summary_table`,
+`$landing`, `$logistic` and the two fairness slots each carry every tested
+grade x subject, keyed by `SUBJECT` and `GRADE`. One panel is a filter of
+that, which is why `plot_box_panel()` takes a selector rather than the stage
+holding a separate focal slot. `run_check3()` orders the focal panel first, so
+a reader of any table meets the figure's grade at the top.
+
+**The logistic is fitted on current ELs only.** They are the only students
+with an ELP score to regress on. The outcome is "reached the academic cut";
+the reported statistic is `-a/b`, the score where the fitted probability
+passes half.
+
+**Two guards on that number, both of which fire on the sim:**
+
+- `CROSSING_IN_RANGE` -- whether the crossing sits inside the ELP scores
+  actually observed. On the sim it does not, in **12 of 18 panels**: the
+  curve is being read past its data, and the crossing is an extrapolation
+  rather than a level anyone was seen at. Reported, never silently dropped --
+  a crossing above every observed score is itself the finding that no
+  observed level of English suffices.
+- A panel where the outcome never varies (everyone, or nobody, clears the
+  bar) has no curve. That returns an empty crossing rather than an error,
+  because it is a fact about the grade.
+
+**The band-axis hazard is now measured, not just captioned.** `$landing`
+carries `EXIT_BAND` -- read from the exit rule's structured terms, never
+typed -- and flags a landing at or above it. On the sim, **4 of 18 panels
+land at all, and all 4 land at or above the exit band.** The generated note
+says so in those words. That is the concern from the shell pass turning out
+to be exactly where the statistic falls: the only bands that reach the cut
+are the ones the exit rule constitutes.
+
+**`NA` landing is an answer.** 14 of 18 panels have no band where half the
+students reach the cut. `TOP_BAND_PCT` carries how far the highest band did
+get, so the empty answer is readable rather than looking like a failure.
+
+**The fairness checks.** (a) filters the English-only column to the
+economically disadvantaged -- `.check3_is_disadvantaged()` accepts Y/YES/1/
+TRUE so a crosswalk state does not silently filter to nobody -- and nothing
+else in the panel moves, which a test asserts. (b) re-runs the identical
+logistic with the bar swapped to the English-only group's **weighted** mean.
+On the sim the English-only average sits below the state's cut in 7 of 18
+panels, which is the construct-validity signal the check exists to raise.
+
+**On sim data none of these are findings.** Every EL/EO gap is a generator
+parameter (contract 5.2-5.3), and the document says so. What the pass
+demonstrates is that the machinery registers the signal when it is there and
+flags the conditions under which the number should not be read.
+
+## Still not built
+
+A matched (rather than filtered) English-only group, which needs parental
+education this delivery does not carry; the contested-zone models, which need
+a Type 2-6 spec; confidence intervals around the crossings; and a year
+dimension -- each panel takes the most recent year, and whether the landing
+moves year to year is a question this stage could ask and does not.

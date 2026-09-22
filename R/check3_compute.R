@@ -134,8 +134,19 @@ compute_box_data <- function(data, spec, panel = NULL) {
   rows <- .check3_panel_rows(data, spec, panel)
   if (!nrow(rows)) return(NULL)         # [a missing year, not an empty one]
 
-  levels <- .check3_group_levels(spec)
-  rows$GROUP <- factor(rows$GROUP, levels = levels)
+  out <- .check3_box_from_rows(rows, spec, panel)
+  attr(out, "panel") <- panel
+  attr(out, "cut") <- .check3_cut(spec, panel$subject)
+  out
+}
+
+# The group summary itself, split out because the fairness check builds the
+# same table from a restricted set of rows: one arithmetic, so the two cannot
+# drift into disagreeing about what a median is.
+.check3_box_from_rows <- function(rows, spec, panel) {
+  if (!nrow(rows)) return(NULL)
+  cut <- .check3_cut(spec, panel$subject)
+  rows$GROUP <- factor(rows$GROUP, levels = .check3_group_levels(spec))
 
   out <- rows |>
     dplyr::group_by(.data$GROUP, .drop = FALSE) |>
@@ -150,6 +161,8 @@ compute_box_data <- function(data, spec, panel = NULL) {
       Y_MEAN      = .check3_mean(.data$SCALE_SCORE[!.data$ALTERNATE]),
       Y_P75       = .check3_q(.data$SCALE_SCORE[!.data$ALTERNATE], 0.75),
       Y_MAX       = .check3_q(.data$SCALE_SCORE[!.data$ALTERNATE], 1),
+      PCT_AT_CUT  = .check3_share_at(.data$SCALE_SCORE[!.data$ALTERNATE],
+                                     .env$cut),
       .groups = "drop")
   out$GROUP <- as.character(out$GROUP)
 
@@ -157,16 +170,24 @@ compute_box_data <- function(data, spec, panel = NULL) {
   # of 40 students with 3 scores discloses those 3.
   out <- apply_suppression(
     out, spec, n_col = "N_PLOTTED",
-    cols = c("Y_MIN", "Y_P25", "Y_MEDIAN", "Y_MEAN", "Y_P75", "Y_MAX"))
+    cols = c("Y_MIN", "Y_P25", "Y_MEDIAN", "Y_MEAN", "Y_P75", "Y_MAX",
+             "PCT_AT_CUT"))
 
   # A group nobody is in is not suppressed, it is empty, and those read
   # differently: "too few to show" invites a reader to imagine students
   # behind the gap. The same rule Check 1 applies to a zero outcome.
   out$SUPPRESSED[out$N == 0L] <- FALSE
-
-  attr(out, "panel") <- panel
-  attr(out, "cut") <- .check3_cut(spec, panel$subject)
   out
+}
+
+# The share of a group's scores at or above the proficiency cut. `NA` rather
+# than 0 when the cut is unknown: "nobody cleared it" and "we do not know
+# where it is" must not render the same.
+.check3_share_at <- function(x, cut) {
+  if (is.null(cut) || is.na(cut)) return(NA_real_)
+  x <- x[!is.na(x)]
+  if (!length(x)) return(NA_real_)
+  mean(x >= cut)
 }
 
 # One row per student in the panel, with the group they sit in. The academic
@@ -187,8 +208,10 @@ compute_box_data <- function(data, spec, panel = NULL) {
   } else 1
 
   h <- elp_headline(data, spec)
-  ac$ELP_BAND <- h$ELP_BAND[match(paste(ac$STUDENT_ID, ac$YEAR),
-                                  paste(h$STUDENT_ID, h$YEAR))]
+  at_h <- match(paste(ac$STUDENT_ID, ac$YEAR), paste(h$STUDENT_ID, h$YEAR))
+  ac$ELP_BAND <- h$ELP_BAND[at_h]
+  ac$ELP_SCALE <- h$SCALE_SCORE[at_h]
+  ac$FRL <- if ("FRL" %in% names(roster)) roster$FRL[at] else NA_character_
   ac$ALTERNATE <- if (.CHECK3_ALT %in% names(ac)) {
     !is.na(ac[[.CHECK3_ALT]])
   } else FALSE
@@ -235,4 +258,14 @@ compute_box_data <- function(data, spec, panel = NULL) {
   x <- x[!is.na(x)]
   if (!length(x)) return(NA_real_)
   mean(x)
+}
+
+# The share of a group's scores at or above the proficiency cut. `NA` rather
+# than 0 when the cut is unknown: "nobody cleared it" and "we do not know
+# where it is" must not render the same.
+.check3_share_at <- function(x, cut) {
+  if (is.null(cut) || is.na(cut)) return(NA_real_)
+  x <- x[!is.na(x)]
+  if (!length(x)) return(NA_real_)
+  mean(x >= cut)
 }
