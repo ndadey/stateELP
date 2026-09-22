@@ -100,13 +100,19 @@ compute_logistic <- function(data, spec, panel = NULL, threshold = NULL,
   # error, so the row comes back with an empty crossing instead of a stop.
   if (length(unique(fr$ABOVE)) < 2L || nrow(fr) < spec_min_cell(spec)) {
     return(apply_suppression(out, spec, n_col = "N",
-                             cols = c("INTERCEPT", "SLOPE", "CROSSING")))
+                             cols = c("INTERCEPT", "SLOPE", "CROSSING",
+                                      "CROSSING_SE", "CROSSING_LO",
+                                      "CROSSING_HI")))
   }
 
   fit <- stats::glm(ABOVE ~ ELP_SCALE, data = fr, family = stats::binomial())
   cf <- stats::coef(fit)
   out$INTERCEPT <- unname(cf[["(Intercept)"]])
   out$SLOPE <- unname(cf[["ELP_SCALE"]])
+  ci <- .check3_crossing_ci(fit)
+  out$CROSSING_SE <- ci[["se"]]
+  out$CROSSING_LO <- ci[["lo"]]
+  out$CROSSING_HI <- ci[["hi"]]
   # logit^-1(a + b x) = 0.5 at x = -a / b. A flat or negative slope means the
   # curve never rises through a half, so no crossing is reported rather than
   # a number read off the wrong side of it.
@@ -118,13 +124,15 @@ compute_logistic <- function(data, spec, panel = NULL, threshold = NULL,
     out$CROSSING >= min(fr$ELP_SCALE) && out$CROSSING <= max(fr$ELP_SCALE)
 
   apply_suppression(out, spec, n_col = "N",
-                    cols = c("INTERCEPT", "SLOPE", "CROSSING"))
+                    cols = c("INTERCEPT", "SLOPE", "CROSSING", "CROSSING_SE",
+                             "CROSSING_LO", "CROSSING_HI"))
 }
 
 .check3_empty_logistic <- function(panel, threshold, kind, n, n_above) {
   tibble::tibble(
     SUBJECT = panel$subject, GRADE = panel$grade, YEAR = panel$year,
     INTERCEPT = NA_real_, SLOPE = NA_real_, CROSSING = NA_real_,
+    CROSSING_SE = NA_real_, CROSSING_LO = NA_real_, CROSSING_HI = NA_real_,
     CROSSING_IN_RANGE = FALSE,
     N = as.integer(n), N_ABOVE = as.integer(n_above),
     THRESHOLD = as.numeric(threshold), THRESHOLD_KIND = kind)
@@ -186,6 +194,8 @@ compute_landing <- function(box_data, logistic, spec) {
     LANDING_BAND = landing,
     LANDING_PCT = if (is.na(first)) NA_real_ else b$PCT_AT_CUT[[first]],
     LANDING_CROSSING = if (is.null(logistic)) NA_real_ else logistic$CROSSING,
+    CROSSING_LO = if (is.null(logistic)) NA_real_ else logistic$CROSSING_LO,
+    CROSSING_HI = if (is.null(logistic)) NA_real_ else logistic$CROSSING_HI,
     CROSSING_IN_RANGE = if (is.null(logistic)) NA else
       logistic$CROSSING_IN_RANGE,
     EXIT_BAND = exit_band,
@@ -315,4 +325,41 @@ compute_fairness_logistic <- function(data, spec, panel = NULL) {
 .check3_is_disadvantaged <- function(x) {
   v <- toupper(trimws(as.character(x)))
   !is.na(v) & v %in% c("Y", "YES", "1", "TRUE", "T")
+}
+
+# A confidence interval for the 50% crossing, by the delta method.
+#
+# The crossing is x = -a/b, a ratio of two correlated estimates, so its
+# variance is not read off either coefficient alone:
+#   dx/da = -1/b,  dx/db = a/b^2,  Var(x) = g' V g
+# with V the fitted covariance. That is the standard treatment for this
+# quantity (Fieller's theorem is the exact alternative and behaves badly for
+# exactly the same reason noted below, so it buys little here).
+#
+# The interval is wide, sometimes absurdly so, whenever the slope is small
+# relative to its own error -- which is precisely when the crossing sits far
+# outside the observed scores. That is not a defect of the interval: it is the
+# interval reporting that the curve is being read past its data, the same fact
+# CROSSING_IN_RANGE flags. Reported as computed, never trimmed to something
+# comfortable.
+.check3_crossing_ci <- function(fit, level = 0.95) {
+  empty <- c(se = NA_real_, lo = NA_real_, hi = NA_real_)
+  cf <- stats::coef(fit)
+  if (length(cf) < 2L || any(is.na(cf))) return(empty)
+
+  a <- unname(cf[[1L]])
+  b <- unname(cf[[2L]])
+  if (!is.finite(b) || b <= 0) return(empty)
+
+  v <- try(stats::vcov(fit), silent = TRUE)
+  if (inherits(v, "try-error") || any(!is.finite(v))) return(empty)
+
+  g <- c(-1 / b, a / b^2)
+  var_x <- drop(t(g) %*% v[1:2, 1:2] %*% g)
+  if (!is.finite(var_x) || var_x < 0) return(empty)
+
+  se <- sqrt(var_x)
+  z <- stats::qnorm(1 - (1 - level) / 2)
+  x <- -a / b
+  c(se = se, lo = x - z * se, hi = x + z * se)
 }

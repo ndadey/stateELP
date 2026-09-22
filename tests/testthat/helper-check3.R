@@ -79,3 +79,19 @@ make_check3_panel <- function(bundle = make_check3_bundle(),
                               spec = make_check3_spec()) {
   compute_panel(bundle, spec)
 }
+
+# A Type 2 rule over the sim: the SIM composite threshold plus a domain floor,
+# which is what "composite plus floor" means. The second component and the
+# floor come from the spec's own component list, never typed, so the fixture
+# stays right for a non-WIDA instrument.
+make_check3_type2_spec <- function(spec = make_check3_spec(), floor = 3.5) {
+  domains <- names(Filter(function(c) identical(c$kind, "domain"),
+                          spec$elp$components))
+  spec$policy$exit$types <- 2L
+  spec$policy$exit$pathways[[1]]$terms <- c(
+    spec$policy$exit$pathways[[1]]$terms,
+    list(list(component = domains[[1]], measure = "level", op = ">=",
+              value = floor, exempt_if_absent = FALSE)))
+  validate_el_spec(spec)
+  spec
+}

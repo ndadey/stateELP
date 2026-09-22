@@ -562,3 +562,165 @@ test_that("the tables render for every panel and the plots build", {
   expect_s3_class(plot_box_panel(res$box_data, spec, grade = g), "ggplot")
   expect_error(plot_box_panel(res$box_data, spec, grade = "99"), "No panel")
 })
+
+# ---- the crossing interval ---------------------------------------------------
+
+test_that("the crossing carries a delta-method interval that brackets it", {
+  l <- check3_sim()$logistic
+  ok <- !is.na(l$CROSSING) & !is.na(l$CROSSING_SE)
+
+  expect_true(all(c("CROSSING_SE", "CROSSING_LO", "CROSSING_HI") %in% names(l)))
+  expect_true(any(ok))
+  expect_true(all(l$CROSSING_SE[ok] > 0))
+  expect_true(all(l$CROSSING_LO[ok] < l$CROSSING[ok]))
+  expect_true(all(l$CROSSING_HI[ok] > l$CROSSING[ok]))
+  # Symmetric on the scale by construction, which is what the delta method
+  # gives and what the roxygen says it gives.
+  expect_equal(l$CROSSING[ok] - l$CROSSING_LO[ok],
+               l$CROSSING_HI[ok] - l$CROSSING[ok])
+})
+
+test_that("the interval matches the delta method computed by hand", {
+  spec <- check3_spec()
+  b <- make_check3_sim_bundle()
+  p <- compute_panel(b, spec)
+  rows <- .check3_panel_rows(b, spec, p)
+  fr <- rows[rows$EL_STATUS %in% "current" & !rows$ALTERNATE &
+               !is.na(rows$ELP_SCALE) & !is.na(rows$SCALE_SCORE), ]
+  fr$ABOVE <- as.integer(fr$SCALE_SCORE >= .check3_cut(spec, p$subject))
+  fit <- stats::glm(ABOVE ~ ELP_SCALE, data = fr, family = stats::binomial())
+
+  a <- unname(stats::coef(fit)[[1]])
+  bb <- unname(stats::coef(fit)[[2]])
+  g <- c(-1 / bb, a / bb^2)
+  se <- sqrt(drop(t(g) %*% stats::vcov(fit) %*% g))
+
+  lg <- compute_logistic(b, spec, p)
+  expect_equal(lg$CROSSING_SE, se)
+  expect_equal(lg$CROSSING_LO, -a / bb - stats::qnorm(0.975) * se)
+})
+
+test_that("an interval is not manufactured where the fit cannot support one", {
+  # A non-positive slope has no upward crossing, so there is nothing to put an
+  # interval around. Reporting one anyway would dress a non-answer as an
+  # estimate.
+  spec <- check3_spec()
+  b <- make_check3_bundle()
+  p <- compute_panel(b, spec)
+  lg <- compute_logistic(b, spec, p, threshold = -Inf)
+
+  expect_true(is.na(lg$CROSSING))
+  expect_true(is.na(lg$CROSSING_SE))
+  expect_true(is.na(lg$CROSSING_LO) && is.na(lg$CROSSING_HI))
+})
+
+test_that("the interval is widest exactly where the crossing is extrapolated", {
+  # Not a coincidence and not a defect: a crossing far outside the observed
+  # scores is one the slope is too uncertain to place, and the interval says
+  # so in the units of the statistic.
+  l <- check3_sim()$logistic
+  l <- l[!is.na(l$CROSSING_SE), ]
+  skip_if(length(unique(l$CROSSING_IN_RANGE)) < 2, "no contrast in this run")
+
+  inside <- stats::median(l$CROSSING_SE[l$CROSSING_IN_RANGE %in% TRUE])
+  outside <- stats::median(l$CROSSING_SE[!l$CROSSING_IN_RANGE %in% TRUE])
+  expect_gt(outside, inside)
+})
+
+test_that("the landing table carries the interval beside the crossing", {
+  res <- check3_sim()
+  expect_true(all(c("CROSSING_LO", "CROSSING_HI") %in% names(res$landing)))
+  expect_identical(res$landing$CROSSING_LO, res$logistic$CROSSING_LO)
+  expect_s3_class(ft_check3_landing(res), "flextable")
+})
+
+# ---- the Type-gated contested-zone check -------------------------------------
+
+test_that("a Type 1 rule has no contested zone to model", {
+  # One criterion cannot disagree with itself. The slot is NULL because the
+  # rule has no second criterion, not because the machinery is missing.
+  spec <- check3_spec()
+
+  expect_false(spec_has_type(spec, c(2L, 4L, 5L, 6L)))
+  expect_null(check3_sim()$contested_zone_models)
+  expect_null(compute_criterion_pass(make_check3_sim_bundle(), spec))
+})
+
+test_that("the derived criterion outcomes reproduce Prep 2's own", {
+  # THE guardrail on deriving these in check3_ at all. Prep 2 computes the
+  # same pass/fail matrix and reports only aggregates, so Check 3 derives its
+  # own -- and if the two ever disagree about whether a student cleared a
+  # criterion, this fails rather than the documents quietly diverging.
+  spec <- make_check3_type2_spec()
+  b <- make_check3_sim_bundle()
+
+  mine <- compute_criterion_pass(b, spec)
+  theirs <- compute_criteria_crosswalk(b, spec)
+
+  expect_false(is.null(mine))
+  expect_false(is.null(theirs))
+
+  # Prep 2 exposes the students blocked by exactly one criterion near the cut.
+  # Reconstruct that set from my own outcomes and require an exact match.
+  zone_cut <- theirs$crosswalk$window[["cut"]]
+  half <- theirs$crosswalk$window[["half_width"]]
+  h <- elp_headline(b, spec)
+  lvl <- h$ACHIEVEMENT_LEVEL[match(paste(mine$STUDENT_ID, mine$YEAR),
+                                   paste(h$STUDENT_ID, h$YEAR))]
+  near <- !is.na(lvl) & abs(lvl - zone_cut) <= half
+  one <- near & mine$N_FAILED == 1L
+
+  expect_identical(sum(one), nrow(theirs$blocked_groups))
+  expect_setequal(paste(mine$STUDENT_ID[one], mine$YEAR[one]),
+                  paste(theirs$blocked_groups$STUDENT_ID,
+                        theirs$blocked_groups$YEAR))
+})
+
+test_that("a Type 2 rule produces the split and the two curves", {
+  spec <- make_check3_type2_spec()
+  b <- make_check3_sim_bundle()
+  cz <- compute_contested_models(b, spec)
+
+  expect_false(is.null(cz))
+  expect_true(cz$n > 0L)
+  expect_true(cz$zone$lo <= cz$zone$hi)
+  # Both groups are present, which is what makes it a comparison.
+  expect_gt(cz$n_cleared, 0L)
+  expect_lt(cz$n_cleared, cz$n)
+
+  # Two curves, one per group, over a shared score range.
+  curves <- cz$model$curves
+  expect_false(is.null(curves))
+  expect_identical(length(unique(curves$CLEARED_LABEL)), 2L)
+  expect_true(all(curves$FITTED >= 0 & curves$FITTED <= 1))
+  expect_true(any(grepl("ELP_SCALE:CLEARED", cz$model$coefficients$TERM)))
+})
+
+test_that("the contested zone is Prep 2's, not a second derivation of it", {
+  # The zone is a property of the rule and the population; recomputing it in
+  # Check 3 would be a third place for it to drift.
+  spec <- make_check3_type2_spec()
+  b <- make_check3_sim_bundle()
+
+  cz <- compute_contested_models(b, spec)
+  p2 <- compute_criteria_crosswalk(b, spec)$contested_zone
+  expected <- if (any(is.na(p2$core_90))) p2$range else p2$core_90
+
+  expect_equal(c(cz$zone$lo, cz$zone$hi), c(min(expected), max(expected)))
+  expect_identical(cz$zone$cut, p2$cut)
+})
+
+test_that("the zone check says where its criterion outcomes came from", {
+  # The .qmd renders this: a reader should not have to guess whether the
+  # split came from Prep 2 or was derived here.
+  cz <- compute_contested_models(make_check3_sim_bundle(),
+                                 make_check3_type2_spec())
+  expect_match(cz$source, "derived in Check 3")
+  expect_match(cz$source, "a test asserts the two agree")
+})
+
+test_that("a zone too thin to report returns NULL, not a fitted curve", {
+  spec <- make_check3_type2_spec()
+  spec$policy$suppression$min_cell <- 1e6L
+  expect_null(compute_contested_models(make_check3_sim_bundle(), spec))
+})

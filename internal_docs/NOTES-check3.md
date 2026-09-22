@@ -162,3 +162,66 @@ education this delivery does not carry; the contested-zone models, which need
 a Type 2-6 spec; confidence intervals around the crossings; and a year
 dimension -- each panel takes the most recent year, and whether the landing
 moves year to year is a question this stage could ask and does not.
+
+## The contested-zone models (2026-09-22)
+
+The last slot the instruction file names. Type-gated to 2/4/5/6, so `NULL`
+under the shipped SIM spec, which is Type 1 -- one criterion cannot disagree
+with itself.
+
+**Where the criterion outcomes come from, and why it needed a decision.**
+The check splits students on whether they cleared the *second* criterion, so
+it needs a per-student pass/fail for each criterion in the rule. Prep 2
+computes exactly that matrix inside `compute_criteria_crosswalk()` and
+returns only aggregates: counts by pass/fail pattern, disagreement rates by
+level bin, and `blocked_groups` (students blocked by exactly one criterion
+near the cut). None of those separates "passes everything" from "blocked by
+more than one", so none supports the two-group split.
+
+Three options, none of them free: re-derive in `check3_` and risk two
+evaluations of one rule drifting apart; extend Prep 2, which is another
+prefix (CLAUDE.md 14); or leave the slot a hardcoded `NULL` and let a real
+multi-criterion state discover it missing.
+
+**Decided (Nathan, 2026-09-22): check whether Prep 2 has it, otherwise
+derive -- and not in the `.qmd`.** Prep 2 does not expose it, so
+`compute_criterion_pass()` derives it in `R/`, and the risk of drift is
+answered by a test rather than a comment: `test-check3.R` reconstructs Prep
+2's own `blocked_groups` from this derivation and requires an exact match. If
+the two stages ever disagree about whether a student cleared a criterion,
+that test fails instead of two documents quietly diverging. `$source` records
+which route was taken so the document can state it.
+
+**The zone itself is read from Prep 2, not recomputed.** It is a property of
+the rule and the population rather than of one panel, so a second derivation
+would be a third place for it to drift. `core_90` is preferred over the full
+range, falling back when the quantiles are unavailable.
+
+**The output is two curves, not a coefficient.** One logistic with ELP, a
+cleared-others indicator and their interaction; `$model$curves` carries the
+predicted curves that model implies, over a shared score grid. A coefficient
+on an interaction term is not something a policy reader can act on; two
+curves that separate are. Separation means the second criterion is screening
+on something the headline score does not.
+
+**Testing a Type-gated path needs a Type-gated spec**, and nothing that ships
+with data is one. `make_check3_type2_spec()` builds "composite plus floor"
+over the sim -- the SIM rule plus a domain floor, with the domain taken from
+the spec's own component list rather than typed, so the fixture stays correct
+for a non-WIDA instrument.
+
+## Confidence intervals on the crossing (2026-09-22)
+
+The crossing is `x = -a/b`, a ratio of two correlated estimates, so its
+variance comes from the delta method: `dx/da = -1/b`, `dx/db = a/b^2`,
+`Var(x) = g' V g`. Fieller's theorem is the exact alternative and misbehaves
+for the same reason the delta method does here, so it buys little.
+
+The interval is wide, sometimes absurdly so, whenever the slope is small
+relative to its own error -- which is exactly when the crossing sits outside
+the observed scores. **That is the interval working**, not failing: it is
+reporting in the statistic's own units the same fact `CROSSING_IN_RANGE`
+reports as a flag. A test asserts the median interval is wider among
+extrapolated crossings than among in-range ones. Never trimmed to something
+comfortable, and never manufactured where the slope is non-positive and there
+is no crossing to put an interval around.

@@ -67,9 +67,10 @@ run_check3 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
     fairness_boxes     = fairness_boxes,
     fairness_logistic  = fairness_logistic,
 
-    # [Type-gated: Types 2/4/5/6 only, and the SIM spec is Type 1. It also
-    #  needs Prep 2's contested zone, which is NULL under the same gate.]
-    contested_zone_models = NULL,
+    # Type-gated: 2/4/5/6. NULL under the SIM spec, which is Type 1.
+    contested_zone_models = if (!has_academic) NULL else {
+      compute_contested_models(data, spec, panel)
+    },
 
     coverage = el_coverage(data),
 

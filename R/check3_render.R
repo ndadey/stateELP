@@ -60,6 +60,7 @@ ft_check3_landing <- function(results) {
     BAND = ifelse(is.na(l$LANDING_BAND), .C3_EM_DASH, l$LANDING_BAND),
     TOP = l$TOP_BAND_PCT,
     CROSSING = l$LANDING_CROSSING,
+    CI = .check3_ci_text(l$CROSSING_LO, l$CROSSING_HI),
     IN_RANGE = ifelse(l$CROSSING_IN_RANGE %in% TRUE, "yes", "no"),
     check.names = FALSE)
 
@@ -68,7 +69,7 @@ ft_check3_landing <- function(results) {
     ft, SUBJECT = "Subject", GRADE = "Grade",
     BAND = "First band at/above the cut for half its students",
     TOP = "Highest band's share", CROSSING = "Logistic 50% crossing",
-    IN_RANGE = "Crossing within observed scores")
+    CI = "95% CI", IN_RANGE = "Crossing within observed scores")
   ft <- flextable::set_formatter(
     ft, TOP = function(x) ifelse(is.na(x), .C3_EM_DASH,
                                  paste0(round(100 * x), "%")))
@@ -177,3 +178,11 @@ check3_fairness_note <- function(results) {
 }
 
 .C3_EM_DASH <- intToUtf8(0x2014)
+
+# The crossing interval as one cell. Wide is informative here -- it is the
+# same fact IN_RANGE reports, in the units of the statistic -- so it is never
+# trimmed, only dashed when the fit could not supply one.
+.check3_ci_text <- function(lo, hi) {
+  ifelse(is.na(lo) | is.na(hi), .C3_EM_DASH,
+         sprintf("%.0f%s%.0f", lo, .C3_EM_DASH, hi))
+}
