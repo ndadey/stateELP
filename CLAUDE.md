@@ -91,6 +91,60 @@ Maintain this table. It starts as the shell inventory.
 | Eight `.qmd` shells | **4 of 8 built** | `check1_survival.qmd`, `prep2_population.qmd`, `check2_flows.qmd`, `check3_academics.qmd`; one stage session each for the rest (§15) |
 | Fixtures: A–J, slide-52, J-vs-consistency | **A–J + slide-52 built** | A–J + last-current counter-test in `test-utils.R`; slide-52 worked numbers and the cohort rosters in `helper-check1.R`; ELPA21 base + roster pair and SGP / summative fixtures in `helper-el_data.R`; J-vs-consistency lands with Check 4 |
 | Stage analyses (all others) | not built | later passes per instruction file |
+| Git remote / publication | **not done** | 32 commits, **no remote** — see below |
+
+**Publication state (as of 2026-10-09): nothing is pushed anywhere.** `git
+remote -v` is empty; all 32 commits exist only in this Dropbox folder on one
+machine. Dropbox is file sync, not version control: a bad sync or a local
+mistake takes the history with it. This is the largest standing risk to the
+project and it is not a code problem.
+
+A plan was agreed on 2026-09-23 and **not executed** — the session ended
+between the backup and the rewrite. Its three decisions stand and should not
+be relitigated:
+
+1. **Public**, not private (§9 updated to match).
+2. **The name `stateELP` is taken.** `github.com/ndadey/stateELP` is the
+   origin of `Git/ELPAnalysis` — the ELReportR-era design this package
+   replaced, 12 commits, unrelated history. Freeing the name means renaming
+   that repo (to `ELReportR-archive`), **and then repointing
+   `ELPAnalysis`'s own `origin`**: GitHub's rename redirect dies the moment a
+   new repo takes the old name, so otherwise that directory silently points
+   at this package.
+3. **`internal_docs/source/` must not be published**, and deleting it is not
+   enough — a public repo hands over its history. It is in exactly one commit
+   (`3230733`, the skeleton) and that commit carries much else, so a
+   `git filter-branch --index-filter` pass drops it from history without
+   emptying any commit and all 32 survive. `--index-filter` leaves the
+   working tree alone, so the four files stay on disk. Back up `.git` first;
+   there is no second copy of this history.
+
+**Why `internal_docs/source/` is excluded.** It holds a verbatim extraction
+of Molly Faulkner-Bond's NCIEA deck, a document marked "Draft v1 … being
+revised per Molly's feedback", internal planning prose, and an NJ spec whose
+values §5 records as unverified. None of that is ours to publish.
+**Consequence to accept deliberately:** §1 and §14 name
+`internal_docs/source/` as governing documents, and a fresh clone of the
+public repo will not contain them. A session working from a clone has
+CLAUDE.md, `sim_contract.md`, the stage instruction files and the NOTES — but
+not the deck or Process Overview extractions. Ask for them rather than
+inferring their content.
+
+**Current, as of 2026-10-09 (HEAD `452c6e6`): the whole suite is 1,168
+passing, 25 `skip()`ped, 0 failing, 0 warnings**, and `devtools::check()` on
+a staging export is 0 errors / 0 warnings / 2 known NOTEs (the 6.5 MB `data/`
+directory; "unable to verify current time", no network on this machine). The
+25 skips are the four unbuilt stages and nothing else: `test-prep1.R` 7,
+`test-prep3.R` 4, `test-check4.R` 7, `test-decision.R` 7. Every built stage
+has zero.
+
+Run `tools::checkDocFiles(dir = ".")` before `check()` — it takes seconds and
+catches an undocumented argument, which is the only warning this package has
+produced twice.
+
+The paragraphs below are the running history, newest last. They record how
+each figure was reached and what was verified at the time; read them for
+provenance, not for the current number.
 
 **Test count at the end of Check 1's first pass (2026-09-21):** 375
 expectations passing, 54 `skip()`ped (the seven unbuilt stages, plus Check 1's
@@ -142,14 +196,6 @@ before the shell is called done. Everything committed earlier in the session
 `devtools::check()` on a clean export — is back in force from the Model 1
 work onward.
 
-**Test count after Check 3 was completed (2026-09-22):** `test-check3.R` 167
-expectations, **0 skipped**; the whole suite **1,168 passing, 25 skipped, 0
-failing, 0 warnings**. Renders docx + html. The jump from 1,079 is Check 3's
-later passes: the summary table, the logistic and its landing statistics,
-both fairness checks, the per-grade loop over all 18 declared grade × subject
-panels, delta-method intervals on the crossing, and the Type-gated
-contested-zone models with the Prep 2 agreement test behind them.
-
 **Test count after Model 1 was corrected (2026-09-21):** `test-check1.R` 261
 expectations across 53 tests, 0 skipped; the whole suite **989 passing, 35
 `skip()`ped, 0 failing, 0 warnings**. Rendered to docx and html; `check()` on
@@ -170,6 +216,18 @@ placeholder left; the whole suite 963 passing, 36 `skip()`ped (the five unbuilt
 stages), 0 failing. Rendered to **docx and html**. `devtools::check()` on a
 staging copy of HEAD plus only this stage's files: **0 errors, 0 warnings**, the
 same two NOTEs. No new `Imports`.
+
+**Test count after Check 3's shell (2026-09-21):** the whole suite 1,079
+passing, 28 `skip()`ped, 0 failing. One box-plot panel as the stage's real
+element; the later-pass slots `NULL` with `skip()`ped tests.
+
+**Test count after Check 3 was completed (2026-09-22):** `test-check3.R` 167
+expectations, **0 skipped**; the whole suite **1,168 passing, 25 skipped, 0
+failing, 0 warnings**. Renders docx + html. The jump from 1,079 is Check 3's
+later passes: the summary table, the logistic and its landing statistics,
+both fairness checks, the per-grade loop over all 18 declared grade × subject
+panels, delta-method intervals on the crossing, and the Type-gated
+contested-zone models with the Prep 2 agreement test behind them.
 
 **Concurrent-session note (2026-09-21).** Check 1's Model 1 pass and Check 2's
 completion were built in two sessions running at the same time, which is worth
@@ -811,8 +869,11 @@ a measured bottleneck; `Imports:` individual packages only, never
 `tidyverse`; explicit namespacing; `weighted.mean` argument order inside
 `summarize()`; `facet_wrap` zero-row guards; no `isTRUE()` on vectors; no
 `if_else()` for scalars; no `recode(!!!list)`; American English. Roxygen on
-every export; NSE names in `R/globals.R`. R 4.3.3, Quarto CLI, private
-GitHub repo, `renv::init()` at shell creation.
+every export; NSE names in `R/globals.R`. R 4.3.3, Quarto CLI,
+`renv::init()` at shell creation. **The GitHub repo is to be public**
+(decided 2026-09-23, superseding "private" as recorded here through
+2026-09-22) — see §3's publication state for what that costs and what has
+and has not happened.
 
 **Sibling conventions that do NOT apply** (convention bleed is the risk):
 ReportR's domain (four lines of analysis, `assessment_spec`,
@@ -915,12 +976,20 @@ on its default:
 
 ## 13. Later additions (recorded, out of scope)
 
+~~Dual predicted curves from one covariate-adjusted logistic~~ — **built
+with Check 3** (2026-09-22): `compute_contested_models()$model$curves`
+returns them, and the other Type additional checks can reuse that pattern
+rather than reinventing it.
+
 Copula / Kendall's-tau dependence + tail-structure analysis (no package
 support yet — the Cook et al. consistency/J methods are what's built; the
-`.qmd` states turnkey vs custom); dual predicted curves from one
-covariate-adjusted logistic (needed by the Type additional checks);
+`.qmd` states turnkey vs custom);
 propensity-score matching for the fairness box plots (crude SES filter
-first); validation of the retention-share / selection-strength weighting
+built in Check 3; matching needs parental education, which this delivery
+does not carry); a **year dimension for Check 3** — each panel takes the most
+recent year the pairing is available, and whether the landing moves year to
+year is a question the stage could ask and does not; validation of the
+retention-share / selection-strength weighting
 index against the Indiana pipeline; a worked example for the lagged-ELA
 hazard model (the newest, least standard piece); designing a new
 multi-criterion combination from scratch (audit-only for now);
@@ -981,18 +1050,33 @@ session summary.
    spec layer + three specs, data generation (contract placeholders filled),
    `as_el_data()` + adapters, shared derivations in `R/utils.R` (with the
    A–J dating tests), `render_step()`. No `.qmd`s.
-3. **Stage sessions 2–9, one each, in file-number order** — *departure
-   (2026-09-20): Check 1 was built before Prep 1–3 by decision. It depends
-   only on the foundation session (this section: Checks 1–2 consume its
-   shared flags), so the Prep stages are neither built nor stubbed by it*:
+3. **Stage sessions, one each.** The file numbers give the intended order —
    `2_prep1_policies` → `3_prep2_population` → `4_prep3_program` →
    `5_check1_survival` → `6_check2_flows` → `7_check3_academics` →
-   `8_check4_consistency` → `9_decision_synthesis`. Launch each by pasting the filled
-   `stage_session_template.md` with Scope = “first pass: the instruction
-   file's Done-when (shell)”. The order respects dependencies: Checks 1–2
-   consume the foundation session's shared flags; Check 4 reads Prep 3's error-tolerance
-   answer; Decision renders whatever stages have run (it degrades
-   gracefully, but it is only meaningful last).
+   `8_check4_consistency` → `9_decision_synthesis` — but it has been departed
+   from deliberately and twice, because the Checks depend only on the
+   foundation session's shared flags while the Prep stages depend on nothing:
+   Check 1 was built before Prep 1–3 (2026-09-20), and Checks 2 and 3
+   followed, leaving Prep 1 and Prep 3 unbuilt. The Prep stages are neither
+   built nor stubbed by that; their tests are still the `skip()`ped
+   placeholders.
+
+   **Built: Prep 2, Checks 1, 2, 3. Remaining: Prep 1, Prep 3, Check 4,
+   Decision.** Of those four, the real dependency is that **Check 4 reads
+   Prep 3's `error_tolerance`** — it can run without it, captioning its
+   J-optimal point as assuming equal costs, but Prep 3 is spec-only and short
+   and is the cheaper thing to do first. Prep 1 depends on nothing. Decision
+   renders whatever has run; it degrades gracefully but is only meaningful
+   last. Launch each by pasting the filled `stage_session_template.md` with
+   Scope = “first pass: the instruction file's Done-when (shell)”.
+
+   **Prep 3 needs you, not the code.** Its two slots are
+   `policy$program` (what EL status gates on the ground) and
+   `policy$error_tolerance` (which error stakeholders find costlier —
+   premature exit or prolonged retention, elicited from the team and the
+   stakeholders whose buy-in the result needs). Both are `NA`/`"unknown"` in
+   the SIM spec, and the stage is designed to render that way, so it can be
+   built before the answers exist.
 4. **Later passes**: the same template with a narrower Scope naming specific
    slots from the instruction file's “Later passes” (e.g. “build
    `$exit_curve` + its plot”). One or two slots per session.
