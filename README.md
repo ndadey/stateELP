@@ -15,9 +15,12 @@ The package does not prescribe a cut score. It describes how the current rule
 is functioning and gives a state the evidence it needs to defend a range of
 reasonable thresholds.
 
-The package is part of the **stateR** family (`stateSpecs`, `stateSummative`,
-`stateAccountability`, `stateScoring`, `stateELP`). It is standalone and does
-not import any of its siblings.
+`stateELP` follows the conventions of
+[`ReportR`](https://github.com/ndadey/ReportR), a related package for
+summative assessment reporting that is itself at a preliminary stage. The
+shared conventions are ALL-CAPS long-format columns, a single spec object that
+holds every state-specific value, and results computed in R and rendered
+through Quarto. `stateELP` is standalone and does not import `ReportR`.
 
 > [!IMPORTANT]
 > **Status: in development (version 0.0.0.9000).** Four of the eight stages
