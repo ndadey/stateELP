@@ -321,7 +321,9 @@ Rules a session must not break (each is a test):
   ELP measurement; the roster caches nothing. All stages read the headline
   through one accessor — `elp_headline(data)`: base filtered to
   `spec$elp$headline` on the annual form, joined to roster keys, banded per
-  `spec$elp$bands` — and Checks 3–4 run on its scale score. No `compute_*()`
+  `spec$elp$bands` — Check 3 runs on its scale score, Check 4 on its level
+  (decided 2026-10-09: the exit rule is written on the level, and only the
+  level scale is declared in the spec; `NOTES-check4.md`). No `compute_*()`
   behind Prep 2 or Checks 1–4 names a component; only Prep 1, exit-rule work,
   and Type-gated Additional checks read the base table below the headline.
   Enforced by the ELPA21-headline smoke fixture (`headline =
@@ -380,7 +382,8 @@ Rules a session must not break (each is a test):
   `GRADE`, `EL_STATUS`) plus base-table rows for at least the headline
   component run Checks 1 (Model 1) and 2 in full; the headline scale score +
   the academic table (with `GRADE` — required, no fallback, decided
-  2026-08-26) unlock Check 1 Model 2, Check 3, and Check 4; the
+  2026-08-26) unlock Check 1 Model 2 and Check 3, and the headline level +
+  the academic table unlock Check 4; the
   disaggregation set unlocks the crosstab rows; parental education is absent
   from the sim, so the matched fairness check is crude-SES-only there.
 - If `data-raw/el_long_sim.R` is missing, stop and say so; never re-simulate.
@@ -761,7 +764,8 @@ second criterion does independent work. Slots: `$summary_table`, `$box_data`,
 **Check 4 — Decision consistency + dependence** (`run_check4(data, spec)`).
 Sample: identical to Check 3's paired cross-section, by grade and year. Core:
 **decision consistency** (agreement of ELP-based and content-proficiency
-classifications across candidate cuts on the headline scale) and **Youden's
+classifications across candidate cuts on the headline **level** scale — the
+level, not the scale score, decided 2026-10-09) and **Youden's
 J**, with J as the primary optimal-cut statistic: when EL academic-proficiency
 rates sit well below 50% (typical), raw consistency's peak is pulled toward
 the majority classification and can be distorted or fail to appear in a

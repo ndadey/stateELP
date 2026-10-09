@@ -7,13 +7,17 @@ below 50%, what does Youden's J say the raw consistency statistic can't?
 **Sample.** Identical to Check 3's paired cross-section (all ELs per grade ×
 year with both scores), by grade and year — state it first.
 
-**Data needs.** The headline scale score via `elp_headline()`; academic proficiency vs
+**Data needs.** The headline **level** (`ACHIEVEMENT_LEVEL`) via
+`elp_headline()` — the level, not the scale score (decided 2026-10-09: the
+exit rule is written on the level and only the level scale is declared in
+the spec; see `NOTES-check4.md`); academic proficiency vs
 `policy$academic_benchmark` + `academic` cuts; `policy$error_tolerance` via
 Prep 3's `$meta` (or spec directly); `policy$exit` (current threshold, for
 reference lines); Check 1's reliability annotations where available.
 
 **Method.** Decision consistency (percent agreement) across candidate cuts
-on the headline scale; **Youden's J as the primary optimal-cut statistic**
+on the headline level scale — the levels the delivery actually carries, so
+an integer-only delivery yields few cuts and says so; **Youden's J as the primary optimal-cut statistic**
 — when the EL academic-proficiency rate sits well below 50% (typical), raw
 consistency's peak is pulled toward the majority classification and can be
 distorted or fail to appear in a realistic range; J weights both error
@@ -50,8 +54,10 @@ caution and the convergence rule (Checks 3 + 4 agreeing is the strongest
 evidence; any single method alone gets more caution).
 
 **Guardrails (tests).** J computed, not consistency relabeled (the
-fixture); per-grade keying, never pooled; candidate cuts span a realistic
-scale range from spec; on sim data the J-optimal point is a generator
+fixture); per-grade keying, never pooled; candidate cuts span the spec's
+level scale (`elp$level_scale$range` for a numeric scale, its declared
+`levels` for a categorical one); the current exit threshold is read from
+the `policy$exit` term on the headline level, never typed; on sim data the J-optimal point is a generator
 artifact — caption as machinery demo.
 
 **Done-when (shell).** The consistency and J curves for one grade × subject
