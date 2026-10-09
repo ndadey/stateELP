@@ -78,6 +78,27 @@ What the built stages produce:
 
 ---
 
+## Example reports
+
+These are the stage documents rendered on the package's **simulated data**.
+They show what each stage produces, not anything about a real state: every
+gap and ratio in them comes from how the data were generated (see
+[the warning below](#a-warning-about-the-simulated-data)). Rendered on
+2026-10-09 from commit `5f4c86f`.
+
+| Stage | Report | Word |
+|---|---|---|
+| Prep 1: Policy documentation | *not yet built* | |
+| Prep 2: Population analysis | [View](https://ndadey.github.io/stateELP/prep2_population.html) | [.docx](docs/prep2_population.docx) |
+| Prep 3: Program implementation | *not yet built* | |
+| Check 1: Cohort survival | [View](https://ndadey.github.io/stateELP/check1_survival.html) | [.docx](docs/check1_survival.docx) |
+| Check 2: On-time vs. prolonged exiters | [View](https://ndadey.github.io/stateELP/check2_flows.html) | [.docx](docs/check2_flows.docx) |
+| Check 3: Academic patterns | [View](https://ndadey.github.io/stateELP/check3_academics.html) | [.docx](docs/check3_academics.docx) |
+| Check 4: Decision consistency | *in progress* | |
+| Decision: Synthesis | *not yet built* | |
+
+---
+
 ## Installation
 
 ```r
@@ -307,6 +328,7 @@ stateELP/
 │   └── lookups/          # display labels (render-side only)
 ├── data/                 # the three simulated tables (.rda)
 ├── data-raw/             # the simulation generator
+├── docs/                 # example reports on the simulated data (GitHub Pages)
 ├── tests/testthat/       # one test file per stage + spec + el_data
 ├── internal_docs/
 │   ├── steps/            # binding per-stage instruction files
@@ -338,6 +360,7 @@ devtools::test()                           # or test(filter = "check1")
 source("dev/render_step.R")
 rs("check1")                               # load_all() + render, docx + html
 rs_all()                                   # every stage that has a document
+rs_site()                                  # refresh the example reports in docs/
 ```
 
 Working conventions:

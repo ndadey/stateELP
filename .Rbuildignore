@@ -6,6 +6,7 @@
 ^LICENSE\.md$
 ^data-raw$
 ^dev$
+^docs$
 ^internal_docs$
 ^renv$
 ^renv\.lock$
