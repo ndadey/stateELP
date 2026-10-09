@@ -4,7 +4,7 @@
 # ---- the three shipped specs -------------------------------------------------
 
 test_that("all three shipped specs construct and validate", {
-  for (id in c("00_SIM_EL_Spec", "NJ_elp_2023", "00_ELPA21_EL_Spec")) {
+  for (id in c("00_SIM_EL_Spec", "00_TEMPLATE_EL_Spec", "00_ELPA21_EL_Spec")) {
     spec <- read_el_spec(id)
     expect_s3_class(spec, "el_spec")
     expect_silent(validate_el_spec(spec))
@@ -61,8 +61,12 @@ test_that("ELPA21 spec exercises the non-WIDA branches", {
   expect_true(spec_has_type(spec, 6))
 })
 
-test_that("NJ spec migrated: renamed components keep their native labels", {
-  spec <- read_el_spec("NJ_elp_2023")
+test_that("the template spec's renamed components keep their native labels", {
+  # The migration case: an older `assessment_spec` carried `literacy` and
+  # `composite_overall`, which are not vocabulary terms. They map to `written`
+  # and `overall` and keep the vendor's label as `native_name`. The SIM spec
+  # cannot test this -- its component keys are already canonical.
+  spec <- read_el_spec("00_TEMPLATE_EL_Spec")
 
   # `literacy` and `composite_overall` are not vocabulary terms; they map.
   expect_true(all(c("written", "overall") %in% spec_components(spec)))
@@ -283,7 +287,7 @@ test_that("the headline has a display name for the documents to use", {
   # package's word for the abstraction and never reaches a reader.
   expect_identical(spec_headline_label(read_el_spec("00_SIM_EL_Spec")),
                    "Overall Composite")
-  expect_identical(spec_headline_label(read_el_spec("NJ_elp_2023")),
+  expect_identical(spec_headline_label(read_el_spec("00_TEMPLATE_EL_Spec")),
                    "Overall Composite")
   # The ELPA21 headline is a categorical determination, and its own name
   # travels with it -- the same sentence has to read correctly for both.

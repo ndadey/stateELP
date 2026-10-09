@@ -79,7 +79,7 @@ Maintain this table. It starts as the shell inventory.
 | Package skeleton, `DESCRIPTION`, `renv` | **built** | `renv::init()`, explicit snapshot; `NAMESPACE`/`man` generated |
 | `data-raw/el_long_sim.R` + `sim_contract.md` | **written, RUN** | contract **v0.4.0**; every `[FILL IN]` filled from the 2026-09-16 build; values verified identical to the 0.2.0 build after renaming (§2.1) |
 | `data/` (three `.rda`) | **built** | `el_long_sim` (base) / `el_roster_sim` / `academic_long_sim`, 6.84 MB, `sim_contract_version` 0.4.0; `elp_components_sim` retired; regenerate, don't hand-edit |
-| `R/spec.R` + three specs | **built** | SIM (Type 1) / NJ / ELPA21 (Type 6); ALL-CAPS `data$columns` crosswalks + `value_maps`. No `demographics_spec`: display labels moved out of the spec tree to `inst/lookups/Display_Labels.R` and no spec points at them |
+| `R/spec.R` + three specs | **built** | SIM (Type 1) / TEMPLATE / ELPA21 (Type 6); ALL-CAPS `data$columns` crosswalks + `value_maps`. No `demographics_spec`: display labels moved out of the spec tree to `inst/lookups/Display_Labels.R` and no spec points at them |
 | `R/el_data.R` (bundle, adapter, coverage) | **built** | `as_el_data()` (separate objects, merged single file), `as_el_data_sgp()`, `as_academic_long()`, `elp_headline()`, coverage table |
 | `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below |
@@ -397,8 +397,8 @@ delivery; ALL CAPS like every other column): `YEAR_IN_STATUS`, cohort key
 
 A local R list in the ReportR style (constructor `el_spec()` + validator).
 `stateELP` stays standalone: no `Imports` on `stateSpecs` or `stateSummative`.
-The shape stays close to `NJ_elp_2023.R` so migration is a field-by-field
-diff. Top-level blocks: `schema_version`, `program`, `elp`, `policy`,
+The shape stays close to the older `assessment_spec` so migration is a
+field-by-field diff. Top-level blocks: `schema_version`, `program`, `elp`, `policy`,
 `academic`, `data`, `verification`, `source_documents`. The
 measurement/policy split is a block boundary drawn where stateSpecs will later
 draw a file boundary; classification rule: vendor-changes-the-test → `elp`;
@@ -478,9 +478,10 @@ Type.** A Type 1 state skips them all — the sim does exactly this.
 spec's `spec_id`; same resolved shape either way; EOC subjects `grades = NULL`
 with the real tested grade on the academic row.
 
-**Spec diff table (NJ → `el_spec`)** — migration depends on it:
+**Spec diff table (old `assessment_spec` → `el_spec`)** — migration depends
+on it:
 
-| NJ field | `el_spec` field | Change |
+| old `assessment_spec` field | `el_spec` field | Change |
 |---|---|---|
 | `subjects` | `elp$components` | rename at migration; add `kind`, `measures`, `from`, `native_name`; domain `grades` → `elp$grade_clusters` |
 | `achievement_levels` | `elp$level_scale` | numeric + labels; drop `policy_benchmark` (an exit rule, not a label); `data_column` → crosswalk |
@@ -501,8 +502,26 @@ and treats it as a spec id. Display labels live outside the spec tree in
 
 1. `00_SIM_EL_Spec.R` — WIDA-shaped, matches the sim; **Type 1**; identity
    crosswalk; `verification$status = "synthetic"`.
-2. `NJ_elp_2023.R` — updated shape, values unverified, no data; the migration
-   test case.
+2. `00_TEMPLATE_EL_Spec.R` — the migration test case and the starting point
+   for a real state spec. WIDA-shaped, **no data, and no state's policy**:
+   every value under `policy` is a placeholder, `verification$status =
+   "unverified"` permanently. It earns its place by being the *second shape*
+   the suite can test — a **non-identity `data$columns` crosswalk** (the SIM
+   spec's is identity, so it cannot exercise resolution at all) and
+   **renamed components** (`literacy` → `written`, `composite_overall` →
+   `overall`, keeping the vendor label as `native_name`, which the SIM spec's
+   already-canonical keys cannot test either).
+
+   *It replaced `NJ_elp_2023.R` on 2026-10-09.* That file carried real New
+   Jersey attribution — department, N.J.A.C. citations, codebook column names
+   — against policy values CLAUDE.md itself recorded as unverified, which a
+   reader of a **public** repo could take for that state's actual exit
+   criteria. It is now local-only beside its own pre-migration original in
+   `internal_docs/source/` (`NJ_elp_2023.R` and
+   `NJ_elp_2023_migrated.R`), gitignored, and **rewritten out of published
+   history**. `inst/specs/NJ_elp_2023.R` is kept in `.gitignore` as a guard:
+   a spec carrying a real state's values must not sit in a directory that
+   `el_spec_files()` enumerates and that ships.
 3. `00_ELPA21_EL_Spec.R` — no data; `headline = "determination"`, a level-only
    component, a domain-level exit rule with `exempt_if_absent`; **Type 6** —
    it now exercises the typology as well as the component abstraction, and it
@@ -928,7 +947,7 @@ Fixtures that must exist in the shell:
 The shell is built across **nine scoped sessions** — the foundation session (`1_`), then one per stage in §15's order (`2_`–`9_`) — and is done when all of the following hold. Every session ends with `devtools::check()` clean and a §3 update; no session builds beyond its scope:
 
 1. Skeleton: `DESCRIPTION`, generated `NAMESPACE`, `R/globals.R`, `R/data.R`,
-   `R/spec.R`, `R/el_data.R`, `inst/specs/` (SIM, NJ, ELPA21),
+   `R/spec.R`, `R/el_data.R`, `inst/specs/` (SIM, TEMPLATE, ELPA21),
    `inst/lookups/Display_Labels.R`, `tests/testthat/` (per stage + spec + el_data),
    `internal_docs/` (`source/` extractions, `steps/` instruction files),
    `dev/render_step.R`, `.Rbuildignore`/`.gitignore` in the ReportR pattern,
@@ -968,7 +987,7 @@ on its default:
 | 2 | Standalone `.qmd` vs Quarto book | standalone; combined render later |
 | 3 | SIM spec doubles as TEMPLATE spec | both, as in ReportR |
 | 4 | Computed inline values in shell | wait for stage build — **resolved for Check 1's Sample line (2026-09-20)**, which carries the selected cohort, its N and its window from `$cohorts` |
-| 5 | NJ spec ships in repo | yes — values unverified, no data |
+| 5 | A second, non-SIM spec ships in the repo | yes — `00_TEMPLATE_EL_Spec.R`, no data and no state attribution (2026-10-09; was the NJ spec, see §5) |
 | 6 | `academic` block inline vs pointer | inline for SIM; pointer documented |
 | 7 | Exit rule: `terms` + display string | adopt; validated, never evaluated |
 | 8 | `policy$exit$types` + validator cross-check vs `terms` | adopt |

@@ -32,3 +32,7 @@ internal_docs/working/
 
 # Local-only: third-party source extractions, not ours to publish (CLAUDE.md 3)
 internal_docs/source/
+
+# A guard, not a live path. A spec carrying a real state's policy values must
+# not sit in inst/specs/, which el_spec_files() enumerates and which ships.
+inst/specs/NJ_elp_2023.R

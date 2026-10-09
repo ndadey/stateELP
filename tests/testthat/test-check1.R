@@ -295,12 +295,12 @@ test_that("an absent optional field is reported with its fallback", {
 })
 
 test_that("YOUR_COLUMN resolves through the spec's crosswalk", {
-  nj <- read_el_spec("NJ_elp_2023")
+  tmpl <- read_el_spec("00_TEMPLATE_EL_Spec")
   bundle <- make_check1_bundle(make_check1_roster())
 
-  fields <- .check1_data_fields(bundle, nj, c("cohorts", "life_table"))
+  fields <- .check1_data_fields(bundle, tmpl, c("cohorts", "life_table"))
   expect_identical(fields$YOUR_COLUMN[fields$FIELD == "STUDENT_ID"],
-                   "Scrambled_SID")
+                   "Student_UID")
   # A field the crosswalk does not rename keeps its canonical name ...
   expect_identical(fields$YOUR_COLUMN[fields$FIELD == "EL_STATUS"],
                    "EL_STATUS")
