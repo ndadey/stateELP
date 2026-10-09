@@ -91,33 +91,41 @@ Maintain this table. It starts as the shell inventory.
 | Eight `.qmd` shells | **4 of 8 built** | `check1_survival.qmd`, `prep2_population.qmd`, `check2_flows.qmd`, `check3_academics.qmd`; one stage session each for the rest (§15) |
 | Fixtures: A–J, slide-52, J-vs-consistency | **A–J + slide-52 built** | A–J + last-current counter-test in `test-utils.R`; slide-52 worked numbers and the cohort rosters in `helper-check1.R`; ELPA21 base + roster pair and SGP / summative fixtures in `helper-el_data.R`; J-vs-consistency lands with Check 4 |
 | Stage analyses (all others) | not built | later passes per instruction file |
-| Git remote / publication | **not done** | 32 commits, **no remote** — see below |
+| Git remote / publication | **done 2026-10-09** | public at `github.com/ndadey/stateELP`, 34 commits — see below |
 
-**Publication state (as of 2026-10-09): nothing is pushed anywhere.** `git
-remote -v` is empty; all 32 commits exist only in this Dropbox folder on one
-machine. Dropbox is file sync, not version control: a bad sync or a local
-mistake takes the history with it. This is the largest standing risk to the
-project and it is not a code problem.
+**Publication state: published 2026-10-09** to
+**https://github.com/ndadey/stateELP**, public, default branch `main`,
+`origin` tracking. Verified at the time: local HEAD equals `origin/main`, and
+`internal_docs/source/` appears in **none** of the 34 published commits
+(checked commit by commit, not just at the tip).
 
-A plan was agreed on 2026-09-23 and **not executed** — the session ended
-between the backup and the rewrite. Its three decisions stand and should not
-be relitigated:
+How it was done, because the shape matters if it is ever repeated:
 
-1. **Public**, not private (§9 updated to match).
-2. **The name `stateELP` is taken.** `github.com/ndadey/stateELP` is the
-   origin of `Git/ELPAnalysis` — the ELReportR-era design this package
-   replaced, 12 commits, unrelated history. Freeing the name means renaming
-   that repo (to `ELReportR-archive`), **and then repointing
-   `ELPAnalysis`'s own `origin`**: GitHub's rename redirect dies the moment a
-   new repo takes the old name, so otherwise that directory silently points
-   at this package.
-3. **`internal_docs/source/` must not be published**, and deleting it is not
-   enough — a public repo hands over its history. It is in exactly one commit
-   (`3230733`, the skeleton) and that commit carries much else, so a
-   `git filter-branch --index-filter` pass drops it from history without
-   emptying any commit and all 32 survive. `--index-filter` leaves the
-   working tree alone, so the four files stay on disk. Back up `.git` first;
-   there is no second copy of this history.
+1. **Public**, not private (§9 says so).
+2. **The name was taken.** `github.com/ndadey/stateELP` was the origin of
+   `Git/ELPAnalysis` — the ELReportR-era design this package replaced, 12
+   commits, unrelated history. It was **renamed to `ELReportR-archive`**
+   (still private, its history intact), and `ELPAnalysis`'s own `origin` was
+   **repointed at the archive before the new repo was created**: GitHub's
+   rename redirect dies the moment a new repo takes the old name, so that
+   directory would otherwise have silently pointed at this package.
+3. **`internal_docs/source/` was rewritten out of history**, not deleted —
+   a public repo hands over its history. It lived in exactly one commit
+   (`3230733`, the skeleton), which carried much else, so
+   `git filter-branch --index-filter` dropped it without emptying any commit.
+   It is now in `.gitignore`.
+
+**Two corrections to the earlier plan, learned by doing it:**
+
+- **`--index-filter` does NOT leave the working tree alone.** `filter-branch`
+  syncs the working tree to the rewritten HEAD when it finishes, which
+  **deleted all four `internal_docs/source/` files from disk.** They were
+  restored from the `.git` backup and verified byte-identical. **Back up
+  `.git` before any `filter-branch` here, and expect to restore the filtered
+  paths afterwards.**
+- **`filter-branch` refuses to run on a dirty working tree** ("Cannot rewrite
+  branches: You have unstaged changes"). Untracked files are fine; modified
+  tracked files are not. Commit or set them aside first.
 
 **Why `internal_docs/source/` is excluded.** It holds a verbatim extraction
 of Molly Faulkner-Bond's NCIEA deck, a document marked "Draft v1 … being
