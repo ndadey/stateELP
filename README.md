@@ -361,7 +361,12 @@ source("dev/render_step.R")
 rs("check1")                               # load_all() + render, docx + html
 rs_all()                                   # every stage that has a document
 rs_site()                                  # refresh the example reports in docs/
+rs_site_index()                            # rebuild the site page from this README
 ```
+
+The project site's landing page, `docs/index.md`, is generated from this
+README. Edit `README.md`, then run `rs_site_index()`; never edit the generated
+file directly.
 
 Working conventions:
 
