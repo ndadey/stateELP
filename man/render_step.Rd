@@ -11,6 +11,9 @@ render_step(
   formats = c("docx", "html"),
   min_n = NULL,
   save_results = FALSE,
+  results_dir = "results",
+  results_file = NULL,
+  check_disclosure = NULL,
   open = interactive(),
   quiet = TRUE,
   qmd = NULL
@@ -30,10 +33,27 @@ render_step(
 document read it from the spec, which is what it should normally do.}
 
 \item{save_results}{When \code{TRUE} and \verb{run_<stage>()} exists, computes the
-stage's results and writes \verb{<stage>_results.rds} beside the output. Off by
-default: in dev mode the document computes its own results, so turning
+stage's results and writes \verb{<stage>_results.rds} into \code{results_dir}. Off
+by default: in dev mode the document computes its own results, so turning
 this on computes them a second time. Turn it on to feed the Decision
 stage, which is the natural RDS consumer. \verb{[PROPOSED - CONFIRM]}}
+
+\item{results_dir}{Where saved results go — deliberately \strong{not} \code{out_dir}.
+The documents there are shareable; the results objects are not, because
+Check 2's \verb{$flags} and \verb{$profile} are one row per student. Side by side,
+zipping the output directory would ship the student rows with the
+documents.}
+
+\item{results_file}{An existing \verb{<stage>_results.rds} to render \emph{from}
+instead of recomputing. Every stage \code{.qmd} already accepts this and
+branches on it; this is the way to pass one. The Decision stage is the
+consumer that needs it.}
+
+\item{check_disclosure}{Scan the produced files for student identifiers and
+\strong{stop} if any appear (see \code{R/disclosure.R}). Defaults to \code{TRUE}
+whenever something was rendered. Set \code{FALSE} on a real delivery, where
+the package cannot assemble the bundle itself, and call
+\code{\link[=check_output_disclosure]{check_output_disclosure()}} against your own bundle instead.}
 
 \item{open}{Whether to open the rendered document. Defaults to interactive
 use only.}

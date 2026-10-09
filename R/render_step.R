@@ -23,10 +23,24 @@
 #' @param min_n Suppression minimum passed to the document. `NULL` lets the
 #'   document read it from the spec, which is what it should normally do.
 #' @param save_results When `TRUE` and `run_<stage>()` exists, computes the
-#'   stage's results and writes `<stage>_results.rds` beside the output. Off by
-#'   default: in dev mode the document computes its own results, so turning
+#'   stage's results and writes `<stage>_results.rds` into `results_dir`. Off
+#'   by default: in dev mode the document computes its own results, so turning
 #'   this on computes them a second time. Turn it on to feed the Decision
 #'   stage, which is the natural RDS consumer. `[PROPOSED - CONFIRM]`
+#' @param results_dir Where saved results go — deliberately **not** `out_dir`.
+#'   The documents there are shareable; the results objects are not, because
+#'   Check 2's `$flags` and `$profile` are one row per student. Side by side,
+#'   zipping the output directory would ship the student rows with the
+#'   documents.
+#' @param results_file An existing `<stage>_results.rds` to render *from*
+#'   instead of recomputing. Every stage `.qmd` already accepts this and
+#'   branches on it; this is the way to pass one. The Decision stage is the
+#'   consumer that needs it.
+#' @param check_disclosure Scan the produced files for student identifiers and
+#'   **stop** if any appear (see `R/disclosure.R`). Defaults to `TRUE`
+#'   whenever something was rendered. Set `FALSE` on a real delivery, where
+#'   the package cannot assemble the bundle itself, and call
+#'   [check_output_disclosure()] against your own bundle instead.
 #' @param open Whether to open the rendered document. Defaults to interactive
 #'   use only.
 #' @param quiet Passed to Quarto. `FALSE` shows the CLI's own output, which is
@@ -47,6 +61,9 @@ render_step <- function(stage,
                         formats = c("docx", "html"),
                         min_n = NULL,
                         save_results = FALSE,
+                        results_dir = "results",
+                        results_file = NULL,
+                        check_disclosure = NULL,
                         open = interactive(),
                         quiet = TRUE,
                         qmd = NULL) {
@@ -89,14 +106,32 @@ render_step <- function(stage,
   file.copy(src, copy, overwrite = TRUE)
 
   written <- character()
+  saved <- character()
 
+  # Saved results go somewhere OTHER than out_dir, even though out_dir is
+  # where they used to land. The documents in out_dir are shareable and the
+  # results objects are not -- Check 2's `$flags` and `$profile` are one row
+  # per student -- so putting them side by side means anyone who zips the
+  # output directory to send a colleague a stage ships the student rows with
+  # it. The documents were never the leak; the directory was.
   if (isTRUE(save_results)) {
-    rds <- .save_stage_results(stage, spec_file, out_dir)
-    if (!is.na(rds)) written <- c(written, rds)
+    dir.create(results_dir, showWarnings = FALSE, recursive = TRUE)
+    rds <- .save_stage_results(stage, spec_file,
+                               normalizePath(results_dir, winslash = "/",
+                                             mustWork = TRUE))
+    if (!is.na(rds)) saved <- c(saved, rds)
   }
 
   params <- list(pkg_path = pkg, spec_file = spec_file)
   if (!is.null(min_n)) params$min_n <- min_n
+  # RDS mode: every stage `.qmd` already accepts `results_file` and branches
+  # on it, but there was no way to pass one, so the read half of the loop was
+  # unreachable through this helper. The Decision stage is the consumer that
+  # needs it.
+  if (!is.null(results_file)) {
+    params$results_file <- normalizePath(results_file, winslash = "/",
+                                         mustWork = TRUE)
+  }
 
   for (fmt in formats) {
     quarto::quarto_render(input = copy, output_format = fmt,
@@ -111,12 +146,41 @@ render_step <- function(stage,
   }
   written <- unique(written)
 
+  # The backstop: scan what was actually produced. Defaults on whenever the
+  # bundle is reachable, because a check you have to remember to ask for is
+  # not a guardrail. Errors rather than warns -- a document carrying student
+  # rows should not survive the render that made it.
+  if (is.null(check_disclosure)) check_disclosure <- length(written) > 0L
+  if (isTRUE(check_disclosure) && length(written)) {
+    bundle <- tryCatch(.render_bundle(spec_file), error = function(e) NULL)
+    if (!is.null(bundle)) {
+      check_output_disclosure(written, bundle, action = "error")
+    } else if (!quiet) {
+      message("  (disclosure scan skipped: no bundle for '", spec_file, "')")
+    }
+  }
+
   if (isTRUE(open) && length(written)) {
     utils::browseURL(written[[1]])
   }
   message("Rendered ", stage, ": ",
           paste(basename(written), collapse = ", "))
-  invisible(written)
+  if (length(saved)) {
+    message("  results saved (NOT shareable -- student-level slots): ",
+            paste(saved, collapse = ", "))
+  }
+  invisible(c(written, saved))
+}
+
+# The bundle a render was built from, for the disclosure scan. The shipped
+# simulation is the only delivery the package knows how to assemble on its
+# own; a real delivery is assembled by the analyst, who should pass
+# `check_disclosure = FALSE` and run `check_output_disclosure()` against their
+# own bundle instead.
+.render_bundle <- function(spec_file) {
+  spec <- read_el_spec(spec_file)
+  as_el_data(get("el_long_sim"), roster = get("el_roster_sim"),
+             academic = get("academic_long_sim"), spec = spec)
 }
 
 #' Stage ids and their documents

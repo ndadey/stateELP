@@ -36,3 +36,8 @@ internal_docs/source/
 # A guard, not a live path. A spec carrying a real state's policy values must
 # not sit in inst/specs/, which el_spec_files() enumerates and which ships.
 inst/specs/NJ_elp_2023.R
+
+# Saved stage results. Student-level by design (check2 $flags/$profile), so
+# never committed and never shared -- the documents in reports/ are the
+# shareable artifact (R/disclosure.R).
+results/
