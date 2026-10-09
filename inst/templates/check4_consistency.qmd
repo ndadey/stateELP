@@ -1,0 +1,347 @@
+---
+title: "Data Check 4 --- Decision consistency and Youden's J"
+subtitle: "Evaluating and Setting English Learner Exit Thresholds"
+params:
+  pkg_path: "."
+  spec_file: "00_SIM_EL_Spec"
+  results_file: ""
+  min_n: null
+format:
+  docx: default
+  html:
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 5.5
+fig-dpi: 300
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+
+spec <- read_el_spec(params$spec_file)
+
+# Dev mode by default: the document runs the stage. `results_file` switches to
+# RDS mode, which is how the Decision stage will read what earlier stages
+# produced. Analysis logic lives in R/, never here: this file holds the prose,
+# the captions, and one call per figure or table.
+res <- if (!is.null(params$results_file) && nzchar(params$results_file)) {
+  readRDS(params$results_file)
+} else {
+  bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+                       academic = academic_long_sim, spec = spec)
+  run_check4(bundle, spec)
+}
+
+# `h` is "has it", `n` is "is it missing": Quarto reads a second `!` inside
+# `!expr` as a second YAML tag, so the negation needs its own name.
+slots <- c("consistency_curve", "youden_j", "j_optimal", "candidate_region",
+           "dependence", "policy_as_whole")
+h <- vapply(slots, function(s) !is.null(res[[s]]), TRUE)
+n <- !h
+
+have_resolution <- !is.na(res$meta$resolution_note)
+have_axis <- h[["youden_j"]] && !is.na(res$meta$axis_note)
+have_threshold_note <- h[["j_optimal"]] && !is.na(res$meta$threshold_note)
+
+component <- spec_headline_label(spec)
+min_cell <- spec_min_cell(spec)
+
+# Captions are built here, not inline: a colon-space inside an `!expr` value
+# is read as a YAML mapping and the render fails. Each mark is described only
+# when the figure actually draws it.
+marks <- character()
+if (h[["j_optimal"]] && !is.na(res$j_optimal$J_CUT[[1]])) {
+  marks <- c(marks, "the dashed line marks the J optimum among the cuts shown")
+}
+if (h[["j_optimal"]] && !is.na(res$j_optimal$THRESHOLD[[1]])) {
+  marks <- c(marks, paste(
+    "the dotted line marks",
+    if (isTRUE(res$j_optimal$RULE_IS_TERM[[1]])) {
+      "the exit rule's term on this level"
+    } else if (isTRUE(res$j_optimal$RULE_IS_ROUTE[[1]])) {
+      "the exit rule's route on this level"
+    } else {
+      "the current exit rule"
+    }))
+}
+if (h[["j_optimal"]] && !is.na(res$j_optimal$AGREE_CUT[[1]])) {
+  marks <- c(marks, "the circle marks raw agreement's highest reportable point")
+}
+marks_text <- if (length(marks)) {
+  paste0(toupper(substring(paste(marks, collapse = "; "), 1, 1)),
+         substring(paste(marks, collapse = "; "), 2), ". ")
+} else ""
+
+curve_cap <- if (h[["youden_j"]]) {
+  sprintf(paste(
+    "Decision consistency and Youden's J at every candidate cut on the %s",
+    "level, grade %s %s, %d. %sSuppressed cuts are not drawn: a cut is shown",
+    "only if neither its own cells nor its difference from a neighbouring",
+    "published count --- the cut shown before it, or a band boundary Data",
+    "Check 3 reports --- would disclose a group of fewer than %d students."),
+    component, res$meta$grade, res$meta$subject, res$meta$year, marks_text,
+    min_cell)
+} else "Decision consistency and Youden's J"
+
+optimum_cap <- if (h[["j_optimal"]]) {
+  sprintf(paste(
+    "Where J peaks among the cuts that can be shown, the highest reportable",
+    "agreement, and how the current rule scores, grade %s %s, %d. Proficient",
+    "is the share of these current ELs at or above the content test's",
+    "proficiency cut."),
+    res$meta$grade, res$meta$subject, res$meta$year)
+} else "The J optimum"
+
+table_cap <- if (h[["youden_j"]]) {
+  sprintf(paste(
+    "Every candidate cut, grade %s %s, %d. A student counts as at/above when",
+    "their %s level is at or above the cut. A dash marks a suppressed cut:",
+    "one whose own cells, or whose difference from the cut shown before it",
+    "or from a band boundary Data Check 3 reports, would disclose a group of",
+    "fewer than %d students."),
+    res$meta$grade, res$meta$subject, res$meta$year, component, min_cell)
+} else "Every candidate cut"
+```
+
+::: {.callout-note appearance="default" icon=false}
+## Sample
+
+`r res$meta$sample`
+:::
+
+## Looking at
+
+Two statistics, computed at every candidate cut on the `r component` level.
+At each cut a current EL is classified *ready to exit* if their level is at
+or above it, and that classification is set against whether the same student
+reached proficiency on the content test that year.
+
+- **Decision consistency** is the share of students for whom the two
+  classifications agree.
+- **Youden's J** is sensitivity plus specificity, minus one: how well the cut
+  separates students who are proficient on the content test from those who
+  are not, with the two error *rates* --- the share of proficient students it
+  holds back, and the share of not-proficient students it lets exit ---
+  weighted the same, however common each group is.
+
+The Process Overview pairs these with a rank-dependence analysis --- the
+Betebenner copula / Kendall's-tau method --- that examines where and how
+strongly ELP and content performance move together, including in the tails.
+That piece is not built yet; *What is not here* says what is turnkey and
+what is not.
+
+## The curves
+
+```{r}
+#| label: fig-curves
+#| fig-cap: !expr curve_cap
+#| eval: !expr h[["youden_j"]]
+#| include: !expr h[["youden_j"]]
+plot_consistency_curve(res$youden_j, res$j_optimal, spec)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr n[["youden_j"]]
+cat("> **No curves.** ", res$meta$note, "\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["j_optimal"]]
+cat(check4_optimum_note(res), "\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["j_optimal"]]
+cat("::: {.callout-note appearance=\"default\" icon=false}\n",
+    "## Which error costs more\n\n",
+    check4_tolerance_note(res), "\n:::\n", sep = "")
+```
+
+```{r}
+#| label: tbl-optimum
+#| tbl-cap: !expr optimum_cap
+#| eval: !expr h[["j_optimal"]]
+#| include: !expr h[["j_optimal"]]
+ft_check4_optimum(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_threshold_note
+cat(res$meta$threshold_note, "\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["youden_j"]]
+cat(res$meta$pairing_note, "\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_resolution
+cat("::: {.callout-warning appearance=\"default\" icon=false}\n",
+    "## Fewer cuts than the rule needs\n\n",
+    res$meta$resolution_note, "\n:::\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_axis
+cat("::: {.callout-warning appearance=\"default\" icon=false}\n",
+    "## Reading the right-hand end of the axis\n\n",
+    res$meta$axis_note, "\n:::\n", sep = "")
+```
+
+## Looking for
+
+**Decision consistency's peak --- with a specific caution.** When English
+learners' academic-proficiency rate sits well below 50%, as it typically does,
+the peak can be distorted, or fail to appear within a realistic range at all,
+because the statistic is pulled toward whichever classification is more
+common. Calling every student *not ready* already agrees with the content
+test for every student who is not proficient, so agreement climbs as the cut
+rises and can keep climbing to the top of the scale.
+
+The arithmetic is short. Raising the cut past a level moves agreement up
+when most students at that level are *not* proficient, so --- where the
+proficiency rate rises steadily with level --- agreement peaks where the rate
+among students at a level crosses one half. It moves J up when students at
+that level are proficient *less often than the overall base rate*, so J peaks
+where the rate crosses the base rate instead. With a base rate below one
+half, the J optimum therefore sits at or below the agreement peak, and in
+practice usually well below it. That gap is what the figure shows.
+
+**Youden's J corrects for this** by weighting both error rates equally,
+however common each kind of student is --- which is why it, and not raw
+consistency, is this stage's optimal-cut statistic.
+
+## Interpreting it
+
+**Prefer J over raw decision consistency** as the primary optimal-cut
+statistic, because of the base-rate sensitivity above.
+
+**Treat convergence between Data Checks 3 and 4 as the strongest evidence**,
+and any single method's result on its own with more caution. Read the
+comparison with one fact in mind. Check 3's two landings --- the first band
+where half the students reach the proficiency cut, and the `r component`
+*scale score* (a different axis from this stage's levels) at which a fitted
+logistic crosses 50% --- both mark where proficiency becomes more likely than
+not. That is the point raw agreement aims at, not the point J aims at. With a
+base rate below one half they should therefore land at or above the J
+optimum, or not appear at all: a gap of that sign is expected, not a
+disagreement. The informative comparisons are Check 3's band landing against
+this stage's agreement curve, and both against J.
+
+**Read the curve's shape, not only its peak.** A J curve that is flat near
+its top means several cuts separate students almost equally well, and the
+optimum alone overstates how precisely the data locate a threshold. That is
+why this stage's eventual output is a candidate region rather than a single
+number.
+
+**Remember Prep 3's error-tolerance question here.** Youden's J treats a
+false exit and a false hold as equally costly *as rates*: one in ten
+proficient students held back counts the same as one in ten not-proficient
+students let go. Per student that is not an even trade --- at a low base rate
+J weighs each held-back proficient student far more heavily than each
+premature exit, and the note beside the figure says by how much. Stakeholders
+answer Prep 3's question per student, so if they weigh the two errors
+differently from J, that is a deliberate, documented reason to land the final
+threshold above or below the J-optimal point --- a values input the statistic
+itself cannot supply, not a departure from the evidence.
+
+## The numbers behind the curves
+
+```{r}
+#| label: tbl-curve
+#| tbl-cap: !expr table_cap
+#| eval: !expr h[["youden_j"]]
+#| include: !expr h[["youden_j"]]
+ft_check4_curve(res)
+```
+
+## Checkpoint
+
+Confirm the analysis is computing **Youden's J, not raw decision consistency
+relabeled**, before relying on it as the primary threshold statistic. This is
+a demonstrated gap between the two methods, not a theoretical concern: where
+the two curves above peak at different cuts, the J optimum is the one this
+stage reports. The package holds a small test fixture whose proficiency rate
+is well below one half, where the consistency peak and the J optimum diverge
+by construction, and the stage must return the J optimum there.
+
+## Additional check --- Types 2--6: the policy as a whole
+
+```{r}
+#| output: asis
+cat(res$meta$policy_as_whole_note, "\n")
+```
+
+## What is not here
+
+**The candidate region.** The stage's eventual answer is a region, not a
+single number, read across every tested grade and annotated with which
+grades and years carry the most and least reliable evidence per Data Check 1.
+This pass computes one grade and subject; the region across grades is a
+later pass.
+
+**The rank-dependence analysis.** What is turnkey and what is custom:
+decision consistency and Youden's J --- the Cook et al. methods --- are built
+here and run on any delivery. The copula / Kendall's-tau dependence analysis,
+which asks where and how strongly ELP and content performance move together
+and whether they couple differently at the low end (expected: independence,
+noise) than at the high end (expected: real signal), is custom. It has no
+package support yet, and its slot stays empty until it does.
+
+::: {.callout-important appearance="default" icon=false}
+## What these curves can and cannot say here
+
+On simulated data the J-optimal point is **machinery, not a finding.** Where
+it lands is set by the generator's parameters --- how far EL content scores
+sit below the cut, how steeply they rise with ELP level, how much they vary
+--- and by how the simulated exit rule thins the top of the level scale. The
+figure demonstrates that the curves build, suppress and render correctly, and
+that the two statistics part ways at a low base rate as the method says they
+should; it is not evidence about where any state's threshold belongs. Run
+against a real delivery, the same figure is the stage's substantive output.
+:::
+
+::: {.callout-tip appearance="default" icon=false}
+## Decide before moving on
+
+1. **A candidate region** --- not necessarily a single number --- supported by
+   the balance of evidence across Data Checks 3--4, noting explicitly which
+   grades and years carry the most and least reliable evidence per Data
+   Check 1's findings.
+2. **Record Prep 3's error-tolerance answer beside the region** --- or that
+   the question is still open --- as an input to the Decision stage, which
+   chooses where in the region to land.
+:::
+
+```{r}
+#| output: asis
+cat("*Spec: ", res$meta$spec_id, ". ",
+    if (identical(res$meta$spec_id, "SIM")) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
+    "stateELP ", res$meta$package_version, ", run ", format(res$meta$run_date), ".*\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr identical(res$meta$spec_id, "SIM")
+cat("\n*These figures describe a synthetic fixture. No number here describes",
+    "any real state. Where the J optimum and the highest agreement land, and",
+    "the gap between them, are consequences of the generator's parameters",
+    "rather than findings.*\n")
+```
