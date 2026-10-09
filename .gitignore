@@ -29,3 +29,6 @@ internal_docs/working/
 /*.html
 !README.html
 .quarto/
+
+# Local-only: third-party source extractions, not ours to publish (CLAUDE.md 3)
+internal_docs/source/
