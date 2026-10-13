@@ -1,0 +1,610 @@
+---
+title: "Prep 3: Program implementation"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Prep 2: Population analysis](prep2.html) | Next: [Check 1: Cohort survival](check1.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+## What this step answers
+
+Prep 3 is the last of the three preparation steps. It asks two questions that
+no data file can answer.
+
+1. **What changes for a student the moment they exit EL status?** An English
+   learner (EL) exits when they meet the state's exit criteria, usually a
+   score on the English language proficiency (ELP) assessment. They then
+   become a *former* EL. Exit has consequences on the ground: services end,
+   schedules change, monitoring starts. This step writes those consequences
+   down.
+2. **Which error do stakeholders see as costlier?** Any exit threshold makes
+   two kinds of mistakes. A *premature exit* removes a student from EL status
+   before they are ready. *Prolonged retention* keeps a student in EL status
+   after they no longer need it. This step records which of the two the
+   people who own the decision consider worse, or that they weigh them
+   equally, or that the question is still open.
+
+The first answer gives the second its stakes. How much a premature exit costs
+depends on what exit takes away, and how much a prolonged hold costs depends
+on what EL status keeps a student from.
+
+The second answer feeds later stages; no later stage reads the inventory
+itself. Check 4 picks a candidate ELP cut with Youden's J: sensitivity plus
+specificity minus one, computed at each possible cut on the ELP level. The
+cut where J is highest is the *J optimum*. J builds in one particular
+weighting of the two errors. The recorded answer says whether stakeholders
+weigh them the same way. The Decision stage (not yet built) is to use it when
+choosing where to land inside the range of defensible thresholds that the
+Data Checks produce.
+
+Both answers are recorded in the *spec*: the one R file that holds every
+state-specific setting the package reads (its `el_spec` object).
+
+## Sample
+
+**None.** Prep 3 reads the spec and your program documents, not student
+records. When the stage is built, `run_prep3()` will take the spec alone, and
+passing it data will be an error.
+
+The students these answers matter most for are wherever Prep 2 showed EL
+enrollment concentrates. Read the inventory with Prep 2's district view
+beside it. A program model used in the largest districts touches far more
+students than one used in a handful of small ones. Step 2 under
+[Run it](#run-it) shows how to pull that view.
+
+## Status in the package
+
+**Not yet built.** There is no `run_prep3()` and no stage document. The
+stage's tests in `tests/testthat/test-prep3.R` are skipped placeholders.
+
+What does exist:
+
+- **Two spec fields.** `policy$program` holds the inventory and
+  `policy$error_tolerance` holds the elicited answer. The spec validator
+  checks that each block carries a `source` string and that the answer is one
+  of four allowed values.
+- **Check 4 already reads the answer.** While Prep 3 is unbuilt, Check 4 reads
+  `policy$error_tolerance` straight from the spec. It copies the answer into
+  its results (`$meta$costlier_error`, `$meta$error_tolerance`, and the
+  `COSTLIER_ERROR` and `LEAN` columns of `$j_optimal`). It also prints a note
+  about the answer beside the J optimum in its stage document.
+- **A plan for the stage.** Its instruction file names four result slots:
+  `$program_table`, `$error_tolerance`, `$confirm_questions` and `$meta`. The
+  answer is to be echoed into `$meta`, where Check 4 and the Decision stage
+  can read it. None of these slots exist yet.
+
+For you, this means doing Prep 3 by hand and recording the answers in your
+spec. What you record reaches Check 4 today. When the stage is built, its
+document will render from the same two fields. This page walks through the
+by-hand version.
+
+## Before you start
+
+You need:
+
+- **Your state's spec file**, copied from the template that ships with the
+  package (`el_spec_path("00_TEMPLATE_EL_Spec")` gives its location). Prep 3
+  fills two of its blocks. The template, like the simulated spec, ships them
+  empty.
+- **Program documents**: state EL regulations and guidance on program models,
+  course scheduling and placement rules, educator licensure or endorsement
+  rules, and district EL handbooks.
+- **People**: EL program staff who know practice on the ground, and the
+  stakeholders whose buy-in the final threshold will need. You put the
+  error-tolerance question to them.
+- **Helpful, not required**: Prep 2's results (where ELs concentrate, which
+  service models the data record) and the exit rule in `policy$exit`, which
+  Prep 1 (not yet built) reviews. The service-model cross-check in Step 2
+  needs a `SERVICE_MODEL` column on the roster. Without one,
+  `compute_profile()` simply leaves it out, and `$SERVICE_MODEL` is `NULL`.
+
+**What degrades if a block is absent.** The validator requires only
+`policy$exit`, `policy$timelines` and `policy$suppression`. A spec without
+`policy$program` or `policy$error_tolerance` still validates (the shipped
+ELPA21 spec has no `policy$program`). Check 4 treats a missing
+`error_tolerance` exactly like an answer of `"unknown"`: `LEAN` is `NA` and
+its note says the question is open. Nothing crashes. If you include either
+block, it must carry a `source`.
+
+## Run it
+
+Because `run_prep3()` does not exist yet, running Prep 3 means five steps by
+hand.
+
+### Step 1: See what the spec holds
+
+```{r}
+spec <- read_el_spec("00_SIM_EL_Spec")
+spec$policy$program
+spec$policy$error_tolerance
+```
+
+The simulated spec leaves every inventory field `NA` and the answer
+`"unknown"`. That is deliberate: a synthetic state has no programs and no
+stakeholders to ask. The planned stage renders each as an open item to
+confirm, not as an error.
+
+There are two blocks called "program" in a spec. `spec$program` describes the
+*assessment* program: its name, vendor and administration year. Prep 3's
+inventory is `spec$policy$program`. Keep them apart.
+
+### Step 2: Build the inventory
+
+Four fields hold the inventory. Each is a character value you write in plain
+language. The spec names the fields but does not define what goes in them,
+and the validator checks only the block's `source`. The descriptions below
+follow the stage's plan: program models, access to grade-level content and
+advanced coursework, educator credentialing, and anything else conditioned on
+EL status or ELP level.
+
+| Field | What to record |
+|---|---|
+| `models` | The EL program models in use, and where each is used. |
+| `course_access` | Whether EL status or ELP level changes access to grade-level content or advanced coursework. |
+| `credentialing` | Educator credentialing tied to serving ELs, such as who may teach a course that ELs are placed in. |
+| `gated_by_el_status` | Anything else conditioned on EL status or ELP level. |
+
+Check the inventory against the data. The roster's `SERVICE_MODEL` column
+records the model each current EL receives. Prep 2's `compute_profile()`
+tabulates it for current ELs in the latest year. Every code that appears
+should match a model in your inventory, or be explained: the simulated
+`refused_services` code, for example, records students who declined
+services, not a model. The package does not make this comparison for you.
+
+The code below first builds the *bundle*: the validated set of data tables
+that `as_el_data()` returns and every built stage takes. It is only for these
+cross-references; Prep 3 itself reads no data.
+
+```{r}
+bundle <- as_el_data(el_long_sim,
+                     roster   = el_roster_sim,
+                     academic = academic_long_sim,
+                     spec     = spec)
+
+compute_profile(bundle, spec, vars = "SERVICE_MODEL")$SERVICE_MODEL
+```
+
+`N` counts current ELs with each code and `PCT` is their share. Both are
+unweighted, since all of these students are ELs. `SUPPRESSED` marks cells
+below the spec's minimum cell size.
+
+Then find where ELs concentrate:
+
+```{r}
+districts <- compute_by_district(bundle, spec)
+c(districts_holding_two_thirds = sum(districts$TWO_THIRDS),
+  districts_in_total           = nrow(districts))
+```
+
+In the simulated data, the `r sum(districts$TWO_THIRDS)` largest of
+`r nrow(districts)` districts together hold at least two-thirds of current
+ELs in `r attr(districts, "year")`. The models used in those districts are
+the ones most students experience. The [Prep 2 page](prep2.html) covers this view in
+full.
+
+### Step 3: Write the plain statement
+
+The stage's product is one plain statement of what changes for a student the
+moment they exit. Write it from the inventory, in the student's terms:
+
+- which services stop;
+- which classes, placements or teachers change;
+- what opens up (courses or programs EL status had limited);
+- what monitoring starts, and for how long;
+- what testing or accommodations end.
+
+If your roster carries a monitoring field (`EL_MONITOR_YEAR` or
+`EL_STATUS_DETAIL`), Prep 2's `compute_monitoring()` counts former ELs by
+monitoring year, so you can see how many students are in that phase. Without
+either field it returns `NULL`.
+
+The spec has no field for this statement. Until the stage document exists to
+carry it, keep it with your spec, for example as a comment in the spec file
+next to `policy$program`.
+
+### Step 4: Ask the error-tolerance question
+
+Ask the people who own the decision which error is worse for a student:
+exiting EL status before they are ready, or staying in EL status after they
+no longer need it. Check 4 reads the answer *per student* (see
+[How to read it](#how-to-read-it)), so phrase the question that way. That
+reading is itself awaiting confirmation; see
+[Decide before moving on](#decide-before-moving-on).
+
+Record one of four values in `costlier_error`:
+
+| Value | Meaning |
+|---|---|
+| `"premature_exit"` | Exiting a student too early is the costlier error. |
+| `"prolonged_retention"` | Holding a student too long is the costlier error. |
+| `"equal"` | The two errors cost the same per student. |
+| `"unknown"` | Not yet asked, or no agreement. |
+
+Record who was asked (`asked_of`, which can list several groups), when
+(`asked_date`) and why they answered as they did (`rationale`). If they give
+a magnitude, such as "a premature exit is about twice as bad", put it in
+`rationale`. The spec has no structured field for it, and no stage reads
+`rationale`. It is a record for the people who later decide where to land,
+and some answers cannot be placed on either side of the J optimum without a
+magnitude (see [How to read it](#how-to-read-it)).
+
+Present this as a values judgment, because it is one. No analysis in the
+package can tell you which error matters more. It is sensible to ask before
+anyone has seen where Check 4's optimum lands, so the answer is not shaped by
+a preferred threshold.
+
+### Step 5: Record the answers and validate
+
+In your spec file the two blocks look like this. Every value below is
+invented for illustration and describes no state.
+
+```{r}
+#| eval: false
+policy = list(
+  # ... exit, timelines, suppression and the other policy blocks ...
+  program = list(
+    models             = "ESL pull-out (K-5); sheltered content courses (6-12)",
+    course_access      = "An ELD period occupies one elective slot in grades 6-12.",
+    credentialing      = "Sheltered course teachers hold an ESL endorsement.",
+    gated_by_el_status = "Annual ELP testing; testing accommodations; ELD period.",
+    source             = "provisional"
+  ),
+  error_tolerance = list(
+    costlier_error = "premature_exit",
+    asked_of       = c("State EL advisory committee", "District EL coordinators"),
+    asked_date     = "2026-11-15",
+    rationale      = "Exit ends the ELD period for students still building academic English.",
+    source         = "Minutes of the advisory committee meeting, 2026-11-15"
+  )
+)
+```
+
+`source` belongs to the whole block, not to each field. Keep
+`source = "provisional"` on a block until every value in it is confirmed
+against a document. Printing the spec (`print(spec)`) then lists the block
+under `[DERIVED - VERIFY]`, and the tables in
+[What you get](#what-you-get) show the same label.
+
+The same change, made in memory to a copy of the simulated spec, shows that
+the validator accepts it:
+
+```{r}
+filled <- spec
+filled$policy$program <- list(
+  models             = "ESL pull-out (K-5); sheltered content courses (6-12)",
+  course_access      = "An ELD period occupies one elective slot in grades 6-12.",
+  credentialing      = "Sheltered course teachers hold an ESL endorsement.",
+  gated_by_el_status = "Annual ELP testing; testing accommodations; ELD period.",
+  source             = "provisional"
+)
+filled$policy$error_tolerance <- list(
+  costlier_error = "premature_exit",
+  asked_of       = c("State EL advisory committee", "District EL coordinators"),
+  asked_date     = "2026-11-15",
+  rationale      = "Exit ends the ELD period for students still building academic English.",
+  source         = "Minutes of the advisory committee meeting, 2026-11-15"
+)
+validate_el_spec(filled)   # silent when the spec is valid
+```
+
+An answer outside the four values, or a block without a `source`, fails:
+
+```{r}
+bad <- filled
+bad$policy$error_tolerance$costlier_error <- "both"
+tryCatch(validate_el_spec(bad), error = function(e) cat(conditionMessage(e)))
+
+bad <- filled
+bad$policy$program$source <- NULL
+tryCatch(validate_el_spec(bad), error = function(e) cat(conditionMessage(e)))
+```
+
+The validator collects every problem and reports them together, so one run
+lists everything to fix.
+
+## What you get
+
+Until the stage is built, you get two tables you assemble yourself, plus
+Check 4's use of the answer.
+
+### The program inventory
+
+The two helpers below are written on this page. **They are not part of the
+package**; they stand in for the planned `$program_table` and
+`$error_tolerance` tables.
+
+```{r}
+by_hand_inventory <- function(spec) {
+  prog   <- spec$policy$program
+  fields <- setdiff(names(prog), "source")
+  value  <- vapply(prog[fields], function(x) {
+    if (all(is.na(x))) "(not recorded)" else paste(x, collapse = "; ")
+  }, character(1))
+  src <- if (identical(prog$source, "provisional")) "[DERIVED — VERIFY]" else prog$source
+  tab <- data.frame(
+    FIELD  = fields,
+    VALUE  = unname(value),
+    STATUS = unname(ifelse(value == "(not recorded)", "Open: confirm", "Recorded")),
+    SOURCE = src
+  )
+  flextable::flextable(tab) |>
+    flextable::set_table_properties(layout = "autofit", width = 1)
+}
+
+by_hand_inventory(spec)
+```
+
+For the simulated spec, every row is open. With the illustrative answers
+filled in, the same table reads:
+
+```{r}
+by_hand_inventory(filled)
+```
+
+`FIELD` is the spec field, `VALUE` what was recorded, `STATUS` whether it
+still needs an answer, and `SOURCE` where the value came from. A
+`[DERIVED — VERIFY]` source means the value is not yet confirmed.
+
+### The error-tolerance record
+
+```{r}
+by_hand_tolerance <- function(spec) {
+  et   <- spec$policy$error_tolerance
+  show <- function(x) if (all(is.na(x))) "(not recorded)" else paste(x, collapse = "; ")
+  tab <- data.frame(
+    COSTLIER_ERROR = show(et$costlier_error),
+    ASKED_OF       = show(et$asked_of),
+    ASKED_DATE     = show(et$asked_date),
+    RATIONALE      = show(et$rationale),
+    SOURCE         = if (identical(et$source, "provisional")) "[DERIVED — VERIFY]" else et$source
+  )
+  flextable::flextable(tab) |>
+    flextable::set_table_properties(layout = "autofit", width = 1)
+}
+
+by_hand_tolerance(spec)
+```
+
+For the simulated spec the answer is `"unknown"` and nobody was asked. That is
+an open item, not a failure: Check 4 still runs and says the question is
+open.
+
+### What Check 4 does with the answer
+
+Check 4 already consumes the answer. Run it on the simulated spec and look at
+what it recorded:
+
+```{r}
+res4 <- run_check4(bundle, spec)
+res4$meta$costlier_error
+```
+
+```{r}
+#| include: false
+o <- res4$j_optimal
+pct <- function(x) paste0(round(100 * x), "%")
+```
+
+Check 4 treats each grade and subject as its own panel, and its first pass
+computes one: here, `r res4$meta$subject` grade `r res4$meta$grade` in
+`r res4$meta$year`. Its
+`$j_optimal` table compares the answer with the J-optimal cut. To see how
+each possible answer would read, recompute that table from the same curve
+with the answer swapped. Only the spec changes; the curve is not rebuilt.
+
+```{r}
+answers <- c("unknown", "premature_exit", "equal", "prolonged_retention")
+lean <- dplyr::bind_rows(lapply(answers, function(a) {
+  s <- spec
+  s$policy$error_tolerance$costlier_error <- a
+  compute_j_optimal(res4$youden_j, s)
+}))
+lean |>
+  dplyr::transmute(COSTLIER_ERROR,
+                   BASE_RATE = round(BASE_RATE, 3),
+                   J_CUT_LABEL, AGREE_CUT_LABEL,
+                   IMPLIED_COST_RATIO = round(IMPLIED_COST_RATIO, 1),
+                   LEAN = dplyr::coalesce(LEAN, "NA")) |>
+  flextable::flextable() |>
+  flextable::set_table_properties(layout = "autofit", width = 1)
+```
+
+The columns:
+
+- `COSTLIER_ERROR` is the recorded answer.
+- `BASE_RATE` is the share of current ELs in the panel who are proficient on
+  the content test.
+- `J_CUT_LABEL` is the J optimum: the ELP level where Youden's J peaks, among
+  the cuts suppression allows Check 4 to show (see the
+  [Check 4 page](check4.html)).
+- `AGREE_CUT_LABEL` is where raw agreement between the ELP and content
+  classifications peaks, among the same cuts.
+- `IMPLIED_COST_RATIO` is `(1 - BASE_RATE) / BASE_RATE`: how many premature
+  exits the J optimum treats as equal to one prolonged hold.
+- `LEAN` is the side of the J optimum the answer points to: `"above"`,
+  `"below"`, `"at"`, or `NA` when the answer alone cannot settle it.
+
+Check 4's stage document prints a note on the answer under the heading
+"Which error costs more". For the simulated spec it reads:
+
+```{r}
+#| output: asis
+cat("> ", check4_tolerance_note(res4), "\n", sep = "")
+```
+
+## How to read it
+
+**The inventory sets the stakes.** The more exit changes for a student, the
+more each error costs. If exit ends support a student still needs, a
+premature exit is expensive. If EL status keeps students out of advanced
+coursework, a prolonged hold is expensive. Stakeholders should see these
+concrete facts before they answer the error-tolerance question.
+
+**J weighs the two errors equally as rates, not per student.** J counts the
+share of proficient students held back and the share of not-proficient
+students exited as equally bad, however common each group is. Per student,
+that is not an even trade when few ELs are proficient. In the simulated panel,
+`r pct(o$BASE_RATE)` of ELs are proficient, so the J optimum of
+`r o$J_CUT_LABEL` treats holding back one proficient student as heavily as
+exiting `r round(o$IMPLIED_COST_RATIO, 1)` who are not. These numbers come
+from the simulation and illustrate the arithmetic only.
+
+That is why the answer is read against `IMPLIED_COST_RATIO`:
+
+- **Premature exit is costlier**: points *above* the J optimum whenever the
+  ratio is at least 1 (the base rate is one half or less). With a higher
+  base rate the side depends on how much costlier, and `LEAN` is `NA`.
+- **Equal per student**: points toward the cut where raw agreement peaks, or
+  toward classifying no one ready when that agrees with the content test more
+  often than any cut. That is *above* the J optimum when the ratio is above 1
+  and *below* it when the ratio is under 1. It lands *at* the J optimum only
+  when the J optimum is also agreement's peak.
+- **Prolonged retention is costlier**: when the ratio is 1 or less, points
+  *below* the J optimum. When the ratio is above 1, as in the simulated
+  panel, it points below only if a hold is judged more than the ratio times
+  as costly as a premature exit; a milder preference still points above.
+  The answer alone cannot say which, so `LEAN` is `NA`.
+- **Unknown**: `LEAN` is `NA`, and Check 4 says the question is open.
+
+**The answer does not pick the threshold.** It is a documented reason to land
+above or below the J optimum: a values input, not a departure from the
+evidence. Check 4 records it beside its optimum; the Decision stage (not yet
+built) chooses where in the range to land.
+
+**Read the inventory where ELs are.** What exit changes in the districts that
+hold most ELs describes most students' experience. Still record every model:
+policy lands unevenly, and a model used only in small districts can decide
+what exit means for the students there.
+
+## Pitfalls
+
+- **Do not look to the data for the error-tolerance answer.** It is a values
+  judgment. No Data Check can tell you which error is worse.
+- **Do not read "J assumes equal costs" as per student.** J equalizes error
+  *rates*. At a low base rate it weighs one held-back proficient student as
+  several premature exits. Equal per-student costs then point above the J
+  optimum, not to it.
+- **Record who was asked and when.** An answer without its provenance cannot
+  be defended later. `asked_of` and `asked_date` exist for that.
+- **"Prolonged retention is costlier" may not settle the direction.** Unless
+  the base rate is one half or more, the side depends on how much costlier.
+  Capture any magnitude in `rationale`.
+- **Do not fill the simulated spec with invented answers for a report.** Its
+  `NA` and `"unknown"` values are by design. Put real answers in your state's
+  spec, copied from the template.
+- **Do not confuse the two "program" blocks.** `spec$program` is the
+  assessment program; Prep 3's inventory is `spec$policy$program`.
+- **Keep both blocks under `policy`.** The validator rejects a policy field
+  that appears under `elp`.
+- **Keep unconfirmed values `provisional`.** They then display as
+  `[DERIVED — VERIFY]` rather than passing for verified facts.
+- **Do not skip the step because the stage is unbuilt.** Check 4 reads the
+  answer from the spec today, so what you record changes how its document
+  reads.
+
+## Decide before moving on
+
+1. **Is the inventory complete?** Each of the four fields should hold a
+   sourced value, or be explicitly left open with someone responsible for
+   answering it.
+2. **Is there an agreed plain statement** of what changes for a student the
+   moment they exit?
+3. **Is the error-tolerance answer recorded**, with who was asked and when?
+   If it stays `"unknown"`, accept explicitly that Check 4 and the Decision
+   stage will say the question is open, and that the J optimum then carries
+   only J's own equal-rates weighting.
+4. **Did stakeholders answer per student?** The package reads the answer that
+   way. Check 4's build notes mark this reading as proposed and awaiting
+   confirmation. If your stakeholders meant something else, note it in
+   `rationale`.
+
+## Additional checks for multi-criterion exit rules
+
+**Prep 3 has none.** Several other stages carry an extra check that runs only
+when the spec declares a multi-criterion Type; which Types trigger it varies
+by stage. The spec records the exit rule's structure in `policy$exit$types`,
+using six Types: Type 1 is a single overall composite score, and Types 2 to
+6 combine criteria or pathways in different ways.
+
+```{r}
+el_exit_typology()
+spec_exit_types(spec)
+spec_has_type(spec, 2:6)
+```
+
+The simulated spec is Type 1, so every Type-gated check downstream is `NULL`.
+Prep 3's planned slots do not depend on the Type, and Check 4 reads the
+error-tolerance answer the same way under every Type.
+
+## Render the stage report
+
+Prep 3 has no stage document yet. `stage_qmd_path()` returns `NA` for it, and
+`render_step("prep3")` stops with "No document found":
+
+```{r}
+stage_qmd_path("prep3")
+```
+
+Until it exists, keep the two tables from this page with your spec as the
+Prep 3 record.
+
+To see your error-tolerance answer in a rendered document, render Check 4,
+whose report shows it under "Which error costs more". On its own,
+`render_step("check4")` runs on the simulated data and spec, so it shows the
+simulated `"unknown"`, not your answer. For your state, run Check 4 on your
+bundle and spec, save the results outside the folder you share, and render
+from the saved file:
+
+```{r}
+#| eval: false
+res <- run_check4(my_bundle, my_spec)
+dir.create("results", showWarnings = FALSE)
+saveRDS(res, "results/check4_results.rds")
+
+files <- render_step("check4",
+                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
+                     results_file     = "results/check4_results.rds",
+                     check_disclosure = FALSE)
+check_output_disclosure(files, my_bundle)
+```
+
+Pass the spec as a full path: the report renders in a temporary folder, where
+a relative path does not resolve. `check_disclosure = FALSE` turns off the
+built-in identifier scan, which knows only the simulated students;
+`check_output_disclosure()` runs the same scan against your own bundle. The
+[Check 4 page](check4.html) covers the report.
+
+[Guide home](index.html) | Previous: [Prep 2: Population analysis](prep2.html) | Next: [Check 1: Cohort survival](check1.html)

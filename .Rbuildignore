@@ -7,9 +7,11 @@
 ^data-raw$
 ^dev$
 ^docs$
+^guide$
 ^internal_docs$
 ^renv$
 ^renv\.lock$
 ^reports$
+^results$
 ^sim_contract\.md$
 ^\.Rprofile$

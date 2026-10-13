@@ -1,0 +1,679 @@
+---
+title: "Decision: Synthesis and next steps"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Check 4: Decision consistency](check4.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+```{r}
+#| include: false
+spec0 <- read_el_spec("00_SIM_EL_Spec")
+term0 <- spec0$policy$exit$pathways[[1]]$terms[[1]]
+```
+
+## What this step answers
+
+The Decision stage closes the process. It asks one question: **should the
+state keep its current exit threshold, adjust it, or restructure the exit
+criteria?** It also asks what supports that call: a range of thresholds, a
+monitoring plan, and an explicit trail of evidence.
+
+A few terms first. An *English learner* (EL) is a student classified as
+needing English language support. *ELP* is English language proficiency, as
+measured by the state's ELP test. The *exit rule* is the policy that moves a
+student out of EL status. In the simulated spec it is a single criterion: an
+`r spec_headline_label(spec0)` level of `r term0$value` or higher. The *spec*
+is the `el_spec` object that holds a state's policy and assessment values; the
+[setup page](setup.html) covers it.
+
+This stage runs no new analysis. It reads what the earlier stages found and
+sets the findings side by side. Its honest output is a **defensible region**:
+a range of thresholds the evidence supports, not one "true" number. The team
+then states which evidence drove where in that range the state lands.
+
+## Sample
+
+**Not applicable.** This stage is a synthesis. It computes nothing new on
+student-level data.
+
+The stages it reads do have samples, and they differ. The evidence map
+carries each one beside its finding:
+
+- **Prep 2** describes the full statewide EL population across every year
+  delivered (five or more is the target).
+- **Checks 1 and 2** follow one entry *cohort*: students who entered EL status
+  in the same grade and year (here, kindergarten), tracked forward.
+- **Checks 3 and 4** are cross-sections, one grade and year at a time, and
+  each grade is its own panel. Check 3 takes every student with a content
+  score: current ELs by ELP band, with former ELs and English-only students
+  beside them for reference. Check 4 takes only the current ELs in that
+  cross-section who have both an ELP level and a content score.
+- **Prep 1 and Prep 3** read the spec and have no sample.
+
+A cohort's exit timing and a grade's cross-section describe different
+students, so never cite one finding without its sample.
+
+## Status in the package
+
+**Not yet built.** The package has no `run_decision()` and no Decision stage
+document. You can confirm both:
+
+```{r}
+"run_decision" %in% getNamespaceExports("stateELP")
+stage_qmd_path("decision")
+```
+
+The planned results slots are `$evidence_map`, `$defensible_region`,
+`$monitoring_plan` and `$recommendation_scaffold`. For now they exist only as
+a design: in the package's `CLAUDE.md`, the stage's instruction file, and
+skipped tests in `tests/testthat/test-decision.R`.
+
+Several of the stage's inputs are also incomplete:
+
+- **Prep 1 and Prep 3 are not built.** Check 4 reads Prep 3's error-tolerance
+  answer straight from the spec for now.
+- **Check 4 is a first pass on one grade and subject.** Its
+  `$candidate_region`, the region across every grade, is a later pass and is
+  `NULL`.
+- **Check 1's weighting index is experimental.** It has not been validated,
+  and nothing uses it mechanically.
+
+So for now you do the synthesis by hand. The package runs each built stage;
+you save the results and read them back; each results object supplies its
+own sample statement. The team writes the findings, the region and the
+decisions.
+
+These stages have a `run_<stage>()` function today (the same test
+`render_step()` uses):
+
+```{r}
+built <- Filter(function(s) exists(paste0("run_", s),
+                                   envir = asNamespace("stateELP"),
+                                   inherits = FALSE),
+                stage_ids())
+built
+```
+
+## Before you start
+
+You need:
+
+- **The spec every stage ran with.** Its `policy$exit` holds the current rule.
+  Its `policy$timelines` holds the *ESSA timeline* (the years the state
+  expects a student to take to exit, under the Every Student Succeeds Act;
+  Check 2 uses it to define "on time") and the maximum timeline. Its
+  `policy$error_tolerance` holds Prep 3's answer about which error costs more.
+- **The saved results of every stage you ran**, from the same spec and the same
+  data bundle.
+- **The rendered stage reports**, and the notes your team wrote at each
+  stage's "Decide before moving on" box.
+
+In the simulated spec the error-tolerance question is still open:
+
+```{r}
+spec <- read_el_spec("00_SIM_EL_Spec")
+spec$policy$error_tolerance$costlier_error
+```
+
+**What degrades.** In the map you build below, a stage that did not run
+becomes a "not run" row, not an error. Inside the stages, missing inputs leave
+`NULL` slots, usually with a note in `$meta` saying why:
+
+- With no academic table, Check 1's Model 2, Check 2's academic summary, and
+  the analysis slots of Checks 3 and 4 are `NULL`.
+- With no never-EL rows, Prep 2's EL share of enrollment is `NULL`.
+- Under a Type 1 exit rule, every Type-gated "additional check" slot is
+  `NULL`.
+
+Carry those notes into the map, so a gap says why there is no evidence.
+
+## Run it
+
+### 1. Run each built stage and save its results
+
+Build the data bundle once, run each built stage, and save each results object
+as `<stage>_results.rds`. That is the file name `render_step()` uses.
+
+```{r}
+bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+                     academic = academic_long_sim, spec = spec)
+
+stage_results <- list(
+  prep2  = run_prep2(bundle, spec),
+  check1 = run_check1(bundle, spec),
+  check2 = run_check2(bundle, spec),
+  check3 = run_check3(bundle, spec),
+  check4 = run_check4(bundle, spec)
+)
+
+# On your own machine: a restricted folder, never the folder of reports
+results_dir <- file.path(tempdir(), "results")
+dir.create(results_dir, showWarnings = FALSE)
+for (s in names(stage_results)) {
+  saveRDS(stage_results[[s]],
+          file.path(results_dir, paste0(s, "_results.rds")))
+}
+list.files(results_dir)
+```
+
+**Keep the results folder apart from the reports.** Some slots are one row
+per student: Check 2's `$flags` and `$profile`, and, under a multi-criterion
+rule, Prep 2's `$blocked_groups`. They may sit on disk but must never reach a
+document. That is why `render_step()` saves results to `results/` by default,
+not to `reports/`.
+
+`render_step()` can also save results while it renders a stage document. It
+then computes each stage twice, once for the file and once for the document:
+
+```{r}
+#| eval: false
+for (s in c("prep2", "check1", "check2", "check3", "check4")) {
+  render_step(s, save_results = TRUE, results_dir = "results")
+}
+```
+
+One caution: `save_results = TRUE` computes from the **shipped simulated
+data**, whatever spec you pass. For your own delivery, call `run_<stage>()` on
+your own bundle and `saveRDS()` the result, as in the first chunk.
+
+### 2. Read the results back
+
+The Decision stage is designed to read saved results, not recompute them. Do
+the same, and leave a stage that has no file as `NULL`.
+
+```{r}
+prior <- setdiff(stage_ids(), "decision")
+files <- file.path(results_dir, paste0(prior, "_results.rds"))
+saved <- setNames(lapply(files, function(f) if (file.exists(f)) readRDS(f)),
+                  prior)
+vapply(saved, Negate(is.null), logical(1))
+```
+
+### 3. Build the evidence-map skeleton
+
+Every results object carries its stage's sample statement in `$meta$sample`,
+the same text that opens the stage document. Collect them one row per stage,
+and add three empty columns for the team to fill. These column names belong
+to this page, not to the package.
+
+```{r}
+evidence_map <- tibble::tibble(
+  STAGE  = prior,
+  RUN    = vapply(saved, Negate(is.null), logical(1)),
+  SAMPLE = vapply(saved, function(r) {
+    if (is.null(r)) return("Not run: no saved results for this stage.")
+    gsub("**", "", r$meta$sample, fixed = TRUE)   # drop Markdown bold
+  }, character(1)),
+  FOUND       = "",
+  RELIABILITY = "",
+  DIRECTION   = ""
+)
+knitr::kable(evidence_map[, c("STAGE", "RUN", "SAMPLE")])
+```
+
+```{r}
+#| include: false
+c1 <- saved$check1
+c3 <- saved$check3
+o  <- saved$check4$j_optimal
+pct <- function(x) paste0(round(100 * x), "%")
+cut_label <- function(op, label) paste(sub(">=", "≥", op, fixed = TRUE), label)
+```
+
+## What you get
+
+The skeleton fills STAGE, RUN and SAMPLE. You write the other three from the
+stage results, as below.
+
+### FOUND: what each stage found
+
+Use each stage's own display helpers, which print what its report shows.
+
+**Prep 2** sums up the population in `$analytic_sample_memo`, the same
+bullets its report shows above its "Decide" box:
+
+```{r}
+#| output: asis
+cat(paste0("- ", saved$prep2$analytic_sample_memo), sep = "\n")
+```
+
+**Check 1** reports how long the cohort stayed in EL status. Its timeline
+table gives the share exited within the ESSA timeline and within the maximum
+timeline. Some students are *censored*: their exit could not be observed,
+either because they left the data ("Disappeared from the data") or because
+they were still classified when the observation window closed. Censored
+students are never counted as non-exiters. `$years_to_50` gives the year in
+status by which half the cohort has exited, in two ways: against the cohort
+as it started, and as an at-risk estimate that allows for censoring. `NA`
+means half was not reached inside the window.
+
+```{r}
+ft_check1_timeline(c1)
+c1$years_to_50
+```
+
+Check 1's Model 2 belongs in the map too. It asks whether, once a student's
+entry ELP score is known, last year's `r c1$model2$subject` score still
+predicts whether they exit this year. Its ratio on that prior-year score is
+`r sprintf("%.2f (95%% CI %.2f to %.2f)", c1$model2$ratio, c1$model2$ci[[1]], c1$model2$ci[[2]])`
+here. A ratio near 1 means exit timing follows ELP, as intended. A ratio away
+from 1 means something other than the language test is shaping who exits,
+and Checks 3 and 4 cannot be read at face value. In the simulated data this
+ratio is a parameter of the generator.
+
+**Check 2** splits the same cohort into *on-time* exiters (exited within the
+ESSA timeline) and *prolonged* cases (exited later, or not observed to exit).
+Its crosstab's Total block is the summary line:
+
+```{r}
+ct <- saved$check2$crosstab
+ct[ct$BLOCK == "Total", c("COLUMN", "N", "PCT", "SUPPRESSED")]
+```
+
+`EXIT_EVER`, `EXIT_MAX` and `EXIT_ONTIME` are nested: every on-time exiter
+also exited within the maximum timeline and exited at all. What adds up is
+`EXIT_EVER` + `NO_EXIT` + `DISAPPEARED` = `ALL`. The prolonged group is
+`EXIT_EVER` minus `EXIT_ONTIME`, plus `NO_EXIT`. The characteristic blocks
+below the Total block (`ft_check2_crosstab()` prints them all) show which
+characteristics are more common in each column. They describe who the stuck
+students are, not why.
+
+**Check 3** gives two *landing statistics* for each grade and subject. The
+first is the lowest ELP band in which at least half the students reach the
+content test's proficiency cut. The second is the ELP scale score at which a
+fitted logistic curve (the modeled chance of being proficient) crosses 50%:
+
+```{r}
+ft_check3_landing(c3)
+```
+
+```{r}
+#| output: asis
+cat(check3_landing_note(c3), "\n")
+```
+
+Check 3 also runs two fairness checks. The one the Decision stage must carry
+re-fits the logistic with the bar set at the English-only (never-EL) group's
+average score instead of the state's cut. Any gap it finds must be named in
+the Decision stage:
+
+```{r}
+ft_check3_fairness(c3)
+```
+
+```{r}
+#| output: asis
+cat(check3_fairness_note(c3), "\n")
+```
+
+**Check 4** tries every candidate cut on the ELP level. At each cut it
+reports *decision consistency* (raw agreement: the share of students whose
+ELP classification matches their content-test result) and *Youden's J*
+(sensitivity plus specificity minus one: how well the cut separates
+proficient from not-proficient students, with the two error rates weighted
+equally). Its optimal cut is where J peaks. Each run covers one panel,
+here grade `r o$GRADE` `r o$SUBJECT`; the
+[Check 4 page](check4.html#across-grades) shows how to run the other
+grades:
+
+```{r}
+ft_check4_optimum(saved$check4)
+```
+
+```{r}
+#| output: asis
+cat(check4_optimum_note(saved$check4), "\n")
+```
+
+### RELIABILITY: how much weight each finding carries
+
+Check 1 supplies the reliability notes for later grade-level findings. Its
+candidate index pairs a *retention share* (the fraction of the entry cohort
+still classified, and so still at risk of exiting, at each year in status)
+with a *selection strength* (how far Model 2's ratio sits from 1). The index
+is **experimental**. Every place it appears in the map must say so:
+
+```{r}
+ft_check1_grade_weights(c1)
+c1$selection_strength$experimental
+```
+
+The index is keyed by `YEAR_IN_STATUS`, not by grade, and uses one ratio for
+the whole cohort. A per-grade selection strength is not built. Translating it
+into the grades that Checks 3 and 4 report is a judgment. Write it down.
+
+Other reliability notes come straight from the results:
+
+- Logistic crossings outside the observed scores (`CROSSING_IN_RANGE` is
+  `FALSE`) are extrapolations.
+- Suppressed cells (`SUPPRESSED` is `TRUE`) are missing evidence, not
+  zeros. A true zero is shown as 0. A dash is not always suppression:
+  Check 2's crosstab also dashes a column no student landed in.
+- Each Check 4 run, and its stage report, covers a single panel until the
+  later pass loops over grades. Read the other grades from runs you make
+  yourself, one panel each.
+
+### DIRECTION: keep, adjust or restructure
+
+For each stage, record which of three calls its evidence supports:
+
+- **Keep** the current rule.
+- **Adjust** the numbers or bands within the same structure.
+- **Restructure** the criteria themselves.
+
+Some rows may support no call. Prep 2, for example, is the backdrop every
+later stage is read against. Its row can say how it qualifies the others
+instead of picking a direction.
+
+### A worksheet for the region
+
+Before arguing for a range, put the candidate positions side by side. They
+are not all on one scale, so record each one's axis. Check 3's positions stay
+per panel: grades are never pooled, and its scale scores differ by grade.
+
+```{r}
+land <- c3$landing
+bands <- table(land$LANDING_BAND)
+
+worksheet <- tibble::tibble(
+  EVIDENCE = c(
+    "Current exit rule",
+    paste("Check 4 J optimum, grade", o$GRADE, o$SUBJECT),
+    paste("Check 4 highest reportable agreement, grade", o$GRADE, o$SUBJECT),
+    "Check 3 first band where half reach the cut",
+    "Check 3 logistic 50% crossing"),
+  AXIS = c("ELP level", "ELP level", "ELP level", "ELP level band",
+           "ELP scale score (differs by grade)"),
+  POSITION = c(
+    cut_label(o$THRESHOLD_OP, o$THRESHOLD_LABEL),
+    o$J_CUT_LABEL,
+    o$AGREE_CUT_LABEL,
+    paste0("One per panel: ",
+           paste(names(bands), "in", as.integer(bands), collapse = "; "),
+           "; no band in ", sum(is.na(land$LANDING_BAND)), " of ",
+           nrow(land), " panels"),
+    paste0("One per panel (see the landing table); ",
+           sum(!land$CROSSING_IN_RANGE %in% TRUE), " of ", nrow(land),
+           " outside the observed scores"))
+)
+knitr::kable(worksheet)
+```
+
+Here J peaks at `r o$J_CUT_LABEL`, raw agreement at `r o$AGREE_CUT_LABEL`,
+and the current rule is `r cut_label(o$THRESHOLD_OP, o$THRESHOLD_LABEL)`. That
+spread shows what the worksheet is for. On simulated data it is not evidence
+about where any threshold belongs.
+
+## How to read it
+
+**Look for convergence first.** Agreement between Checks 3 and 4 is the
+strongest evidence the process produces; any single method deserves more
+caution. Compare like with like. Check 3's band landing is on the same axis
+as Check 4's cuts, but its logistic crossing is a scale score that differs by
+grade. Both of Check 3's landings mark where proficiency becomes more likely
+than not, which is what raw agreement aims at, not J. When fewer than half of
+ELs are proficient, they should land at or above the J optimum, or not appear
+at all. A gap of that sign is expected, not a disagreement. (The package
+notes record this reading as proposed, still to be confirmed.)
+
+**Draw a region, not a point.** If J's curve is flat near its top, several
+cuts separate students almost equally well. The region is then wide, and
+reporting one number would overstate how precisely the data locate a
+threshold. Annotate the region with which grades and years carry the most and
+least reliable evidence, using Check 1.
+
+**Name what drove the landing point.** Say which evidence most drove where in
+the region the state lands, and name two inputs explicitly:
+
+- **Error tolerance (Prep 3).** This is a values judgment the data cannot
+  make. Youden's J weights the two errors equally as *rates*. Per student
+  that is not an even trade. With `r pct(o$BASE_RATE)` of the panel
+  proficient, J weighs holding back one proficient student as heavily as
+  exiting `r sprintf("%.1f", o$IMPLIED_COST_RATIO)` who are not
+  (`IMPLIED_COST_RATIO`). If stakeholders price the two errors differently,
+  that is a documented reason to land above or below the J optimum. Check 4's
+  `LEAN` column gives the direction where Prep 3's answer and that ratio
+  settle it, and stays `NA` otherwise; its rule is still marked for
+  confirmation. While the answer is `"unknown"`, say that the region rests on
+  J's default of weighting the two error rates equally.
+- **The fairness-check gap (Check 3).** The ELP test measures English
+  proficiency, and a content cut is not automatically a language-access cut.
+  Where the English-only group's own average falls below the state's cut, the
+  bar asked of ELs is one their peers do not clear on average. Treat that as a
+  construct-validity signal, not a threshold recommendation. State in the
+  recommendation how it shaped the region.
+
+```{r}
+o[, c("BASE_RATE", "J_CUT", "AGREE_CUT", "THRESHOLD",
+      "IMPLIED_COST_RATIO", "COSTLIER_ERROR", "LEAN")]
+```
+
+**Read Check 2 as the human side.** If the prolonged group is set apart by a
+characteristic a threshold change would not touch, such as disability status,
+then moving the threshold alone will not help those students.
+
+**Weigh what the data cannot show.** The record should also cover:
+
+- other states' practice;
+- feedback from the field: educators, families and the committees that make
+  individual exit decisions;
+- equity around any discretionary or committee pathway, read against Checks 1
+  and 2. Selection effects can concentrate in such pathways.
+
+The spec tells you whether the current rule has one:
+
+```{r}
+or_na <- function(x) if (is.null(x)) NA_character_ else as.character(x)
+pathways <- spec$policy$exit$pathways
+data.frame(
+  PATHWAY       = vapply(pathways, function(p) or_na(p$name), character(1)),
+  DISCRETIONARY = vapply(pathways, function(p) isTRUE(p$discretionary),
+                         logical(1)),
+  AUTHORITY     = vapply(pathways, function(p) or_na(p$authority),
+                         character(1))
+)
+```
+
+**Know the restructuring trade-off.** More criteria always reduce exit rates.
+A student who must meet every criterion exits only if they meet each one, so
+adding a criterion can only shrink the group that exits. (An alternative
+pathway, which a student can take instead, works the other way.) Weigh that
+against the risk of keeping students in status who no longer need it.
+
+## Pitfalls
+
+- **Do not report a single number.** The output is a region with its drivers
+  named. A "keep" decision should still say what range the evidence
+  supports.
+- **Do not mix samples or axes.** Checks 1 and 2 describe one kindergarten
+  cohort. Read them as that cohort's trajectory, never as the state's overall
+  exit rate: later entrants, including newcomers in the upper grades, are not
+  in it. Checks 3 and 4 are cross-sections by grade, never pooled. Check 4
+  works on the ELP level; Check 3's crossing is a scale score that differs by
+  grade.
+- **Read the top of the ELP axis with care.** A current EL at or above the
+  exit threshold is usually in their final year. The top bands in Check 3,
+  and the top cuts in Check 4, describe students on their way out.
+- **Keep experimental labels.** Check 1's weighting index has not been
+  validated. Wherever it shapes a reliability note, say so.
+- **No new computation on student-level data.** Work from the aggregate
+  slots. Never open, print or paste Check 2's `$flags` or `$profile`, or
+  Prep 2's `$blocked_groups`.
+- **Respect suppression.** Suppressed cells stay `NA`. Never lower the spec's
+  `min_cell` or pool grades to make a cell appear.
+- **Carry Check 1's guardrails forward.** There is no mean time in status
+  anywhere, and a censored student is not a non-exiter.
+- **Carry provisional labels forward.** A spec value with
+  `source = "provisional"` is not from an official source, and the package
+  flags it `[DERIVED — VERIFY]` where it displays it. In the simulated spec
+  the exit rule, the timelines and the academic cuts are all provisional.
+  Verify each one before a recommendation rests on it.
+- **Simulated numbers are not findings.** Every gap, ratio and rate on this
+  page is set by the data generator.
+
+## Decide before moving on
+
+Three decisions close the process. Record each one with the evidence that
+drove it:
+
+1. **Change anything at all?** Keep, adjust or restructure.
+2. **If yes, what exactly?** Give the specific numbers or bands, as a range,
+   and the fate of any discretionary pathway.
+3. **A monitoring plan against the ESSA timeline**, whether or not anything
+   changes.
+
+For the plan, the built stages already give you the measures to track. In the
+simulated spec the ESSA timeline is `r spec_essa_years(spec)` years and the
+maximum timeline is `r spec_max_years(spec)` (both provisional).
+`run_check1()` analyzes only the most complete cohort. To follow every usable
+cohort, list them with `compute_cohorts()` and pass each one to
+`compute_at_max_timeline()`. This is Check 1's own computation, so run it
+where you run Check 1 and save the table with the other results; the
+synthesis only reads it:
+
+```{r}
+cohorts <- compute_cohorts(bundle, spec)
+by_cohort <- do.call(rbind, lapply(cohorts$COHORT_LABEL, function(k) {
+  x <- compute_at_max_timeline(bundle, spec, cohort = k)
+  x$COHORT_LABEL <- k
+  x[grepl("^Exited within", x$OUTCOME), ]
+}))
+knitr::kable(by_cohort[, c("COHORT_LABEL", "OUTCOME", "N", "PCT", "SUPPRESSED")],
+             digits = 3)
+```
+
+Every usable cohort is followed past the maximum timeline, so these two rows
+compare across cohorts. The "exited at any point observed" row does not,
+because each cohort is followed for a different number of years. Each share
+is of the cohort as it started, so where students disappear it is a lower
+bound. On the simulated data, any trend in this series comes from the
+generator.
+
+Prep 2 already tracks the long-term-EL share year by year. A *long-term EL*
+is a current EL in year `r spec$policy$timelines$lt_el_years` or later of
+status, under the simulated spec's definition. The share is a range where
+some students' entry year is unknown:
+
+```{r}
+ft_prep2_time_by_year(saved$prep2)
+```
+
+As with the cohort series, any trend here on the simulated data comes from
+the generator. Beyond these series, add each new entry cohort as it
+completes the window. Re-run Check 3, and Check 4 for every grade, after any
+change to the rule or to either assessment. Say in advance what result would reopen the
+decision.
+
+## Additional checks for multi-criterion exit rules
+
+When the exit rule combines criteria (Types 2 to 6), the planned stage adds a
+per-piece statement. It states the recommendation in terms of every piece of
+the rule, such as a composite range, a domain floor or a compensatory
+schedule. For each piece it says whether the evidence supported changing it
+or leaving it alone.
+
+The spec declares the type:
+
+```{r}
+spec_exit_types(spec)
+spec_has_type(spec, 2:6)
+```
+
+The simulated spec is Type 1, a single overall composite, so this check does
+not apply. Every slot that would feed it is `NULL`:
+
+```{r}
+gated <- list(
+  prep2_criteria_crosswalk     = saved$prep2$criteria_crosswalk,
+  prep2_contested_zone         = saved$prep2$contested_zone,
+  check1_type3_covariate       = saved$check1$type3_covariate,
+  check2_blocked_groups        = saved$check2$blocked_groups,
+  check3_contested_zone_models = saved$check3$contested_zone_models,
+  check4_policy_as_whole       = saved$check4$policy_as_whole
+)
+vapply(gated, is.null, logical(1))
+```
+
+Under a multi-criterion rule the gates differ by slot:
+
+- Prep 2's crosswalk and contested zone, and Check 2's blocked groups, need a
+  Type 2 to 6 rule with a pathway that carries two or more ELP terms.
+- Check 3's contested-zone models need Type 2, 4, 5 or 6, the same kind of
+  pathway with two or more ELP terms, and enough students in the contested
+  zone to report.
+- Check 1's `$type3_covariate` needs Type 3, with an academic term whose
+  subject the delivery carries.
+- Check 4's `$policy_as_whole` is not built even then.
+
+To list your rule's pieces as rows for the per-piece statement, read the terms
+from the spec:
+
+```{r}
+pieces <- do.call(rbind, lapply(spec$policy$exit$pathways, function(p) {
+  do.call(rbind, lapply(p$terms, function(t) data.frame(
+    PATHWAY = or_na(p$name),
+    FROM = if (is.null(t$from)) "elp" else t$from,
+    COMPONENT = or_na(t$component), MEASURE = or_na(t$measure),
+    OP = or_na(t$op), VALUE = or_na(t$value))))
+}))
+pieces
+```
+
+## Render the stage report
+
+There is no Decision document yet, so `render_step("decision")` stops with
+"No document found for stage 'decision'". The "Available:" list in that error
+names every stage id, including `decision`; it does not mean a document
+exists.
+
+You can render each built stage's document from the results you saved, so the
+reports you cite in the map show exactly those numbers. For your own
+delivery, pass the full path to your spec file as `spec_file`: the document
+renders in a temporary folder, so a relative path will not be found. Turn off
+the built-in disclosure scan, which knows only the simulated data, and run
+`check_output_disclosure()` against your own bundle instead:
+
+```{r}
+#| eval: false
+files <- render_step("check4",
+                     spec_file = normalizePath("specs/XX_EL_Spec.R"),
+                     results_file = "results/check4_results.rds",
+                     check_disclosure = FALSE)
+check_output_disclosure(files, my_bundle)   # my_bundle: your as_el_data() bundle
+```
+
+[Guide home](index.html) | Previous: [Check 4: Decision consistency](check4.html)

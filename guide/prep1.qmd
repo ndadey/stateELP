@@ -1,0 +1,610 @@
+---
+title: "Prep 1: Policy documentation"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Setup: spec and data](setup.html) | Next: [Prep 2: Population analysis](prep2.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+## What this step answers
+
+Prep 1 asks three questions about your state's policy:
+
+1. Exactly how does a student exit English learner (EL) status?
+2. Who holds decision authority at each point?
+3. Which of the six exit-criteria Types describe the rule? A Type is the
+   structure of the rule, from a single overall score (Type 1) to a minimum
+   on every domain (Type 6).
+
+"Exit" means reclassification. A student leaves `current` EL status and
+appears as `former` in later years. The exit rule is the set of criteria a
+student must meet to exit, usually scores on the state's English language
+proficiency (ELP) assessment.
+
+This step is an inventory, not an analysis. It reads no student records. Its
+product is a review-and-confirm record of the policy as written. That record
+covers the ELP assessment and its components, every exit pathway, the
+timelines and growth targets, the long-term EL (LTEL) definition, the
+accountability indicator, where initial ELP comes from, and how exit is dated.
+
+Every later stage reads these values. Checks 1 and 2 count years against the
+timelines, Checks 3 and 4 compare academic results with the exit threshold,
+and the declared Type decides which Additional checks run at all. (Additional
+checks are the extra analyses later stages run only for rules with more than
+one criterion.) A mistake here carries into every document after it.
+
+## Sample
+
+**Not applicable.** Prep 1 uses policy documents and the spec, with no
+student data. When the stage is built, its runner is planned to take the spec
+alone (`run_prep1(spec)`), and passing data will be an error.
+
+## Status in the package
+
+::: {.callout-important}
+## Not yet built
+`run_prep1()` does not exist, and there is no Prep 1 stage document. The
+tests for this stage are `skip()`ped placeholders. **You do Prep 1 by hand**,
+by writing your state's policy into a spec and inspecting it with the
+functions shown on this page. All of those functions are built and tested.
+:::
+
+You can confirm the status from R:
+
+```{r}
+exists("run_prep1", envir = asNamespace("stateELP"), inherits = FALSE)
+stage_qmd_path("prep1")   # NA: no document for this stage yet
+```
+
+What exists today is the spec layer: the constructor `el_spec()`, the
+validator `validate_el_spec()`, the `spec_*()` accessors, the typology
+`el_exit_typology()` and the fixed list of policy fields `el_policy_fields()`.
+The validator already makes several of the checks Prep 1 is meant to make:
+every policy entry has a source, the declared Type matches the rule's shape,
+and exit dating follows the package's convention.
+
+The stage plan gives it five result slots, `$policy_table`,
+`$components_table`, `$exit_table`, `$types` and `$confirm_questions`, plus
+the usual `$meta`. None of them exists yet. The code below builds rough
+versions of the first four, so you can work through the same review now. The confirm questions are listed in
+[Decide before moving on](#decide-before-moving-on).
+
+## Before you start
+
+Gather the state's own documents, and someone in the EL office who can
+confirm what they mean:
+
+- **The ELP assessment's score structure.** The domains it reports
+  (listening, speaking, reading, writing), the composites built from them and
+  their weights, and the level scale. For WIDA ACCESS, the shipped template
+  lists the vendor's interpretive guide for score reports as its source.
+- **The exit policy.** Statute, regulation or guidance, with the date it was
+  set and who set it. Include every pathway, including any committee review,
+  appeal or teacher-judgment route.
+- **Timelines.** The state's maximum time to exit, its timeline under the
+  Every Student Succeeds Act (ESSA), and any on-time rule that varies by
+  start grade or initial ELP level.
+- **Growth targets** and how they were set.
+- **The LTEL definition**, and the accountability indicator for ELP progress.
+- **How initial ELP is determined**: a screener, or the first annual test.
+
+Then start a spec. Copy the shipped template, which has the right shape and
+placeholder values that describe no state:
+
+```{r}
+#| eval: false
+dir.create("specs", showWarnings = FALSE)
+file.copy(el_spec_path("00_TEMPLATE_EL_Spec"), "specs/XX_EL_Spec.R")
+# edit specs/XX_EL_Spec.R, then:
+spec <- read_el_spec("specs/XX_EL_Spec.R")   # sourcing the file validates it
+```
+
+Replace every placeholder with your state's value. Give each policy entry a
+`source`. Keep `source = "provisional"` on anything you did not take from an
+official document. Set `verification$status` to say how far the spec has been
+checked: `"verified"`, `"unverified"`, `"provisional"` or `"synthetic"` (the
+validator accepts no other value). The [Setup page](setup.html) covers the rest of the spec and the
+data bundle.
+
+**What degrades if something is missing.** Prep 1 needs no data, so nothing
+here returns `NULL`. Gaps in the spec show up later instead:
+
+- `policy$exit`, `policy$timelines`, `policy$suppression` and
+  `policy$exit$types` are required. The validator stops without them.
+- With no `lt_el_years`, Prep 2's time-in-status view is `NULL`, its profile
+  leaves out the long-term share, and `add_lt_el()` sets `LT_EL` to `NA`. A
+  text definition alone is not enough.
+- The on-time timeline comes from `on_time_rule$default_years` when it is set,
+  otherwise from `essa_timeline_years`, otherwise from the maximum. With no
+  `essa_timeline_years`, `spec_essa_years()` returns `NA`.
+- Leave out `initial_elp_source` and the stages disagree: Prep 2 falls back
+  to the entry year's score alone, while Checks 1 and 2 use the first annual
+  test. Set it explicitly.
+
+## Run it
+
+The examples use the simulated spec. Load it and print the summary:
+
+```{r}
+spec <- read_el_spec("00_SIM_EL_Spec")
+spec
+```
+
+The printout shows the instrument, the component count, the declared Type,
+the timelines, the suppression minimum and the verification status. Its last
+line lists the policy entries still marked provisional. In the simulated spec
+that is all of them, by design.
+
+Next, build the review tables. A few small helper functions keep the code
+readable, since a state spec may leave optional fields out:
+
+```{r}
+# Read one scalar field, or NA when the spec leaves it out
+get_or_na <- function(x, name) {
+  if (is.null(x[[name]])) NA_character_ else as.character(x[[name]])
+}
+
+# One row per exit pathway
+pathway_table <- function(spec) {
+  p <- spec$policy$exit$pathways
+  tibble::tibble(
+    PATHWAY       = vapply(p, get_or_na, character(1), name = "name"),
+    RULE          = vapply(p, get_or_na, character(1), name = "rule"),
+    COMBINE       = vapply(p, get_or_na, character(1), name = "combine"),
+    AUTHORITY     = vapply(p, get_or_na, character(1), name = "authority"),
+    DISCRETIONARY = vapply(p, function(x) isTRUE(x$discretionary), logical(1))
+  )
+}
+
+# One row per term (criterion) within each pathway
+term_table <- function(spec) {
+  rows <- lapply(spec$policy$exit$pathways, function(p) {
+    lapply(p$terms, function(t) tibble::tibble(
+      PATHWAY          = get_or_na(p, "name"),
+      FROM             = if (is.null(t$from)) "elp" else t$from,
+      COMPONENT        = t$component,
+      MEASURE          = get_or_na(t, "measure"),
+      OP               = t$op,
+      VALUE            = as.character(t$value),
+      EXEMPT_IF_ABSENT = isTRUE(t$exempt_if_absent)
+    ))
+  })
+  dplyr::bind_rows(unlist(rows, recursive = FALSE))
+}
+```
+
+Then confirm the spec is valid. `read_el_spec()` already validated it on
+load; run `validate_el_spec()` again after any change you make in R. It is
+silent when the spec passes, and lists every problem at once when it does not:
+
+```{r}
+validate_el_spec(spec)
+```
+
+## What you get
+
+Work through the inventory below in order. Each part shows where the value
+lives in the spec and how to read it.
+
+### Policy review: every entry and its source
+
+```{r}
+policy_review_table <- function(spec) {
+  fields <- el_policy_fields()
+  present <- fields %in% names(spec$policy)
+  source <- vapply(fields, function(f) get_or_na(spec$policy[[f]], "source"),
+                   character(1), USE.NAMES = FALSE)
+  tibble::tibble(
+    FIELD    = fields,
+    SOURCE   = source,
+    SHOWN_AS = dplyr::case_when(
+      !present                ~ "(not in spec)",
+      source == "provisional" ~ "[DERIVED — VERIFY]",
+      TRUE                    ~ source
+    )
+  )
+}
+policy_review <- policy_review_table(spec)
+knitr::kable(policy_review)
+spec$verification$status
+```
+
+`el_policy_fields()` is the fixed list of entries allowed under `policy`, and
+the table lists every one of them. `SOURCE` records where each entry came
+from. A `provisional` source displays as **`[DERIVED — VERIFY]`**, the
+package's mark for a value not yet checked against an official document. An
+entry the spec leaves out shows as "(not in spec)". Only `exit`, `timelines`
+and `suppression` are required, so for the rest, confirm that leaving one out
+is deliberate. Here
+`r sum(policy_review$SOURCE %in% "provisional")` of the
+`r sum(!is.na(policy_review$SOURCE))` entries in the spec are provisional,
+because the spec describes a synthetic state (`verification$status` is
+"`r spec$verification$status`").
+
+The source is recorded per entry, not per value. All of `policy$timelines`
+shares one `source`, for example. If some values in an entry are verified and
+others are not, keep the entry provisional and say which in a comment.
+
+### The ELP assessment and its components
+
+```{r}
+spec$elp$instrument
+spec$elp$administration_window
+
+comps <- spec$elp$components
+weights <- function(cp) {
+  if (is.null(cp$from)) "" else paste0(names(cp$from), " ", cp$from, collapse = ", ")
+}
+components_table <- tibble::tibble(
+  COMPONENT   = names(comps),
+  KIND        = vapply(comps, function(cp) cp$kind, character(1)),
+  MEASURES    = vapply(comps, function(cp) paste(cp$measures, collapse = " + "),
+                       character(1)),
+  FROM        = vapply(comps, weights, character(1)),
+  NATIVE_NAME = vapply(comps, function(cp) {
+    if (is.null(cp$native_name)) "" else cp$native_name
+  }, character(1))
+)
+knitr::kable(components_table)
+```
+
+Each row is one score the assessment reports. `KIND` is `domain` (one of the
+four language skills, tested on its own) or `composite` (a score combining
+domains). `MEASURES` says whether the component reports a scale score, a
+level or both. `FROM` holds the composite weights. These weights are
+informational: the package never recomputes a composite from them, and it
+never derives a level from a scale score. Levels are always the vendor's.
+`NATIVE_NAME` is the state's own name for the component. The stage documents
+use it to name the score the analyses run on, through `spec_headline_label()`.
+
+Component names come from a fixed vocabulary (`el_component_vocabulary()`).
+Map your instrument onto it with `native_name`. For example, WIDA's
+"Literacy" composite is `written`. Never add a new name for something the
+vocabulary already covers.
+
+One component is the score the exit rule and the analyses use. Find it, and
+the name the documents give it, with:
+
+```{r}
+spec_headline(spec)
+spec_headline_label(spec)
+spec_components(spec, kind = "domain")
+```
+
+In the simulated spec that score is the `r spec_headline_label(spec)`. Then
+check the level scale and the ELP bands (the ranges of levels used to group
+students in later stages):
+
+```{r}
+str(spec$elp$level_scale)
+str(spec_bands(spec))
+```
+
+### The exit rule, every pathway, and who decides
+
+```{r}
+knitr::kable(pathway_table(spec))
+knitr::kable(term_table(spec))
+str(spec$policy$exit[c("combination", "set_date", "set_by", "source")])
+```
+
+A **pathway** is one route out of EL status. A **term** is one criterion
+within a pathway: a component, a measure, an operator and a value.
+
+- `RULE` is the display string the documents will print.
+- `COMBINE` says whether a pathway's terms must all be met (`all`) or any one
+  of them (`any`). `combination` says the same across pathways.
+- `AUTHORITY` records who makes the call: automatic on the score report, or a
+  committee, or a person.
+- `DISCRETIONARY` flags a pathway that rests on judgment rather than a score.
+- `EXEMPT_IF_ABSENT` matters for rules on several domains. A student excused
+  from a domain has no score for it, and this flag says that a missing score
+  should not count as a failed criterion.
+- `set_date` and `set_by` record when the rule was set and by whom.
+
+The simulated rule has one automatic pathway with one term: a level of
+`r spec$policy$exit$pathways[[1]]$terms[[1]]$value` or higher on the
+`r spec_headline_label(spec)`.
+
+The validator checks that every term names a real component and a measure
+that component reports. It never evaluates the rule against student data. It
+also does not check that `rule` and `terms` say the same thing. The documents
+print `rule`, while the validator and the Type-gated checks read `terms`, so
+keep the two in agreement by hand.
+
+### Exit-criteria Type
+
+```{r}
+typology <- el_exit_typology()
+knitr::kable(tibble::tibble(
+  TYPE      = names(typology),
+  STRUCTURE = unname(typology),
+  DECLARED  = as.integer(names(typology)) %in% spec_exit_types(spec)
+))
+spec_exit_types(spec)
+spec_has_type(spec, 2:6)
+```
+
+`policy$exit$types` declares which of the six structures your rule has. A
+state can declare more than one, for example a composite with a domain floor
+and a separate committee route. The simulated spec declares Type
+`r spec_exit_types(spec)`, a single overall composite. See the
+[Additional checks section](#additional-checks-for-multi-criterion-exit-rules)
+for why this choice matters.
+
+### Timelines, growth and the other policy entries
+
+```{r}
+spec_max_years(spec)
+spec_essa_years(spec)
+str(spec$policy$timelines)
+str(spec$policy$growth)
+str(spec$policy$accountability_indicator)
+```
+
+These values feed the later stages in specific ways:
+
+| Spec entry | What it controls downstream |
+|---|---|
+| `timelines$max_years_to_exit` | Which entry cohorts (students who entered EL status in the same grade and year) qualify for Check 1, since each needs this many years of follow-up plus one, and the `EXIT_MAX` flag in Checks 1 and 2 |
+| `timelines$on_time_rule` | Each student's on-time timeline (`ON_TIME_YEARS`) and the `EXIT_ONTIME` flag. `default_years` applies to everyone; `by_start_grade` and `by_initial_band` override it |
+| `timelines$essa_timeline_years` | The fallback on-time timeline when `on_time_rule$default_years` is absent |
+| `timelines$lt_el_years` | Prep 2's time-in-status view and long-term share, and the `LT_EL` flag from `add_lt_el()` |
+| `timelines$lt_el_definition` | Text only: recorded and displayed, never computed from |
+| `timelines$initial_elp_source` | How the initial ELP band is found in Prep 2 and Checks 1 and 2 |
+| `timelines$exit_dating` | The exit-dating convention (see below) |
+| `growth`, `accountability_indicator` | Recorded for Prep 1 only. No built stage computes from them yet |
+| `suppression$min_cell` | The minimum cell size. Smaller counts are blanked to `NA`, never dropped, in every stage |
+| `academic_benchmark$proficient_level` | Which academic level counts as proficient in Checks 2, 3 and 4 |
+| `district_size_bands` | The district-size bins in Prep 2 and Check 2 |
+| `program`, `error_tolerance` | Prep 3's inventory (not yet built). Check 4 already reads `error_tolerance` |
+
+In the simulated spec, the maximum timeline is `r spec_max_years(spec)` years
+and the on-time timeline is `r spec$policy$timelines$on_time_rule$default_years`
+years. A student counts as LTEL from year `r spec$policy$timelines$lt_el_years`
+in status. All of these are modeling choices for a synthetic state, not
+anyone's rule.
+
+### Initial ELP source and exit dating
+
+`initial_elp_source` says which score counts as a student's starting ELP.
+Today only `"first_annual"`, the student's first annual test, is fully
+supported. Checks 1 and 2 stop with an error on any other value (Check 2
+takes its initial band from Check 1's derivation), and Prep 2 reads any
+other value as "the entry year's score only". Screener-based initial ELP is
+recorded as a later addition.
+
+`exit_dating` must be `"first_former_year"`. The validator rejects anything
+else:
+
+```{r}
+check <- spec
+check$policy$timelines$exit_dating <- "last_current_year"
+tryCatch(validate_el_spec(check), error = function(e) cat(conditionMessage(e)))
+```
+
+Under this convention, a student's exit year is the first school year in which
+`EL_STATUS` is `former`, and that year counts as a year in status. So a student
+who is `current` for six years and first appears as `former` in the seventh
+has exited in year 7. That student is **not** within a six-year timeline. Your
+state may count the same student differently. That is the confirm question
+below.
+
+## How to read it
+
+**Read it as the policy on paper.** Prep 1 records the written rule. It does
+not test whether students actually exit when they meet it. The package does
+not compare who the rule says is eligible with who actually exits; that is
+recorded as a later addition. Prep 3 covers what exit changes on the ground,
+and Checks 1 and 2 show how exits actually unfold.
+
+**Treat every `[DERIVED — VERIFY]` as an open item, not an error.** It means
+nobody has matched the value to an official document yet. That is fine while
+you build. It is not fine in anything you publish. Check 2's sample statement,
+for instance, carries the mark next to the on-time timeline when
+`policy$timelines` is provisional.
+
+**Look hard at discretionary pathways.** Any pathway that rests on a
+committee, an appeal or a teacher's judgment should have
+`discretionary = TRUE` and a clear `authority` entry in the spec. The
+package's design notes cite a review of Indiana's system that found selection
+effects concentrated in such pathways. Students who exit through judgment may
+differ in ways the score does not show.
+
+**Check that the Type and the rule agree.** If the validator objects to your
+declared Type, either the declaration or the terms are wrong. Fix whichever
+does not match the written policy. Do not change one just to quiet the other.
+
+## Pitfalls
+
+- **Policy belongs under `policy`.** The validator rejects a policy entry
+  placed under `elp`, and any entry under `policy` outside
+  `el_policy_fields()`. Vendor facts go in `elp`. Rules an agency can change go
+  in `policy`.
+- **Do not hard-code a component name in your own analysis code.** Read it
+  from the spec with `spec_components()` or `spec_headline()`, so the code
+  works for any instrument.
+- **A text-only LTEL definition is not enough.** Set `lt_el_years` as well, or
+  Prep 2 drops its time-in-status view and `LT_EL` is `NA`. The shipped
+  template has only the text:
+
+  ```{r}
+  template <- read_el_spec("00_TEMPLATE_EL_Spec")
+  template$policy$timelines$lt_el_definition
+  is.null(template$policy$timelines$lt_el_years)
+  ```
+
+- **Do not confuse the two timelines.** Exiting within the maximum timeline is
+  not the same as exiting on time. `EXIT_ONTIME` is a subset of `EXIT_MAX`.
+- **The on-time rule may be a choice, not a rule.** If your state has no
+  codified on-time timeline, the value you enter is a judgment. Keep it
+  provisional and say so. (The simulated spec's
+  `r spec$policy$timelines$on_time_rule$default_years` years is such a
+  choice.)
+- **An on-time rule keyed by initial ELP band changes how Check 2 reads.**
+  Check 2's crosstab also breaks the cohort down by initial band, so each band
+  is then measured against its own deadline. A band given more years shows a
+  higher on-time share even if its students exited no sooner. Check 2 adds a
+  note pointing to `EXIT_MAX`, which uses one window for everyone. Such a
+  rule also needs a delivered `INITIAL_ELP` column on the roster; without
+  one, Checks 1 and 2 stop with an error.
+- **Check when your roster records status.** The package does not take exit
+  from any delivered exit flag. It dates exit from `EL_STATUS` transitions.
+  In the simulated data, the year a student meets the exit criterion is still
+  a `current` row, and `former` starts the next school year. If your roster
+  marks a student `former` in the same year they met the criterion, every
+  exit lands a year earlier than the convention intends. The validator's own
+  message says the fix belongs in the delivery, not in `exit_dating`.
+- **Pathways are not yet tracked in the data.** The stage plan calls for
+  Checks 1 and 2 to track a discretionary pathway separately. The data model
+  has no column for the pathway a student exited through, though, so they do
+  not yet split exits by pathway. Check 4 marks the current threshold from the
+  first non-discretionary pathway with a term on the level of the score it
+  plots.
+- **No shipped spec is a real state's policy.** The simulated, template and
+  ELPA21 specs are fixtures. Do not copy their values as if they were sourced.
+  In anything you write, name the score as the state does
+  (`spec_headline_label()`).
+
+## Decide before moving on
+
+Settle these with the people who own the policy, and record each answer in the
+spec with its source:
+
+1. **Is every value sourced, or knowingly provisional?** For each
+   `[DERIVED — VERIFY]`, who will verify it, and against which document?
+2. **Exit dating.** The package counts the first year a student appears as
+   `former` as a year in status. A student EL for six years and reclassified
+   in the seventh is not within a six-year timeline. Does your state count it
+   the same way? If not, the package's timeline statistics will differ from
+   the state's own, and reports must say so.
+3. **Which Type or Types apply?** Confirm the declaration against the written
+   policy. It switches every Additional check downstream on or off.
+4. **Which pathways are discretionary,** who holds authority over each, and
+   can the state supply data on which pathway each exiter used?
+5. **Which score do the analyses run on** (`spec$elp$headline`), and what is
+   its official name (`native_name`)?
+6. **What is the on-time timeline?** Is it a codified rule keyed to start
+   grade or initial ELP, or a single number chosen for this review?
+7. **What is the LTEL definition in years?** Record it as `lt_el_years` as
+   well as in words, or later stages cannot use it.
+
+## Additional checks for multi-criterion exit rules
+
+Prep 1's own Additional check is the Type identification above. It matters
+because **every Additional check in later stages is gated on the declared
+Type**. A Type 1 rule, like the simulated one, skips all of them, and their
+result slots are `NULL`:
+
+```{r}
+spec_has_type(spec, 2:6)   # FALSE for the simulated spec
+```
+
+| Stage | Slot | Runs when | Status |
+|---|---|---|---|
+| [Prep 2](prep2.html) | `$criteria_crosswalk`, `$blocked_groups`, `$contested_zone` | Types 2–6, and a pathway with two or more ELP terms | built |
+| [Check 1](check1.html) | `$type3_covariate` | Type 3, with an academic term whose subject the data carry, and Model 2 fitted | built |
+| [Check 2](check2.html) | `$blocked_groups` | Types 2–6, and Prep 2's crosswalk finds students blocked by exactly one criterion | built |
+| [Check 3](check3.html) | `$contested_zone_models` | Types 2, 4, 5 or 6, with an academic table and a contested zone from Prep 2's crosswalk | built |
+| [Check 4](check4.html) | `$policy_as_whole` | Types 2–6 | later pass; `NULL` even when it applies |
+| [Decision](decision.html) | a per-criterion recommendation | Types 2–6 | not built |
+
+**How to tell from the spec.** Call `spec_exit_types()` and
+`spec_has_type(spec, 2:6)`. The validator cross-checks the declaration
+against the shape of the pathways:
+
+- Type 1 needs exactly one pathway with one term, on the score the analyses
+  use.
+- Type 2 needs a pathway with two or more terms.
+- Type 3 needs a term with `from = "academic"`.
+- Type 4 (compensatory) is accepted as declared. The spec cannot yet
+  describe a compensatory schedule, so there is nothing to check.
+- Type 5 needs two or more pathways, or one flagged `discretionary`.
+- Type 6 needs at least two terms on domains, not a single term on the score
+  the analyses use.
+
+Declaring a Type the rule does not have is an error:
+
+```{r}
+check <- spec
+check$policy$exit$types <- c(1L, 2L)
+tryCatch(validate_el_spec(check), error = function(e) cat(conditionMessage(e)))
+```
+
+Here is how a composite-plus-floor rule (Type 2) would be written. The floor
+values are **illustrative, not any state's rule**:
+
+```{r}
+floor_spec <- spec
+floor_spec$policy$exit$pathways[[1]]$rule <-
+  "Overall composite level >= 4.5 and every domain level >= 4.0"
+floor_spec$policy$exit$pathways[[1]]$terms <- c(
+  floor_spec$policy$exit$pathways[[1]]$terms,
+  lapply(spec_components(floor_spec, kind = "domain"), function(d) {
+    list(component = d, measure = "level", op = ">=", value = 4)
+  })
+)
+floor_spec$policy$exit$types <- 2L
+validate_el_spec(floor_spec)
+spec_has_type(floor_spec, 2:6)
+knitr::kable(term_table(floor_spec))
+```
+
+The shipped ELPA21 spec is a Type 6 example: a minimum level on each of the
+four domains. It shows `exempt_if_absent` in use. It is illustrative of that
+instrument's structure, not any member state's rule:
+
+```{r}
+elpa21 <- read_el_spec("00_ELPA21_EL_Spec")
+spec_exit_types(elpa21)
+spec_headline_label(elpa21)
+knitr::kable(term_table(elpa21))
+```
+
+## Render the stage report
+
+There is no Prep 1 document yet, so `render_step("prep1")` stops with "No
+document found". When the stage is built, it will render like the others:
+
+```{r}
+#| eval: false
+render_step("prep1")   # not available yet
+```
+
+Until then, keep the tables from this page with your spec as the Prep 1
+record, and move on to [Prep 2](prep2.html).
+
+[Guide home](index.html) | Previous: [Setup: spec and data](setup.html) | Next: [Prep 2: Population analysis](prep2.html)

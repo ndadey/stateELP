@@ -37,6 +37,7 @@ test_that("identifiers buried in a .docx are found, not just loose text", {
   # reading the container as text would see nothing. This is the case the
   # scanner exists for: data that is present but not visible.
   skip_if_not_installed("flextable")
+  skip_if_not_installed("officer")
   b <- make_disclosure_bundle()
   ids <- el_roster(b)$STUDENT_ID[1:3]
 

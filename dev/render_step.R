@@ -6,6 +6,8 @@
 #   rs("decision", save_results = TRUE)
 #   rs_site()                          # refresh the README's example reports
 #   rs_site_index()                    # rebuild the site page from the README
+#   rs_guide()                         # re-render the walkthrough guide
+#   rs_guide("check1")                 # one guide page
 #
 # The package function is stateELP::render_step(); this wrapper only does the
 # load_all() so an edit to R/ is picked up without reinstalling.
@@ -63,6 +65,41 @@ rs_site_index <- function(readme = "README.md", out = "docs/index.md",
          "     dev/render_step.R. Edit README.md, not this file. -->", "", x)
   writeLines(x, out, useBytes = TRUE)
   invisible(out)
+}
+
+# Render the walkthrough guide: guide/<page>.qmd -> docs/guide/<page>.html.
+# The pages execute their code against the package (load_all() of this
+# directory), so run it with everything committed. Same copy-out dance as
+# render_step(): Quarto cannot clean up inside Dropbox, so each page renders
+# in tempdir() and only the finished HTML comes back. Every page is then
+# scanned for the simulated data's student ids and the run stops on a hit.
+rs_guide <- function(pages = NULL, quiet = TRUE) {
+  devtools::load_all(".", quiet = TRUE)
+  src <- if (is.null(pages)) {
+    list.files("guide", pattern = "\\.qmd$", full.names = TRUE)
+  } else {
+    file.path("guide", paste0(pages, ".qmd"))
+  }
+  out <- file.path("docs", "guide")
+  dir.create(out, showWarnings = FALSE, recursive = TRUE)
+  pkg <- normalizePath(".", winslash = "/")
+  written <- character()
+  for (f in src) {
+    scratch <- file.path(tempdir(), "stateELP_guide")
+    unlink(scratch, recursive = TRUE, force = TRUE)
+    dir.create(scratch)
+    copy <- file.path(scratch, basename(f))
+    file.copy(f, copy)
+    quarto::quarto_render(copy, output_format = "html",
+                          execute_params = list(pkg_path = pkg), quiet = quiet)
+    dest <- file.path(out, sub("\\.qmd$", ".html", basename(f)))
+    file.copy(sub("\\.qmd$", ".html", copy), dest, overwrite = TRUE)
+    written <- c(written, dest)
+    message("Rendered ", dest)
+  }
+  roster <- get("el_roster_sim", envir = asNamespace("stateELP"))
+  stateELP::check_output_disclosure(written, roster, action = "error")
+  invisible(written)
 }
 
 # Bootstrap note: renv's lockfile records the package's own dependencies, not

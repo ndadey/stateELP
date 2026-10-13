@@ -1,0 +1,611 @@
+---
+title: "Prep 2: Population analysis"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Prep 1: Policy documentation](prep1.html) | Next: [Prep 3: Program implementation](prep3.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+```{r helpers}
+#| include: false
+# Formatting for the inline numbers in the prose. Not part of the analysis.
+pct <- function(x, d = 1) paste0(formatC(100 * x, format = "f", digits = d), "%")
+num <- function(x) format(x, big.mark = ",", trim = TRUE)
+```
+
+## What this step answers
+
+Prep 2 describes the English learner (EL) population before any check asks
+how well the exit rule works. An EL is a student identified as needing
+English language support. ELP is English language proficiency, as measured by
+the state's ELP test. The step answers three questions:
+
+- **How many ELs are there, and is the number stable over time?**
+- **Where are they?** Which grades and districts, entering at what grade and
+  ELP level, with what profile.
+- **What can the later stages safely analyze?** Which cohorts and subgroups
+  are large and stable enough, and where would pooling all ELs together hide
+  more than it shows?
+
+Every later stage is read against this one. A grade-level result in Check 3
+may reflect unusual entry timing, a thin count, or many long-term ELs rather
+than the exit threshold. Prep 2 is where you find out.
+
+## Sample
+
+**The full statewide EL population, across every year the data cover. Not a
+single cohort.**
+
+- **Current ELs** in every year of the panel (the span of school years in
+  the delivery).
+- **Former ELs**, students who have exited EL status, where the delivery
+  carries them. Simulated former ELs leave the data after their fourth
+  monitoring year, so "former" means former within the monitoring window.
+- **Never-EL students** only as the enrollment denominator for the EL
+  share, and only weighted.
+
+Later stages use different samples: Checks 1 and 2 follow one entry cohort,
+and Checks 3 and 4 use a cross-section by grade and year. The results object
+carries this stage's sample statement in `$meta$sample`. The process calls
+for at least five years; with fewer, `$meta$short_panel` is `TRUE` and the
+stage report flags trends as provisional.
+
+## Status in the package
+
+**Built.** `run_prep2()` fills every slot in the stage's instruction file,
+and the stage report renders from it. Before you rely on it, know that:
+
+- Five slots go beyond the instruction file's list: `$entry_sources`,
+  `$entry_by_year`, `$entry_cohorts`, `$time_in_status` and
+  `$blocked_groups`. They, and several method choices, are marked
+  `[PROPOSED — CONFIRM]`: dating entry from delivered fields, the monitoring
+  view, reading a multi-criterion rule as "all criteria must pass," and
+  leaving true zeros unsuppressed.
+- The criteria crosswalk has run on a Type 2 variant of the simulated spec
+  and a small ELPA21-shaped test fixture, not yet on a real multi-criterion
+  state.
+- `$profile$HERITAGE` is always `NULL`: no delivered field carries
+  heritage-language status yet.
+
+## Before you start
+
+### Data
+
+Prep 2 takes an `el_data` bundle from `as_el_data()` built from two tables.
+The **roster** has one row per student per school year (a *student-year*)
+and is the only table students are counted from. The **ELP base table** has
+one row per student, year and score component. The academic table is not
+used.
+
+The roster must carry `STUDENT_ID`, `YEAR`, `GRADE` and `EL_STATUS`
+(`current`, `former` or `never`); if one is missing, `as_el_data()` stops and
+names it, and `run_prep2()` checks again. Everything else is optional. Each absence turns off only the view
+that needs it, and that slot comes back `NULL` rather than failing:
+
+| Input | Unlocks | Without it |
+|---|---|---|
+| Never-EL rows, with `SAMPLE_WEIGHT` | `$el_share` | `NULL`. With never-EL rows but no `SAMPLE_WEIGHT`, every row counts once |
+| `DISTRICT_ID` | `$by_district`, `$district_bins` | Both `NULL` |
+| `policy$district_size_bands` in the spec | `$district_bins` | `NULL`; districts are still ranked |
+| An entry field: `LEP_PROGRAM_START_DATE`, `COHORT_START_YEAR`, `YEAR_IN_STATUS` or `ENTRY_GRADE` | Entry dates for students already EL when the panel opens | Their entry is *unknown*: they leave the entry views, and the long-term share becomes a range |
+| Annual-form rows in the base table | Initial ELP bands; the coverage split | Entrants with no annual score form their own group |
+| `policy$timelines$lt_el_years` in the spec | `$time_in_status` and its profile table | `NULL` |
+| Former rows plus `EL_MONITOR_YEAR` or `EL_STATUS_DETAIL` | `$monitoring` | `NULL` |
+| Profile columns (`HOME_LANGUAGE`, `SERVICE_MODEL`, `IEP`, `SPED_CLASSIFICATION`, `GENDER`, `FRL`, `FRL_DETAIL`, `ELP_FORM`, `NEWCOMER_FLAG`, `SIFE_FLAG`, `IMMIGRANT_STATUS`, `MIGRANT_STATUS`) | One profile table each | That table is absent |
+| An exit rule of Type 2–6 with two or more ELP criteria in one pathway | `$criteria_crosswalk`, `$contested_zone`, `$blocked_groups` | All three `NULL` |
+
+### Spec
+
+Check these spec fields before you run anything:
+
+```{r}
+spec <- read_el_spec("00_SIM_EL_Spec")
+
+spec$policy$suppression$min_cell                  # smallest reportable cell
+str(spec$policy$district_size_bands[c("breaks", "labels")])
+str(spec$policy$timelines[c("max_years_to_exit", "lt_el_years",
+                            "initial_elp_source")])
+spec$data$entry_date_rule                         # how start dates map to years
+spec_exit_types(spec)                             # exit-rule Type(s)
+```
+
+- **`min_cell`**: counts from 1 to `min_cell - 1` are hidden (`NA` in the
+  results, a dash in the tables); the row stays.
+- **`max_years_to_exit`**: which cohorts are followed long enough to see the
+  full exit window.
+- **`lt_el_years`**: a long-term EL (LTEL) is a current EL in this year of
+  status or later.
+- **`initial_elp_source`**: `"first_annual"` takes the first annual score at
+  or after entry as the initial level; any other value, or none, uses the
+  entry year's score only. (Checks 1 and 2 accept only the first annual
+  score, so set `"first_annual"` explicitly if the stages are to agree.)
+- **`entry_date_rule`**: by default a start date from July on belongs to the
+  next spring's school year. The simulated data stamp the spring year itself,
+  hence `"calendar_year"`.
+- **The exit-rule Type** gates the last section of this page. The simulated
+  spec is Type 1: a single overall score.
+
+## Run it
+
+Build the bundle once, then run the stage. On the full simulated panel each
+call takes a little while.
+
+```{r run}
+bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
+res <- run_prep2(bundle, spec)
+```
+
+With your own data the calls are the same:
+
+```{r}
+#| eval: false
+spec   <- read_el_spec("specs/XX_EL_Spec.R")
+bundle <- as_el_data(elp_base, roster = roster, spec = spec)
+res    <- run_prep2(bundle, spec)
+```
+
+Then check what came back:
+
+```{r}
+cat(res$meta$sample)
+names(res)
+names(res)[vapply(res, is.null, logical(1))]   # slots that came back NULL
+```
+
+Here only the three Type-gated slots are `NULL`. Every other slot is
+aggregate (tables, the memo text and `$meta`). `$blocked_groups`, when a
+multi-criterion rule fills it, has one row per student-year. Never print or
+share it.
+
+## What you get
+
+Each view below uses the display helper the stage report uses: a `plot_*()`
+function per figure and an `ft_prep2_*()` function per table. Each takes the
+computed slot and recomputes nothing.
+
+### Coverage: who is counted
+
+```{r}
+ft_prep2_coverage(res)
+```
+
+```{r}
+#| include: false
+cby <- res$counts_by_year
+dip <- which.max(cby$N_NO_HEADLINE / cby$N_CURRENT)   # the year with the highest untested share
+```
+
+This comes from `$counts_by_year`. Each year's current ELs (`N_CURRENT`)
+split into three groups that sum to it before suppression: an annual-form
+result on the Overall Composite, the ELP score the simulated exit rule uses
+(`N_ANNUAL_HEADLINE`); the alternate form (`N_ALTERNATE`); or no result that
+year (`N_NO_HEADLINE`). The table also shows former ELs (`N_FORMER`). The
+slot carries a weighted-only never-EL count, `N_NEVER_WEIGHTED`, which the
+table leaves out on purpose: never-ELs matter here only as the enrollment
+denominator.
+
+In `r cby$YEAR[dip]`, `r num(cby$N_NO_HEADLINE[dip])` of
+`r num(cby$N_CURRENT[dip])` current ELs have no annual score: the simulation
+builds in a testing-participation dip that year. The current-EL count does
+not dip. That is why the roster is the counting frame:
+counting from scores would turn an untested year into apparent attrition.
+
+### EL counts and share of enrollment
+
+```{r}
+#| fig-height: 3.5
+plot_counts_by_year(res$counts_by_year)
+plot_el_share(res$el_share)
+ft_prep2_el_share(res)
+```
+
+The bars count current ELs by year; the dashed line is the panel average.
+The share (`$el_share`: `N_ENROLLMENT_WEIGHTED`, `N_EL_WEIGHTED`, `PCT_EL`)
+is **weighted by `SAMPLE_WEIGHT`**. The simulated never-EL rows are a sample,
+each with a weight of
+`r unique(el_roster_sim$SAMPLE_WEIGHT[el_roster_sim$EL_STATUS == "never"])`,
+so an unweighted share would read several times too high. Shares across the
+whole state are weighted; statistics within the EL population are not.
+
+### Grades
+
+```{r}
+plot_by_grade_span(res$by_grade_span)
+plot_by_grade(res$by_grade)
+ft_prep2_grade_shares(res)
+```
+
+`$by_grade_span` splits current ELs into K–5 and 6–12 each year (100%
+stacked). `$by_grade` has one row per year and grade, K–12 (`YEAR`, `GRADE`,
+`N`, `PCT`, `SUPPRESSED`); an empty grade is a zero row, not a gap. The bar
+chart shows the latest year, with the average across grades dashed. In the
+share table, read down a column for concentration and across a row for
+drift.
+
+### Districts
+
+```{r}
+plot_by_district(res$by_district)
+ft_prep2_district_bins(res)
+ft_prep2_districts(res)
+```
+
+`$by_district` ranks districts by current-EL count in the latest year
+(`RANK`, `DISTRICT_ID`, `N`, `PCT_CUM`, `TWO_THIRDS`, `SIZE_BAND`). The chart
+shows rank, not name. The dashed line marks the rank where the cumulative
+share first reaches two-thirds. The dotted line is the small-district
+threshold: the upper edge of the smallest spec band
+(`r num(res$meta$small_district_n)` here). `$district_bins` counts districts
+and ELs per band. The last table lists the districts that together hold
+two-thirds of ELs, which is where a threshold change lands hardest.
+
+The simulated state has only `r nrow(res$by_district)` districts, with
+`r sum(res$by_district$N < res$meta$small_district_n, na.rm = TRUE)` below
+the small-district line. A real state will often show a long tail.
+
+### Entry and candidate cohorts
+
+Prep 2 dates each student's entry into EL status from the first of these
+fields that is delivered and filled for that student, in this order:
+`LEP_PROGRAM_START_DATE`, `COHORT_START_YEAR`, `YEAR_IN_STATUS`,
+`ENTRY_GRADE` (reorder with `spec$data$entry_sources`). A delivered year
+later than the student's first observed `current` year is pulled back to
+it.
+Without any of these fields, the panel can date only students who first turn
+`current` after it opens, plus K students in its first year. Anyone else already EL when the
+panel opens has an *unknown* entry.
+
+```{r}
+ft_prep2_entry_sources(res)
+```
+
+```{r}
+#| output: asis
+cat(paste0("- ", res$meta$notes$entry), sep = "\n")
+```
+
+Read these notes (`$meta$notes$entry`) every run. They say whether
+`YEAR_IN_STATUS` codes a first year as 1 or 0 (detected, `[DERIVED —
+VERIFY]`) and how often delivered entry years agree with the panel. If
+agreement is low, check `entry_date_rule` and
+`spec$data$years_in_status_first_value`.
+
+```{r}
+plot_entry_grade(res$entry_grade)
+ft_prep2_entry_cohorts(res)
+```
+
+`$entry_grade` counts entrants by grade at entry, among students whose entry
+falls inside the panel. `$entry_by_year` crosses entry year with entry grade
+(`ft_prep2_entry_by_year(res)`).
+
+`$entry_cohorts` lists every kindergarten entry cohort. A *cohort* is the
+students who entered EL status in the same grade and year. `FOLLOWUP_YEARS`
+is how many years the panel observes it. `FULL_WINDOW` says whether that
+covers the state's maximum timeline plus the year needed to observe an exit
+in its last year. Shorter cohorts are usable but *censored*: their later
+years fall outside the data, so exits there are not yet observed. Membership
+comes from the same shared function Check 1 uses, so the two cannot disagree
+about who is in a cohort.
+
+### Time in status: new and long-term ELs
+
+```{r}
+ft_prep2_time_by_year(res)
+plot_time_in_status(res$time_in_status)
+ft_prep2_time_by_grade(res)
+```
+
+Time in status counts from the entry year dated above. `$time_in_status`
+holds `by_year` (`N`, `PCT_NEW`, `PCT_LT_MIN`, `PCT_LT_MAX`, `PCT_UNKNOWN`),
+`by_grade` (the same by grade, for the latest year) and a years-in-status
+`distribution` by grade, also for the latest year.
+
+The long-term share is a **range**. `PCT_LT_MIN` counts students dated, or
+observed as `current`, for `lt_el_years` or more; `PCT_LT_MAX` adds every
+unknown-entry student who could still be long-term. Here every entry is
+dated, so the bounds meet. No mean time in status appears anywhere, by
+design: students enter at different grades and are observed for different
+spans, so an average describes no one.
+
+### Initial ELP level
+
+```{r}
+#| fig-height: 3.5
+plot_initial_elp(res$initial_elp)
+ft_prep2_initial_elp(res)
+```
+
+`$initial_elp` bands each entrant's initial Overall Composite level using the
+spec's bands (`INITIAL`, `N`, `PCT`, `IN_BANDS`). Alternate-form takers are
+their own row, never banded, because the alternate form reports on a
+different scale. Entrants with no annual score are also their own row, so
+shares sum to all entrants; the chart shows only the bands.
+`attr(res$initial_elp, "notes")` compares the result with any delivered
+`INITIAL_ELP`.
+
+### Profile and monitoring
+
+`$profile` is a named list with one table (`VALUE`, `N`, `PCT`,
+`SUPPRESSED`) per profile column the roster carries, plus `TIME_IN_STATUS`.
+Each covers current ELs in the latest year, unweighted. A long value list
+keeps its 12 most common values and folds the rest into "(all other
+values)". Values stay in the delivery's own codes.
+The stage report shows every table; here are three:
+
+```{r}
+ft_prep2_profile(list(profile = res$profile[c("SERVICE_MODEL", "IEP",
+                                              "TIME_IN_STATUS")]))
+```
+
+`$monitoring` counts former ELs by monitoring year and school year, a
+proposed view (`ft_prep2_monitoring(res)`).
+
+### The analytic sample memo
+
+`$analytic_sample_memo` summarizes the slots in short statements. The stage
+report prints it in its "Decide" section. It reports what the numbers say,
+never what to do about them.
+
+```{r}
+#| output: asis
+cat(paste0("- ", res$analytic_sample_memo), sep = "\n")
+```
+
+## How to read it
+
+Read Prep 2 for two things.
+
+**1. The shape of the EL population in its own right.** An exit policy
+applies to every EL but does not land evenly: grades and districts where ELs
+concentrate feel a threshold change most. In this run, K–5 holds
+`r pct(with(res$by_grade_span, PCT[YEAR == max(YEAR) & SPAN == "K-5"]))` of
+current ELs in `r res$meta$latest_year`, and
+`r sum(res$by_district$TWO_THIRDS)` of `r nrow(res$by_district)` districts
+hold two-thirds of them.
+
+**2. The compositional facts that shape the later stages.**
+
+- **Mostly K/1 entry.** Here
+  `r pct(sum(res$entry_grade$PCT[res$entry_grade$ENTRY_GRADE %in% c("K", "1")], na.rm = TRUE))`
+  of observed entrants enter in K or grade 1
+  (`r pct(res$entry_grade$PCT[res$entry_grade$ENTRY_GRADE == "K"])` in K
+  alone). A kindergarten cohort speaks for the largest group of entrants and
+  only for them: Check 1's K-start results describe that one entry cohort,
+  not students who enter later and not the state's overall exit rate.
+- **Attrition by grade.** Read the latest year down the grade table. Grade
+  `r with(res$by_grade[res$by_grade$YEAR == max(res$by_grade$YEAR), ], GRADE[which.max(N)])`
+  holds the most current ELs
+  (`r with(res$by_grade[res$by_grade$YEAR == max(res$by_grade$YEAR), ], pct(max(PCT, na.rm = TRUE)))`)
+  and grade 12 holds
+  `r with(res$by_grade, pct(PCT[YEAR == max(YEAR) & GRADE == "12"]))`. As
+  students move up, some exit and some leave the data, while later entrants
+  join. Upper-grade ELs are a selected group: those who have not exited yet,
+  plus later arrivals. This snapshot does not measure attrition; Check 1
+  does, for one cohort.
+- **Concentrated long-term ELs.** Long-term ELs first appear in grade
+  `r with(res$time_in_status$by_grade, GRADE[which(PCT_LT_MIN > 0)[1]])` and
+  make up
+  `r with(res$time_in_status$by_grade, pct(min(PCT_LT_MIN[PCT_LT_MIN > 0], na.rm = TRUE)))`
+  to
+  `r with(res$time_in_status$by_grade, pct(max(PCT_LT_MIN, na.rm = TRUE)))`
+  of each grade from there up.
+
+These patterns justify reading some grades' evidence more cautiously later,
+and analyzing newly arrived and long-term ELs as separate groups.
+
+::: {.callout-important}
+## Resist the urge to average
+A single statewide number, or an "average district," hides the profiles that
+matter. Prep 2 reports distributions and shares by grade, district and time
+in status so the concentration stays visible. Keep it that way in the stages
+that follow.
+:::
+
+## Pitfalls
+
+- **Count students from the roster only**, never from the ELP base table
+  (WIDA-style data have eight rows per student-year) or the academic table
+  (one row per subject). Your own side analyses should do the same.
+- **Weight never-EL rows.** If they are a sample, deliver `SAMPLE_WEIGHT`;
+  without it each row counts once and the EL share is wrong. No unweighted
+  never-EL total belongs in any output.
+- **Use the spec's district bands, not a delivered size column.** The
+  simulated roster's `DISTRICT_SIZE_BAND` measures something else, and Prep
+  2 ignores it on purpose. Bins include their lower edge, so a district with
+  exactly 100 ELs falls in the second band; make sure labels match breaks.
+- **Do not lower `min_cell` or pool grades to make a cell appear.**
+- **No mean time in status.** Report distributions and the long-term range,
+  and treat a wide range as a range, not a midpoint.
+- **Check the entry notes.** A start-date convention that differs from
+  `entry_date_rule` puts delivered entry years off by one, which moves the
+  entry, time-in-status and initial-ELP views. (`$entry_cohorts` and Check
+  1's cohorts date entry from status changes in the panel, so they are
+  unaffected.)
+- **Two kindergarten rules, on purpose.** With no entry field to date them,
+  students in K in the panel's first year count as K entrants in the entry
+  views. Without a `LEFT_TRUNCATED` flag (marking students whose entry
+  predates the data), the shared cohort function behind `$entry_cohorts` and
+  Check 1 drops every first-year entrant, so the entry views can count K
+  entrants that `$entry_cohorts` leaves out.
+- **Keep the excluded groups visible.** Prep 2 never bands alternate-form
+  takers; they are always their own group. "Former" means former within the
+  monitoring window when formers leave the data.
+- **Simulated numbers are not findings.** The simulation has few, large
+  districts and fully dated entry, so it cannot show how small districts or
+  missing entry fields behave.
+
+## Decide before moving on
+
+Answer these with the memo and tables in hand:
+
+- **Which cohorts and subgroups are large and stable enough to analyze?** Is
+  there a clean kindergarten cohort for Check 1: observed at entry,
+  unaffected by an enrollment anomaly, well above the suppression floor?
+- **Which grades, districts or subgroups would a policy change affect
+  most?** They deserve closer attention in every later stage.
+- **Where would one pooled "all ELs" analysis hide more than it shows?**
+  Most often: newly arrived vs. long-term ELs, and the grades where
+  long-term ELs concentrate.
+
+Check 1 considers the kindergarten cohorts that cover the full exit window
+and analyzes the one with the longest observed follow-up. A cohort below
+`min_cell` is never selected. Preview its choice now:
+
+```{r}
+compute_cohorts(bundle, spec)[c("COHORT_LABEL", "N_ENTRY",
+                                "FOLLOWUP_YEARS", "SELECTED")]
+```
+
+Carry forward:
+
+- **The cohort**, and whether its years include a disruption. The coverage
+  table shows whether it hit enrollment or only testing.
+- **The grades with a heavy long-term share.** Check 3's results there may
+  reflect who is still an EL, not where the threshold sits.
+- **Where ELs concentrate**, for framing any recommendation.
+- **The excluded groups**: alternate-form takers and any unknown-entry
+  students. Neither appears in the banded views.
+
+## Additional checks for multi-criterion exit rules
+
+This check applies only when the exit rule combines criteria: Types 2–6 in
+the package's typology (a Type 2 rule, for example, adds a domain-score floor
+to the overall score). Prep 2 then builds a **criteria crosswalk**:
+pass/fail patterns on each criterion near the overall cut; **blocked
+groups**, student-years near the cut that fail exactly one criterion; and
+the **contested zone**, the range of Overall Composite levels where the
+criteria disagree (some pass, some fail). Check 2 adds the
+blocked groups as comparison columns and Check 3 models the contested zone;
+both recompute them with `compute_criteria_crosswalk()`.
+
+To tell whether the check applies, look at the declared Types and the terms
+of each exit pathway:
+
+```{r}
+spec_exit_types(spec)
+spec_has_type(spec, 2:6)
+length(spec$policy$exit$pathways[[1]]$terms)
+```
+
+The simulated spec is Type 1 with one term, so `$criteria_crosswalk`,
+`$contested_zone` and `$blocked_groups` are `NULL`. The gate needs a declared
+Type of 2–6 *and* a pathway with two or more ELP terms. A Type 5 spec whose
+pathways have one term each opens the gate but still gets `NULL`, with the
+reason in `$meta$notes$crosswalk`.
+
+To show the output, the chunk below adds a **hypothetical** second criterion
+to the simulated rule, a Reading level of at least 4.0 (waived when the
+domain is absent). The package's tests use the same variant; it is not the
+simulated state's rule. With a Type 2–6 spec, `run_prep2()` fills these
+slots itself. Here the crosswalk is computed directly to avoid rerunning the
+stage.
+
+```{r}
+spec_t2 <- spec
+spec_t2$policy$exit$pathways[[1]]$terms[[2]] <- list(
+  component = "reading", measure = "level", op = ">=", value = 4.0,
+  exempt_if_absent = TRUE)
+spec_t2$policy$exit$pathways[[1]]$rule <-
+  "Overall composite level >= 4.5 and reading level >= 4.0"
+spec_t2$policy$exit$types <- 2L
+validate_el_spec(spec_t2)
+
+cw <- compute_criteria_crosswalk(bundle, spec_t2)
+res_t2 <- res
+res_t2$criteria_crosswalk <- cw$crosswalk          # aggregate tables only;
+res_t2$contested_zone     <- cw$contested_zone     # cw$blocked_groups is per student
+```
+
+```{r}
+#| output: asis
+cat(prep2_crosswalk_note(res_t2), "\n\n")
+cat(prep2_contested_note(res_t2), "\n")
+```
+
+```{r}
+ft_prep2_crosswalk_pattern(res_t2)
+ft_prep2_crosswalk_blocked(res_t2)
+```
+
+The window around the cut is `spec$policy$exit$zone_half_width` (0.5 levels
+by default). `ft_prep2_crosswalk_by_level(res_t2)` shows where the criteria
+disagree in 0.1-level bins across twice that window.
+
+The contested zone is where to ask whether the second criterion does
+independent work or restates the overall score; Check 3 asks it there. Only
+the "blocked by `READING_LEVEL` only" group is held back by the second
+criterion alone. A wide zone, or a large group blocked by one domain alone,
+is a question for Checks 2 and 3, not a finding. Three limits: the crosswalk uses the first
+pathway with two or more ELP terms; it assumes all criteria must pass; and
+it reads only ELP terms. A Type 3 rule's non-ELP criterion (an academic
+score, say) is never evaluated, so a rule with one ELP term plus an academic
+term gets no crosswalk at all.
+
+## Render the stage report
+
+The stage report holds the figures and tables shown above (the crosswalk
+tables only for a Type 2–6 rule), plus the walkthrough text and the Decide
+box. The example report on the simulated data is
+[on the project site](../prep2_population.html).
+
+```{r}
+#| eval: false
+# Simulated data: Word and HTML, written to reports/
+render_step("prep2")
+```
+
+On its own, the report computes results only from the simulated data. For
+your state, compute the results, save them outside the folder you share, and
+render from the saved file. Then scan the output against your own roster:
+
+```{r}
+#| eval: false
+res <- run_prep2(bundle, spec)
+dir.create("results", showWarnings = FALSE)
+saveRDS(res, "results/prep2_results.rds")
+
+files <- render_step("prep2",
+                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
+                     results_file     = "results/prep2_results.rds",
+                     check_disclosure = FALSE)
+check_output_disclosure(files, bundle)   # stops if any STUDENT_ID appears
+```
+
+`check_disclosure = FALSE` turns off the built-in scan, which knows only the
+simulated students; `check_output_disclosure()` replaces it.
+
+[Guide home](index.html) | Previous: [Prep 1: Policy documentation](prep1.html) | Next: [Prep 3: Program implementation](prep3.html)

@@ -27,16 +27,16 @@ shared conventions are ALL-CAPS long-format columns, a single spec object that
 holds every state-specific value, and results computed in R and rendered
 through Quarto. `stateELP` is standalone and does not import `ReportR`.
 
-> **Status: in development (version 0.0.0.9000).** Four of the eight stages
-> are built and render end to end. The rest are planned and have placeholder
-> tests. Function names and result slots may still change.
+> **Status: in development (version 0.0.0.9000).** Five of the eight stages
+> render end to end; Check 4 is a first pass. The rest are planned and have
+> placeholder tests. Function names and result slots may still change.
 
 ---
 
 ## How it works
 
-The package follows a nine-step process called *Evaluating and Setting English
-Learner Exit Thresholds*:
+The package follows the process *Evaluating and Setting English Learner Exit
+Thresholds*, which has eight stages:
 
 - three **Prep steps** that establish context,
 - four **Data Checks** that analyze the data, and
@@ -57,7 +57,7 @@ the most common way to misread a stage.
 | **Check 1**: Cohort survival | How long do students spend in EL status? | One entry cohort (e.g., kindergarten entrants) followed forward | **built** |
 | **Check 2**: On-time vs. prolonged exiters | Who exits on time, and who gets stuck? | The same cohort as Check 1 | **built** |
 | **Check 3**: Academic patterns | At what ELP level does academic performance reach the proficiency cut? | Cross-section: all ELs by grade and year, plus former and never-EL comparison groups | **built** |
-| **Check 4**: Decision consistency | How well do ELP-based and content-based classifications agree across candidate cuts? | Same as Check 3 | planned |
+| **Check 4**: Decision consistency | How well do ELP-based and content-based classifications agree across candidate cuts? | Check 3's cross-section, limited to current ELs with both a same-year ELP level and a content score | **first pass** |
 | **Decision**: Synthesis and next steps | Change anything? If so, what, and how will we monitor it? | none (synthesizes prior stages) | planned |
 
 What the built stages produce:
@@ -79,6 +79,31 @@ What the built stages produce:
   summary table, a logistic model of P(proficient) on the ELP scale score with
   its 50% crossing point, landing statistics across grades, and two fairness
   checks against English-only peers.
+- **Check 4** (first pass, one grade × subject): decision consistency and
+  Youden's J at every candidate cut on the ELP level, the J-optimal cut, and
+  the state's current exit threshold evaluated beside it. The candidate region
+  across grades, the dependence analysis and the policy-as-a-whole check are
+  not built yet.
+
+---
+
+## Walkthrough guide
+
+[**Conducting the analysis**](guide/) is a
+step-by-step guide with one page per stage, plus pages on the overall process
+and on setting up a spec and data. Each page shows the code to run, what it
+produces and how to read it, the pitfalls to avoid, and what to decide before
+moving on. The code runs against the simulated data every time the guide is
+built. For stages the package doesn't build yet, the guide explains how to do
+them by hand.
+
+| Page | Covers |
+|---|---|
+| [Conducting the analysis](guide/) | The process, how the sample shifts between stages, what you need |
+| [Setup: spec and data](guide/setup.html) | Building a state spec, delivering data, the data bundle |
+| [Prep 1](guide/prep1.html) · [Prep 2](guide/prep2.html) · [Prep 3](guide/prep3.html) | Policy, population, program |
+| [Check 1](guide/check1.html) · [Check 2](guide/check2.html) · [Check 3](guide/check3.html) · [Check 4](guide/check4.html) | The four Data Checks |
+| [Decision](guide/decision.html) | Synthesis and next steps |
 
 ---
 
@@ -88,7 +113,8 @@ These are the stage documents rendered on the package's **simulated data**.
 They show what each stage produces, not anything about a real state: every
 gap and ratio in them comes from how the data were generated (see
 [the warning below](#a-warning-about-the-simulated-data)). Rendered on
-2026-10-09 from commit `5f4c86f`.
+2026-10-09: Prep 2 and Checks 1–3 from commit `5f4c86f`, Check 4 from
+`f4b2e41`.
 
 | Stage | Report | Word |
 |---|---|---|
@@ -98,7 +124,7 @@ gap and ratio in them comes from how the data were generated (see
 | Check 1: Cohort survival | [View](check1_survival.html) | [.docx](check1_survival.docx) |
 | Check 2: On-time vs. prolonged exiters | [View](check2_flows.html) | [.docx](check2_flows.docx) |
 | Check 3: Academic patterns | [View](check3_academics.html) | [.docx](check3_academics.docx) |
-| Check 4: Decision consistency | *in progress* | |
+| Check 4: Decision consistency (first pass) | [View](check4_consistency.html) | [.docx](check4_consistency.docx) |
 | Decision: Synthesis | *not yet built* | |
 
 ---
@@ -192,8 +218,9 @@ table using `spec$elp$headline` and bands it using `spec$elp$bands`.
 
 - A roster with `STUDENT_ID`, `YEAR`, `GRADE` and `EL_STATUS`, plus base-table
   rows for the headline component, runs Check 1 (Model 1) and Check 2.
-- Adding the headline scale score and an academic table (with `GRADE`) unlocks
-  Check 1 Model 2, Check 3 and Check 4.
+- Adding an academic table (with `GRADE`) unlocks Check 4, which runs on the
+  ELP level. Adding the headline scale score as well unlocks Check 1 Model 2
+  and Check 3.
 - Demographic and program fields unlock the disaggregated rows of each view.
 
 Anything a stage needs but the data lacks becomes a `NULL` results slot with a
@@ -332,7 +359,8 @@ stateELP/
 │   └── lookups/          # display labels (render-side only)
 ├── data/                 # the three simulated tables (.rda)
 ├── data-raw/             # the simulation generator
-├── docs/                 # example reports on the simulated data (GitHub Pages)
+├── docs/                 # the GitHub Pages site: example reports + rendered guide
+├── guide/                # walkthrough guide sources (.qmd), rendered to docs/guide/
 ├── tests/testthat/       # one test file per stage + spec + el_data
 ├── internal_docs/
 │   ├── steps/            # binding per-stage instruction files
@@ -366,6 +394,7 @@ rs("check1")                               # load_all() + render, docx + html
 rs_all()                                   # every stage that has a document
 rs_site()                                  # refresh the example reports in docs/
 rs_site_index()                            # rebuild the site page from this README
+rs_guide()                                 # re-render the walkthrough guide
 ```
 
 The project site's landing page, `docs/index.md`, is generated from this

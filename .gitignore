@@ -41,3 +41,10 @@ inst/specs/NJ_elp_2023.R
 # never committed and never shared -- the documents in reports/ are the
 # shareable artifact (R/disclosure.R).
 results/
+
+# Claude Code's per-machine permission list: local paths and scratch
+# directories, never shared. The shared settings are .claude/settings.json.
+.claude/settings.local.json
+
+# Windows shortcuts carry this machine's absolute paths and host name.
+*.lnk

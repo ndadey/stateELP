@@ -1,0 +1,629 @@
+---
+title: "Check 1: Cohort survival"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Prep 3: Program implementation](prep3.html) | Next: [Check 2: On-time vs. prolonged exiters](check2.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+```{r helpers}
+#| include: false
+# Formatting for inline numbers. Nothing here computes a result.
+pct <- function(x, digits = 0) sprintf(paste0("%.", digits, "f%%"), 100 * x)
+num <- function(x) format(x, big.mark = ",")
+r2  <- function(x) sprintf("%.2f", x)
+```
+
+## What this step answers
+
+How long do English learners (ELs) stay in EL status? To **exit** means to be
+reclassified from current EL to former EL. Check 1 follows one group of
+students who entered EL status together and asks two questions:
+
+1. **When do students exit?** How many years does it typically take, what share
+   exits within the state's timelines, and what share is still classified many
+   grades later?
+2. **Is anything besides English proficiency deciding who exits?** Once you
+   know a student's English language proficiency (ELP) at entry, does last
+   year's content-test score still predict whether they exit this year? If it
+   does, the exit process may be favoring academically stronger students,
+   which the package calls *skimming*.
+
+Later stages refer to two named models. **Model 1** describes exit timing with
+no academic data. **Model 2** adds prior-year achievement to test for skimming.
+
+## Sample
+
+**One entry cohort.** A cohort is the students who first appear as current
+ELs in the same grade (kindergarten by default) in the same year, followed
+forward through every later year in the data.
+
+Candidate cohorts come from the data's year range and the spec's maximum
+timeline, never from typed-in years. An entry year qualifies only if the data
+cover that year plus the maximum timeline's worth of years after it: for a
+six-year timeline, seven years of data starting with the entry year. The
+extra year is needed because an exit at the end of one year is only seen in
+the next year's data. Students already in EL status when the data begin are
+excluded, because their time in status cannot be measured.
+
+Check 1 analyzes **one** cohort: the candidate with the longest follow-up that
+clears the **minimum cell size**, the smallest count the spec allows in a
+reported cell (`policy$suppression$min_cell`). Follow-up shrinks with each
+later entry year, so this is always the earliest candidate that clears it:
+the one with the least of its path cut off by the end of the data.
+
+Students who leave the data before exiting, or are still classified when the
+data end, are **censored**: what happened to them afterward is unknown.
+
+This is not the statewide population of Prep 2 or the grade-by-grade
+cross-sections of Checks 3 and 4, and it is not the state's overall exit
+rate.
+`run_check1()` writes the sample statement into `res$meta$sample`; the one for
+the simulated data is printed under [Run it](#run-it).
+
+## Status in the package
+
+**Built.** Every result slot the stage's instruction file names is filled, the
+stage report renders to Word and HTML, and its tests have no skipped
+placeholders. Three things are deliberately not built, and the report says so:
+
+- **Later start grades.** `run_check1()` takes a `start_grade` argument, but
+  the stage has been built and tested on kindergarten entrants only.
+- **A per-grade selection strength.** The weighting index uses one Model 2
+  ratio for the whole cohort.
+- **Any use of the weighting index.** It is experimental, and nothing in the
+  package consumes it.
+
+## Before you start
+
+You need a spec and a data bundle, covered on the [setup page](setup.html).
+
+**From the spec**, Check 1 reads:
+
+- `policy$timelines$max_years_to_exit`, the maximum timeline. It decides which
+  entry years qualify.
+- `policy$timelines$essa_timeline_years` and `on_time_rule`, the timeline the
+  state set under the Every Student Succeeds Act (ESSA). Together they set the
+  "on time" row of the timeline table.
+- `policy$timelines$initial_elp_source`, which must be `"first_annual"` or
+  absent. Any other value stops the stage with an error.
+- `elp$headline` and `elp$bands`: the ELP component the analyses use (the
+  Overall Composite in the simulated spec) and its bands.
+- `policy$suppression$min_cell`, the minimum cell size.
+
+**From the data:**
+
+- **Required** (roster): `STUDENT_ID`, `YEAR`, `GRADE`, `EL_STATUS`. If one is
+  missing, the stage stops and names it.
+- **Optional** (roster): `LEFT_TRUNCATED`. Without it, students first seen as
+  current ELs in the data's first year are treated as already in status and
+  excluded.
+- **Optional** (base table): `SCALE_SCORE` and `ACHIEVEMENT_LEVEL` rows for the
+  ELP component. These drive the band split, the entry-score model and
+  Model 2.
+- **Optional** (academic table): content scores by `SUBJECT`, for Model 2.
+
+The package derives `YEAR_IN_STATUS`, `COHORT_LABEL`, exit and censoring
+dates and the starting band itself; delivered columns with those names are
+ignored. A slot that cannot be computed is `NULL`, with a note in `res$meta`:
+
+| Missing | Effect |
+|---|---|
+| No entry year has enough follow-up, or every candidate is below `min_cell` | Every analysis slot is `NULL`; `res$meta$note` explains |
+| No annual score on the ELP component anywhere in the delivery | `$exit_curve_by_initial_band` is `NULL`; `res$meta$band_note` explains |
+| The ELP component is a level only, with no scale score | `$model1_baseline` and `$model2` are `NULL`; `res$meta$model1_note` explains. Everything else still runs |
+| No academic table | `$model2` is `NULL` and the selection-strength value is `NA`; `res$meta$model2_note` explains |
+| The cohort has no observed exits | The fitted models are `NULL`, with a note |
+| The spec does not declare Type 3 | `$type3_covariate` is `NULL` |
+
+## Run it
+
+Load the spec, build the bundle once, and run the stage.
+
+```{r run}
+spec <- read_el_spec("00_SIM_EL_Spec")
+
+bundle <- as_el_data(el_long_sim,
+                     roster   = el_roster_sim,
+                     academic = academic_long_sim,
+                     spec     = spec)
+
+t0  <- Sys.time()
+res <- run_check1(bundle, spec)          # start_grade = "K" by default
+t_run <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
+
+names(res)
+```
+
+Read the sample statement first. It names the cohort, its size and its window:
+
+```{r}
+res$meta$sample
+```
+
+On the simulated data, `run_check1()` took about `r round(t_run)` seconds. On
+your own data, swap in your spec and tables:
+
+```{r}
+#| eval: false
+spec   <- read_el_spec("specs/XX_EL_Spec.R")
+bundle <- as_el_data(my_base, roster = my_roster, academic = my_academic,
+                     spec = spec)
+res    <- run_check1(bundle, spec)
+```
+
+`run_check1()` only assembles. Each slot comes from an exported function you
+can call on its own:
+
+```{r}
+#| eval: false
+co  <- compute_cohorts(bundle, spec)
+sel <- co$COHORT_LABEL[co$SELECTED]
+
+compute_life_table(bundle, spec, cohort = sel)
+compute_exit_curve(bundle, spec, cohort = sel)                      # overall
+compute_exit_curve(bundle, spec, cohort = sel, by = "INITIAL_ELP")  # by band
+est <- compute_survival_est(bundle, spec, cohort = sel)
+compute_years_to_50(est)
+compute_at_max_timeline(bundle, spec, cohort = sel)
+compute_model1(bundle, spec, cohort = sel)                       # unconditional
+compute_model1(bundle, spec, cohort = sel, baseline_elp = TRUE)  # entry score
+compute_model2(bundle, spec, cohort = sel)                       # + prior year
+```
+
+## What you get
+
+`res` is a named list of aggregate tables and model summaries, plus `$meta`.
+No slot holds one row per student. The sections below follow the stage report.
+
+### The data fields used
+
+The report opens with the fields the run used and what each did, generated
+from the same declaration the code validates its inputs against.
+
+```{r}
+ft_check1_data_fields(res)
+```
+
+### The candidate cohorts: `$cohorts`
+
+```{r}
+res$cohorts
+```
+
+`COHORT_LABEL` is the entry grade and year, `N_ENTRY` the number of students,
+and `FOLLOWUP_YEARS` the years from entry through the end of the data.
+`SELECTED` marks the analyzed cohort. A candidate below the minimum cell size
+has `SUPPRESSED = TRUE`, a blank count, and can never be selected. The table
+carries no outcomes. Check 2 calls `compute_cohorts()` itself, so it analyzes
+the same cohort.
+
+### The life table: `$life_table`
+
+The life table is the core of Model 1, with one row per **year in status**,
+counted from a student's first year as a current EL.
+
+```{r}
+ft_check1_life_table(res)
+```
+
+- **A, enrolled at year's beginning:** students still classified and still in
+  the data. They are "at risk" of exiting.
+- **B, exited at year's end:** students who appear as former ELs in the *next*
+  year's data. An exit is dated to the first year a student appears as former,
+  and that year counts as a year in status. Row 5's exiters have an exit year
+  of 6.
+- **C, disappeared at year's end:** students last seen this year with no exit.
+  They are **censored**: we stop observing them, which is not evidence that
+  they stayed in status.
+- **D = B / A:** the annual exit rate among students at risk, also called the
+  discrete-time **hazard**.
+- **E = C / A:** the annual censoring rate.
+- **F = cumulative B / the starting cohort:** the share of the original cohort
+  observed to have exited. It is a **lower bound**, because every censored
+  student holds it down.
+
+Each row's A is the previous row's A minus its B and C:
+
+```{r}
+with(res$life_table, all(head(A - B - C, -1) == A[-1], na.rm = TRUE))
+```
+
+The last row is the edge of the data. No later year exists in which to observe
+an exit, so B is empty and everyone still at risk is counted in C.
+
+### The exit curves: `$exit_curve` and `$exit_curve_by_initial_band`
+
+The exit curve draws column F.
+
+```{r}
+#| fig-cap: "Cumulative exit rate for the selected cohort, by exit year. Censored students are not exiters, so the line is a lower bound. The dashed line marks the maximum timeline."
+plot_exit_curve(res$exit_curve, spec)
+```
+
+Its x-axis is the exit year, so the curve at year 6 equals F in row 5. The
+slot's columns are `GROUP`, `YEAR_IN_STATUS`, `N_AT_ENTRY`, `N_EXITED_CUM`,
+`CUM_EXIT_RATE` and `SUPPRESSED`.
+
+::: {.callout-note}
+## The overlay in the stage report
+The stage report draws this figure with
+`plot_exit_curve(res$exit_curve, spec, survival_est = res$survival_est)`,
+which adds the at-risk estimate (next section) as a grey line and band. In
+the current version that overlay is placed by life-table row, while the
+observed line is placed by exit year. The grey line therefore sits one year to
+the left of where it belongs. On the simulated data, where the two agree
+exactly, this shows as a one-year gap between them. Until it is fixed, read
+the estimate from the table in the next section, not from the figure.
+:::
+
+The second slot splits the curve by **initial ELP band**: the band of the
+student's first annual Overall Composite score. The package derives the band
+from the scores, not from a delivered `INITIAL_ELP` column. Students with no
+annual score, such as alternate-form takers, form their own group.
+
+```{r}
+#| fig-cap: "Cumulative exit rate by initial ELP band. Bands below the minimum cell size are suppressed and not drawn."
+plot_exit_curve(res$exit_curve_by_initial_band, spec)
+```
+
+The last year of the split shows how many students start in each band:
+
+```{r}
+subset(res$exit_curve_by_initial_band,
+       YEAR_IN_STATUS == max(YEAR_IN_STATUS),
+       c(GROUP, N_AT_ENTRY, N_EXITED_CUM, CUM_EXIT_RATE, SUPPRESSED))
+```
+
+Bands near the exit threshold hold very few kindergarten entrants, because a
+student who screened at the threshold would not have been identified as an EL.
+Their suppression is the design working, not a gap in the data.
+
+The "No annual ELP score" group shows no exits. In the simulated data that is
+by construction: exit requires the annual form, so alternate-form students
+never exit. It is a limit of the simulation, not a finding.
+
+### The survival estimate: `$survival_est`
+
+Column F counts exits out of everyone who started. The standard discrete-time
+estimate asks what share *would* have exited had nobody been lost. It
+compounds each year's at-risk rate: one minus the product of (1 − D).
+
+```{r}
+ft_check1_survival(res)
+```
+
+The columns are `A`, `HAZARD` (column D), `SURVIVING`, `CUM_EXIT_EST`, `SE`,
+`CI_LO`, `CI_HI` and `CUM_EXIT_OBS` (column F). Rows are life-table rows, not
+exit years: row 5's values count exits dated year 6, like F in row 5.
+
+**Only the estimate gets a confidence interval**, from Greenwood's variance on
+the complementary log-log scale, which keeps the bounds between 0 and 1.
+Column F is a count, not an estimate, so it gets none. The interval covers
+sampling variability in this cohort's exit rates, not whether the cohort
+stands for any other.
+
+The simulated cohort has
+`r num(sum(res$life_table$C[-nrow(res$life_table)], na.rm = TRUE))` students in
+column C before the last row, so the estimate and F agree exactly. On real data
+they will separate, and the gap is the cost of censoring.
+
+### Median years to exit: `$years_to_50`
+
+```{r}
+res$years_to_50
+```
+
+`YEARS_TO_50` is the first year by which half the cohort has exited, on the
+observed basis and on the at-risk estimate. `REACHED = FALSE` means half had
+not exited by the end of the data, which is a finding in itself. The year is
+an exit year, like the curve's. Here the estimate passes one half in life-table
+row `r with(res$survival_est, YEAR_IN_STATUS[which(CUM_EXIT_EST >= 0.5)[1]])`,
+so `compute_years_to_50()` reports year `r res$years_to_50$YEARS_TO_50[2]`.
+
+### Where the cohort ended up: `$at_max_timeline`
+
+```{r}
+ft_check1_timeline(res)
+```
+
+The columns are `OUTCOME`, `NESTED`, `N`, `PCT` and `SUPPRESSED`. The first
+three rows (italic) are nested: on time is a subset of within the maximum,
+which is a subset of exited at all. The last three rows (exited, still
+classified, disappeared) count every student once. Do not add up the whole
+column. A zero is shown rather than suppressed, since it discloses no one.
+
+In this simulated cohort, `r pct(res$at_max_timeline$PCT[1])` exited within the
+`r attr(res$at_max_timeline, "essa_years")`-year ESSA timeline and
+`r pct(res$at_max_timeline$PCT[2])` within the `r spec_max_years(spec)`-year
+maximum. These figures show the machinery; they reflect the generator's
+settings.
+
+### Model 1, fitted: `$model1` and `$model1_baseline`
+
+Model 1's fitted half writes the life table as a model, so Model 2 has a
+baseline. The fits use a **person-period** frame, one row per student per year
+at risk, built on demand and never stored.
+
+**`$model1` is unconditional:** one term per year in status, no covariate. Its
+fitted hazards *are* column D:
+
+```{r}
+lt <- res$life_table
+cf <- res$model1$coefficients
+first <- min(lt$YEAR_IN_STATUS[!is.na(lt$B) & lt$B > 0])  # reference year
+yrs <- c(first, as.integer(sub("factor(YEAR_IN_STATUS)", "", cf$TERM[-1],
+                               fixed = TRUE)))
+data.frame(YEAR_IN_STATUS = yrs,
+           FITTED_HAZARD = round(plogis(cf$ESTIMATE[1] + c(0, cf$ESTIMATE[-1])), 4),
+           D = round(lt$D[yrs], 4))
+```
+
+Years with no exits identify no term and are dropped; `res$model1$dropped`
+counts them.
+
+**`$model1_baseline` adds the student's entry score:** their *first* annual
+Overall Composite score, standardized and fixed for their whole run. It asks
+whether entry proficiency already sets exit timing.
+
+```{r}
+ft_check1_model1(res)
+ft_check1_model1_dropped(res)
+```
+
+The ratio is per standard deviation of entry score. Strictly, every ratio in
+these fits is an odds ratio on the discrete-time hazard; the process this
+package follows calls Model 2's a hazard ratio. Rows with no first annual
+score are dropped, never imputed. The covariate is deliberately *not* the
+current year's score: the exit rule is applied to that score, so modeling exit
+on it would restate the rule.
+
+### Model 2: `$model2`
+
+Model 2 adds the student's content score from the **year before** to the
+entry-score model. The subject is the spec's first academic subject unless you
+call `compute_model2()` with another `subject`.
+
+```{r}
+ft_check1_model2(res)
+ft_check1_model2_dropped(res)
+```
+
+Read the ratio on prior-year achievement. At 1, it adds nothing and exit timing
+is driven by ELP as intended. Away from 1 in either direction, something beyond
+the language test may be shaping who exits. Here it is `r r2(res$model2$ratio)`
+(95% interval `r r2(res$model2$ci[1])` to `r r2(res$model2$ci[2])`), a value
+set by the simulation. Exit in the simulated data is a rule applied to the
+ELP score alone, so this is not skimming; [How to read it](#how-to-read-it)
+explains why the ratio can still sit away from 1.
+
+The dropped-rows table separates why a prior-year score is missing. In the
+simulated spec, content testing starts in grade 3, so a kindergarten cohort
+has no prior-year score before grade 4. The simulated data also have no 2020
+content scores, so every 2021 person-year drops
+(`r num(res$model2$dropped$N[grepl("no assessment anywhere", res$model2$dropped$REASON)])`
+rows here, beyond those already dropped for having no ELP score). Nothing is
+imputed.
+
+The two fits use different rows, and the package says so:
+
+```{r}
+#| output: asis
+cat(check1_nested_note(res))
+```
+
+`res$model2$n_person_periods` and `n_events` count the rows and exits the fit
+used. `n_students` counts the cohort's students before any rows are dropped,
+not the students left in the fit. The stage report's note under each model
+quotes `n_students` as "Fitted on ... students". Read that number as the
+cohort size.
+
+**Standard errors are cluster-robust on the student** (CR1, clustered on
+`STUDENT_ID`), because each student contributes several rows. Estimates are
+unchanged; the intervals count students, not rows. `$quasi_separated` flags a
+fit whose fitted probabilities reach 0 or 1, meaning a covariate decides the
+outcome almost perfectly and its ratio cannot be read. Here it is
+`r if (any(c(res$model1$quasi_separated, res$model1_baseline$quasi_separated, res$model2$quasi_separated))) "TRUE for at least one fit" else "FALSE for all three fits"`.
+
+### The weighting index (experimental): `$retention_share`, `$selection_strength`, `$grade_weights`
+
+::: {.callout-warning}
+## Not an established statistic
+This is a candidate idea, not a validated method. It has not been tested on
+real data, nothing in the package uses it, and no decision should rest on it.
+Every row of `$grade_weights` carries `EXPERIMENTAL = TRUE`, and
+`$selection_strength$experimental` is `TRUE`.
+:::
+
+The index sketches how much weight later grade-level findings can carry:
+
+- **Retention share** is column A over the starting cohort, the share still at
+  risk. It is a hard floor: a year with fewer than `min_cell` students at risk
+  gets weight 0.
+- **Selection strength** is |ratio − 1| for Model 2's ratio. Above the floor,
+  the weight is 1 / (1 + selection strength), a placeholder functional form.
+
+```{r}
+ft_check1_grade_weights(res)
+res$selection_strength$value
+```
+
+Selection strength is one number for the whole cohort, so the constant weight
+down the column is not a per-grade result.
+
+## How to read it
+
+**Model 1 gives the shape of exit timing** under current policy and practice:
+typical years to exit, the share exiting within the timelines, and the share
+still classified many grades later. That sets realistic expectations and gives
+you plain language for stakeholders. It does not say whether the threshold is
+set at the right level, and neither does the band split: a cohort that starts
+higher and exits sooner is what an exit rule produces.
+
+**Model 2 is the formal test for skimming.** A ratio near 1 supports reading
+Checks 3 and 4 at face value. A ratio away from 1 suggests the exit process,
+as implemented, responds to academic performance beyond English proficiency.
+That is a fact about the process, not about students. Model 2 uses only
+person-years with a prior-year score (grade 4 onward for a kindergarten
+cohort), so it describes exits in those years.
+
+Keep one limit in view. Model 2 holds the entry score constant, not the score
+the exit rule is applied to that year (adding that score would restate the
+rule). Students whose English grew fastest since entry may also have had
+higher content scores the year before, so a ratio away from 1 can come from
+that alone. The simulated data show this: exit there depends on the ELP score
+alone, and content scores are generated to track it, yet the ratio is
+`r r2(res$model2$ratio)`. On a real delivery, treat a ratio away from 1 as a
+signal to explain, alongside Checks 3 and 4, not as proof of skimming on its
+own.
+
+## Pitfalls
+
+- **No mean or average time in status.** Time in status is censored, so its
+  mean is not defined. Report median years to exit and the share exited within
+  the timelines. A test keeps Check 1 free of means.
+- **Censored is not stuck.** A student who disappears, or is still classified
+  at the end of the data, is censored. What happened next is unknown, so do
+  not count them as non-exiters. Report F beside the at-risk estimate.
+- **Keep the exit dating.** A student who is an EL for six years and is
+  reclassified in the seventh did *not* exit within a six-year timeline. The
+  package recomputes this from `EL_STATUS` every run; do not substitute a
+  delivered `YEAR_IN_STATUS`.
+- **Column D is not a duration.** It is a rate among students still at risk
+  that year.
+- **One entry cohort is not every EL.** Later entrants, including newcomers
+  in the upper grades, are not in it and have different trajectories. Do not
+  generalize to them, and never quote these figures as the state's overall
+  exit rate.
+- **Check the cohort first.** It should be large and stable, with no
+  enrollment anomaly such as a pandemic-era dip.
+- **Never use the current year's ELP score as a covariate.** If you extend the
+  models, keep every covariate fixed at entry or lagged. A current-year score
+  restates the exit rule and leaves the skimming test unable to detect
+  skimming. A package test guards this.
+- **Keep the cluster-robust intervals.** Default `glm()` standard errors treat
+  each person-year as independent, so they count rows rather than students.
+- **Do not impute missing lags.** Rows without a prior-year score drop from
+  Model 2, with the reason recorded.
+- **Do not lower `min_cell` or pool cohorts** to make a suppressed cell
+  appear. Suppressed cells are `NA`, never dropped rows.
+- **Simulated ratios are not findings.** Every hazard ratio from the simulated
+  data is a generator setting. On a real delivery, the same model is a genuine
+  test.
+
+## Decide before moving on
+
+Decide **how much weight later grade-level findings can carry**, from Model 1
+and Model 2 together:
+
+- **Is the cohort large and stable enough?** Use the candidate cohorts table
+  and column A. If not, say so before relying on the curve.
+- **Where is the cohort thin?** Column A, or `$retention_share`, shows where
+  later-grade evidence rests on few students.
+- **Is exit shaped by achievement?** If Model 2's ratio sits away from 1,
+  later-grade comparisons in Checks 3 and 4 may be made on a selected group.
+
+A grade can fail on either count: thin but unselected, or well populated but
+heavily selected. Record your judgment in words, not as the experimental
+index's weights. Check 2 then splits the same cohort into on-time and
+prolonged exiters.
+
+## Additional checks for multi-criterion exit rules
+
+Check 1 has one Type-gated check, for **Type 3** rules: an overall composite
+plus another, non-ELP source. Look at the spec's declared types:
+
+```{r}
+spec_exit_types(spec)
+spec_has_type(spec, 3)
+el_exit_typology()
+```
+
+`$type3_covariate` is filled only when:
+
+1. the spec declares Type 3 in `policy$exit$types`;
+2. an exit pathway has a term with `from = "academic"`, whose `component`
+   names a content subject (the first such term is used); and
+3. the academic table carries that subject.
+
+Model 2 is then refit with that subject's same-year score as an extra
+covariate, to ask whether the non-ELP criterion predicts exit timing
+independent of ELP. The slot holds `criterion_subject`, the refit `model` and a
+`caption`. The caption warns that if the criterion is an achievement measure in
+the exit rule, agreement with it in Checks 3 and 4 is partly circular.
+
+The simulated spec is Type 1, so the slot is empty:
+
+```{r}
+is.null(res$type3_covariate)
+```
+
+## Render the stage report
+
+`render_step()` renders the Check 1 report to Word and HTML in `reports/`,
+then scans the output for student identifiers and stops if any appear.
+
+```{r}
+#| eval: false
+render_step("check1")                     # Word and HTML
+render_step("check1", formats = "html")   # HTML only
+```
+
+The example report on the simulated data is
+[on the project site](../check1_survival.html).
+
+By default the report runs on the simulated data. For your own delivery, save
+your results outside the folder you share, render from them, and run the
+disclosure scan against your own bundle. Give the spec as a full path: the
+report renders in a temporary folder, where a relative path does not resolve.
+
+```{r}
+#| eval: false
+dir.create("results", showWarnings = FALSE)
+saveRDS(res, "results/check1_results.rds")
+
+files <- render_step("check1",
+                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
+                     results_file     = "results/check1_results.rds",
+                     check_disclosure = FALSE)
+check_output_disclosure(files, bundle)
+```
+
+One known issue: the report's closing line says "Simulated data" whatever
+the source. Correct or remove it before sharing a report built from a real
+delivery.
+
+[Guide home](index.html) | Previous: [Prep 3: Program implementation](prep3.html) | Next: [Check 2: On-time vs. prolonged exiters](check2.html)

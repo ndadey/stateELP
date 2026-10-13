@@ -1,0 +1,696 @@
+---
+title: "Check 3: Academic patterns"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Check 2: On-time vs. prolonged exiters](check2.html) | Next: [Check 4: Decision consistency](check4.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+Check 3 sets English learners' (ELs') content-test scores beside their
+English language proficiency (ELP), grade by grade, with former ELs and
+never-EL students as reference groups.
+
+## What this step answers
+
+**At what level of English proficiency does language stop being the main
+thing holding back performance on the content test? And is the bar the state
+sets one that English-only peers clear themselves?**
+
+The state's *proficiency cut* is the lowest scale score of the academic level
+the state calls proficient. If at least half the students in an ELP band
+reach it, students at that level of English perform on the content test the
+way the state expects of anyone. If they do not, the content test may still
+be measuring their English along with their subject knowledge.
+
+That level is then set against the exit threshold. Students who exit below it
+leave while the content test is still partly a language test for them. A
+threshold well above it holds students longer than the state's own content
+standard requires.
+
+The step answers this three ways for each grade and subject: **box plots** of
+scores by ELP band; a **logistic regression** of the chance of reaching the
+cut, read at the ELP score where that chance is 50%; and **landing
+statistics** that put the grades side by side. Two **fairness checks** then
+ask whether English-only peers clear the same bar.
+
+## Sample
+
+**Cross-sectional: every current EL in one grade who has a score on one
+content test in one school year, plus former ELs and English-only students in
+the same grade, subject and year.**
+
+Checks 1 and 2 follow one entry cohort (students who entered EL status in the
+same grade and year) forward through time. Check 3 takes a one-year snapshot
+instead. It includes every EL in the grade, whenever they entered, so recent
+arrivals sit beside students in their sixth year of status.
+
+- **A student is in the sample because they sat the content test.** The
+  package starts from the academic table and attaches roster status to it.
+  Starting from the roster or the ELP table would drop the reference groups.
+  An untested student is outside this sample, not missing from it.
+- **Each grade and subject is its own *panel*. Grades are never pooled.** The
+  simulated spec declares ELA and Math in grades 3 through 11. Each panel
+  uses the most recent year with academic scores.
+- **The groups** are current ELs split into ELP bands (the spec's grouping of
+  the reported proficiency level), current ELs with no annual ELP score that
+  year, former ELs, and English-only students (`EL_STATUS == "never"`). A
+  former EL is never counted as English-only.
+- **In the simulated data**, former ELs leave the data four years after
+  exiting, so "Former ELs" means former within four years. English-only
+  students are a 10% sample with a `SAMPLE_WEIGHT` of 10.
+- **The logistic regression uses current ELs only.** No one else has an ELP
+  score to regress on.
+
+## Status in the package
+
+**Built.** Every output slot the stage's instruction file lists is filled,
+including the check for multi-criterion rules. The stage's tests have no
+skips, and its report renders to Word and HTML. Four things are not built:
+
+- **A matched English-only group.** Fairness check (a) *filters* on one
+  free-or-reduced-price lunch flag (`FRL`). Matching is a recorded later
+  addition.
+- **A year dimension.** Each panel takes the most recent year only.
+- **A display of the multi-criterion check** in the stage report. Read it
+  from the results object (last section).
+- **A "screened but not classified" group.** The instruction file describes
+  it as a spec-gated column (empty for the simulated data). No slot or
+  column exists for it yet.
+
+## Before you start
+
+You need an `el_spec` and an `el_data` bundle that includes the academic
+table. Check 3 reads these parts of the spec:
+
+| Spec field | What Check 3 uses it for |
+|---|---|
+| `academic$<subject>$grades` | Which grades get a panel. A subject with `grades = NULL` (an end-of-course test) takes its grades from the data. |
+| `academic$<subject>$cuts` and `policy$academic_benchmark$proficient_level` | The proficiency cut: the red line, the share at or above it, and the logistic outcome. |
+| `elp$bands` | The band columns and their order. |
+| `elp$administration_window` | The note on how the two tests are paired in time. |
+| `policy$exit` | The band the exit threshold falls in, and the rule's Type. |
+| `policy$suppression$min_cell` | The smallest group whose statistics are shown. |
+
+```{r}
+spec <- read_el_spec("00_SIM_EL_Spec")
+
+spec_academic_subjects(spec)
+spec_academic_grades(spec, "ELA")
+spec$academic$ELA$cuts                        # minimum score of levels 2 to 5
+spec$policy$academic_benchmark$proficient_level
+spec_headline_label(spec)                     # the ELP score the exit rule uses
+spec$elp$administration_window
+spec_min_cell(spec)
+```
+
+Here the cut is level 4's minimum,
+`r spec$academic$ELA$cuts[[spec$policy$academic_benchmark$proficient_level - 1]]`.
+The simulated cuts carry `source = "provisional"`, the spec's form of
+`[DERIVED — VERIFY]`. For a real state, take them from an official table.
+
+Build the bundle once and reuse it:
+
+```{r}
+bundle <- as_el_data(el_long_sim,
+                     roster   = el_roster_sim,
+                     academic = academic_long_sim,
+                     spec     = spec)
+nrow(el_academic(bundle))
+```
+
+A missing input never stops the stage. The affected slots come back `NULL` or
+empty:
+
+| Missing input | What happens |
+|---|---|
+| The academic table | Every analysis slot is `NULL`. `$coverage` still fills, and `res$meta$note` says why. |
+| A proficiency cut for the subject | No red line; `PCT_AT_CUT` is `NA`; `$logistic` is `NULL`, so the landing table has no band and no crossing. `$fairness_logistic` still fits against the English-only average, with `STATE_CUT` `NA`; `ft_check3_fairness()` currently stops with an error in this case, so supply the cut before rendering the report. |
+| A scale score on the ELP component the exit rule uses (ELPA21's determination, for example, is level-only) | `$logistic` and `$fairness_logistic` are `NULL`. Box plots and the landing band still work, because bands come from levels. |
+| `FRL` on the roster | `$fairness_boxes` is `NULL`. |
+| English-only students on the roster | No English-only column; `$fairness_logistic` is `NULL`. |
+| A Type 2, 4, 5 or 6 declaration in `policy$exit$types` | `$contested_zone_models` is `NULL`. It is also `NULL` when the zone holds fewer than `min_cell` students. |
+
+## Run it
+
+One call computes every panel:
+
+```{r}
+res <- run_check3(bundle, spec)
+names(res)
+```
+
+On the simulated data this takes a minute or two: it fits two logistic
+regressions in each of `r res$meta$panels` panels. Read the sample statement
+first. It names the panel the stage report draws:
+
+```{r}
+#| output: asis
+cat(res$meta$sample)
+```
+
+```{r}
+#| include: false
+in_panel <- function(x, subject = res$meta$subject, grade = res$meta$grade) {
+  x[x$SUBJECT == subject & x$GRADE == grade, , drop = FALSE]
+}
+foc     <- in_panel(res$summary_table)
+eo      <- foc[foc$GROUP == "English-only", ]
+former  <- foc[foc$GROUP == "Former ELs", ]
+noband  <- foc[foc$GROUP == "No annual ELP score", ]
+bands   <- spec_bands(spec)$labels
+top     <- foc[foc$GROUP == bands[[length(bands)]], ]
+nexttop <- foc[foc$GROUP == bands[[length(bands) - 1]], ]
+lg      <- res$logistic
+lg_foc  <- in_panel(lg)
+ld      <- res$landing
+fl_foc  <- in_panel(res$fairness_logistic)
+eo_f    <- in_panel(res$fairness_boxes)
+eo_f    <- eo_f[eo_f$GROUP == "English-only", ]
+pct     <- function(x) paste0(round(100 * x), "%")
+pct1    <- function(x) paste0(format(round(100 * x, 1), nsmall = 1), "%")
+cov20   <- res$coverage[res$coverage$GRADE == res$meta$grade &
+                          res$coverage$YEAR == 2020L, ]
+fp      <- paste("grade", res$meta$grade, res$meta$subject)
+box_cap <- paste0(res$meta$subject, " scale score by ELP band, grade ",
+                  res$meta$grade, ", ", res$meta$year, ". Grey boxes are ",
+                  "reference groups, not bands; the blue 'No annual ELP ",
+                  "score' column is not a band either. The diamond is the ",
+                  "mean and the dashed red line is the proficiency cut.")
+cz_cap  <- paste0("Illustration only. The two predicted curves under a ",
+                  "hypothetical composite-plus-floor rule, ", fp, ".")
+
+# The range of ELP scale scores the focal logistic was fitted on (current ELs
+# in the panel with an annual ELP score and an academic score). Only the two
+# ends are kept; no student row is printed.
+ac_f    <- el_academic(bundle)
+ac_f    <- ac_f[ac_f$SUBJECT == res$meta$subject &
+                  ac_f$GRADE == res$meta$grade &
+                  ac_f$YEAR == res$meta$year & !is.na(ac_f$SCALE_SCORE), ]
+h_f     <- elp_headline(bundle, spec)
+elp_rng <- range(h_f$SCALE_SCORE[paste(h_f$STUDENT_ID, h_f$YEAR) %in%
+                                   paste(ac_f$STUDENT_ID, ac_f$YEAR)],
+                 na.rm = TRUE)
+rm(ac_f, h_f)
+cross_txt <- if (is.na(lg_foc$CROSSING)) {
+  "is missing, because the fitted curve does not rise"
+} else if (lg_foc$CROSSING > elp_rng[2]) {
+  paste0("(", round(lg_foc$CROSSING), ") lies above the highest ELP score ",
+         "observed among them (", round(elp_rng[2]), "), so ",
+         "`CROSSING_IN_RANGE` is `FALSE`: no ELP score seen in this grade ",
+         "brings the fitted chance to 50%")
+} else if (lg_foc$CROSSING < elp_rng[1]) {
+  paste0("(", round(lg_foc$CROSSING), ") lies below the lowest ELP score ",
+         "observed among them (", round(elp_rng[1]), "), so ",
+         "`CROSSING_IN_RANGE` is `FALSE`")
+} else {
+  paste0("(", round(lg_foc$CROSSING), ") lies inside the observed ELP ",
+         "scores (", round(elp_rng[1]), " to ", round(elp_rng[2]), "), so ",
+         "`CROSSING_IN_RANGE` is `TRUE`")
+}
+n_out   <- sum(!lg$CROSSING_IN_RANGE & !is.na(lg$CROSSING))
+st_top  <- res$summary_table[res$summary_table$GROUP == bands[[length(bands)]],
+                             c("SUBJECT", "GRADE", "PCT_AT_CUT")]
+st_top  <- merge(st_top, ld[, c("SUBJECT", "GRADE", "TOP_BAND_PCT")])
+n_top_differs <- sum(abs(st_top$PCT_AT_CUT - st_top$TOP_BAND_PCT) > 1e-9,
+                     na.rm = TRUE)
+```
+
+### How the panel is chosen
+
+Grade, subject and year are derived, never typed. `compute_panel()` takes the
+first subject in the spec's `academic` block, its first declared grade, and
+the most recent year the data carry scores for that pairing:
+
+```{r}
+str(compute_panel(bundle, spec))
+```
+
+`years` lists the years available. 2020 is absent because the simulated data
+have no academic scores that year. It is a missing year, not an empty one, so
+asking for it returns `NULL` rather than a figure with zero students:
+
+```{r}
+gap <- compute_panel(bundle, spec, year = 2020L)
+compute_box_data(bundle, spec, gap)
+```
+
+### Looking at another grade or subject
+
+Every panel is already in `res`. The figure and table helpers take `subject`
+and `grade` selectors:
+
+```{r}
+#| fig-width: 11
+#| fig-height: 4.8
+plot_box_panel(res$box_data, spec, subject = "Math", grade = "8")
+```
+
+`run_check3()` also takes `subject`, `grade` and `year`. `subject` limits the
+run to one subject, `grade` sets which panel comes first (and so which one the
+stage report draws), and `year` applies to every panel:
+
+```{r}
+#| eval: false
+res_math <- run_check3(bundle, spec, subject = "Math", grade = "8")
+```
+
+For one panel alone, pass `compute_panel()` output to a compute function:
+
+```{r}
+p <- compute_panel(bundle, spec, subject = "Math", grade = "8")
+compute_logistic(bundle, spec, p)[, c("SUBJECT", "GRADE", "YEAR", "N",
+                                      "CROSSING", "CROSSING_IN_RANGE")]
+```
+
+## What you get
+
+| Slot | What it holds | One row per |
+|---|---|---|
+| `$box_data` | The five box statistics, the mean and the counts for each group | panel × group |
+| `$summary_table` | The same numbers as a table, plus the interquartile range (IQR) | panel × group |
+| `$logistic` | The fitted curve and its 50% crossing | panel |
+| `$landing` | Where each panel lands, by band and by crossing | panel |
+| `$fairness_boxes` | `$box_data` with the English-only group filtered to economically disadvantaged students | panel × group |
+| `$fairness_logistic` | The logistic refitted against the English-only average | panel |
+| `$contested_zone_models` | The multi-criterion check; `NULL` here | — |
+| `$coverage` | Counts by year and grade: who has which scores | year × grade |
+| `$meta` | The sample statement, the focal panel, the cut, and two notes | — |
+
+The table slots are keyed by `SUBJECT`, `GRADE` and `YEAR`. None holds student
+rows.
+
+### The box plot
+
+```{r}
+#| fig-cap: !expr box_cap
+#| fig-width: 11
+#| fig-height: 4.8
+plot_box_panel(res$box_data, spec)
+```
+
+Boxes run from the 25th to the 75th percentile, with the median across them;
+whiskers reach the minimum and maximum. The figure is drawn from precomputed
+statistics, so it always matches the table. A suppressed group keeps its
+place as a gap; an empty group is left off.
+
+"No annual ELP score" holds current ELs who were untested that year or took
+the alternate ELP form, whose levels are on another scale
+(`r noband$N` students here). They keep their own column so the panel loses
+no one.
+
+### The summary table
+
+```{r}
+ft_check3_summary(res)
+```
+
+`N` counts everyone in the group. `N_PLOTTED` ("n scored") counts the scores
+the statistics rest on. Students on an alternate academic assessment
+(`N_ALTERNATE`) are in `N` but out of the distribution, because their scores
+are on another scale. Suppression keys on `N_PLOTTED`. `PCT_AT_CUT` ("At/above
+cut") is the share at or above the cut. Three columns sit in the slot but
+not in the table:
+
+```{r}
+foc[, c("GROUP", "N", "N_PLOTTED", "N_ALTERNATE", "N_WEIGHTED", "SUPPRESSED")]
+```
+
+The English-only group's `r eo$N` students are a sample standing for
+`r format(eo$N_WEIGHTED, big.mark = ",")` (`N_WEIGHTED`). Use the weighted
+figure when you describe its size. `SUPPRESSED` is `TRUE` below `min_cell`.
+The statistics are then `NA` and the row stays.
+
+### The logistic regression and its crossing
+
+`compute_logistic()` fits whether each current EL reached the cut against
+their ELP scale score. `CROSSING` is the ELP score where the fitted
+probability passes 50%: the language level at which a student is as likely
+as not to clear the content bar.
+
+```{r}
+res$logistic |>
+  dplyr::select(SUBJECT, GRADE, N, N_ABOVE, CROSSING, CROSSING_LO,
+                CROSSING_HI, CROSSING_IN_RANGE) |>
+  head(9)
+```
+
+- `N` students were fitted, and `N_ABOVE` of them reached the cut.
+- `CROSSING` is `-INTERCEPT / SLOPE`. It is `NA` when the slope is not
+  positive, because the curve then never rises through 50%.
+- `CROSSING_LO` and `CROSSING_HI` are a 95% interval from the delta method
+  (a standard approximation for the uncertainty of a ratio of two
+  estimates). It is never trimmed. A wide one means the curve is being read
+  past its data.
+- `CROSSING_IN_RANGE` is `FALSE` when the crossing lies outside the ELP
+  scores observed in the panel. It is then an extrapolation, not a level any
+  student was seen at.
+
+In `r fp`, `r pct(lg_foc$N_ABOVE / lg_foc$N)` of the current ELs fitted
+reached the cut. The crossing `r cross_txt`. A low share reaching the cut
+does not by itself put the crossing out of range; that depends on how the ELP
+scores spread. Across all panels, `r n_out` of `r nrow(lg)` crossings are out
+of range. `THRESHOLD` and `THRESHOLD_KIND` record the bar used. Here it is
+the state's cut.
+
+### Landing statistics
+
+`compute_landing()` reads each panel two ways. `LANDING_BAND` is the first
+ELP band in which at least half the students reach the cut (equivalently, the
+first band whose median clears it), with `LANDING_PCT` its share.
+`LANDING_CROSSING` is the logistic crossing. `EXIT_BAND` is the band the exit
+threshold falls in, read from the exit rule, and `LANDING_AT_OR_ABOVE_EXIT`
+flags a landing there or higher. `TOP_BAND_PCT` is the largest share at or
+above the cut that any band reached, so an empty landing still says how close
+the panel came. The table labels it "Highest band's share", but it is not
+always the top band's own share: in `r n_top_differs` of `r nrow(ld)` panels
+a lower band did better.
+
+```{r}
+#| tbl-cap: "Where each panel lands. A dash means no band reached half. Bold marks a landing at or above the exit band."
+ft_check3_landing(res)
+```
+
+```{r}
+#| fig-cap: "Landings read across grades. Triangles mark landings at or above the band the exit threshold falls in."
+plot_landing(res$landing, spec)
+```
+
+The package writes a summary sentence for this table:
+
+```{r}
+#| output: asis
+cat(check3_landing_note(res))
+```
+
+### The fairness checks
+
+Both ask whether the bar set for ELs is one English-speaking peers clear
+themselves. Each changes one thing.
+
+**(a) A comparable reference group.** `compute_fairness_boxes()` restricts
+the English-only group to economically disadvantaged students, because
+comparing ELs with *all* English-only students mixes up language and poverty.
+Nothing else changes. The filter counts an `FRL` value of `Y`, `YES`, `1`,
+`TRUE` or `T` (any case) as disadvantaged and everything else as not. If your
+delivery codes it differently (for example `F` and `R` for free and reduced),
+recode it first, or the filtered group comes back empty.
+
+```{r}
+ft_check3_summary(res, slot = "fairness_boxes")
+```
+
+In `r fp` the English-only row drops from `r eo$N` to `r eo_f$N` sampled
+students. Its median moves from `r round(eo$Y_MEDIAN)` to
+`r round(eo_f$Y_MEDIAN)` and its share at or above the cut from
+`r pct1(eo$PCT_AT_CUT)` to `r pct1(eo_f$PCT_AT_CUT)`.
+
+**(b) A different bar.** `compute_fairness_logistic()` refits the same model
+with the outcome "reached the English-only group's average score" (weighted
+by `SAMPLE_WEIGHT`) instead of "reached the state's cut".
+
+```{r}
+ft_check3_fairness(res)
+```
+
+"English-only average" is `THRESHOLD` in `$fairness_logistic` and "State cut"
+is `STATE_CUT`. Each crossing column is the ELP score where that curve passes
+50%. "Difference" is the state-cut crossing minus the English-only crossing.
+A positive difference means the state's cut asks for more English than
+reaching the English-only average would. In `r fp` the English-only average
+is `r round(fl_foc$THRESHOLD)` against a cut of `r fl_foc$STATE_CUT`.
+
+```{r}
+#| output: asis
+cat(check3_fairness_note(res))
+```
+
+### Coverage and the notes in `$meta`
+
+`$coverage` is the data-considerations table: counts by year and grade of who
+has which scores.
+
+```{r}
+res$coverage |>
+  dplyr::filter(GRADE == "3", YEAR >= 2019) |>
+  dplyr::select(YEAR, N_CURRENT, N_FORMER, N_NEVER_WEIGHTED,
+                N_ACADEMIC_SCORED)
+```
+
+It also has `N_CURRENT_ELP` (current ELs with an annual ELP score),
+`N_ALTERNATE` (on the alternate ELP form) and `N_NEVER_SAMPLE` (unweighted
+English-only). The 2020 row shows the missing year:
+`r format(cov20$N_CURRENT, big.mark = ",")` current ELs enrolled in grade 3,
+and `N_ACADEMIC_SCORED` is `r cov20$N_ACADEMIC_SCORED`.
+
+`$meta` carries two notes the stage report prints:
+
+```{r}
+#| output: asis
+cat(res$meta$pairing_note)
+```
+
+::: {.callout-warning}
+## Reading the band axis
+
+```{r}
+#| echo: false
+#| output: asis
+cat(res$meta$band_axis_note)
+```
+:::
+
+## How to read it
+
+**Read three things together:** the landing band, the first band whose
+median clears the cut (how much English is enough for this content test, in
+this grade and year); how
+that compares with the exit threshold, where a gap in either direction is the
+finding; and whether the English-only column clears the cut itself.
+
+**Let the reference columns carry the weight.** Former ELs are students the
+exit rule has already acted on. The English-only group is the population the
+content test was built around. A band's position between them says more than
+its position against the cut. In `r fp` the share at or above the cut is
+`r pct(former$PCT_AT_CUT)` for former ELs, `r pct(eo$PCT_AT_CUT)` for
+English-only students and `r pct(top$PCT_AT_CUT)` in the top band.
+
+**An empty landing is an answer.** When no band reaches half, no observed
+level of English is enough on its own to make clearing the content bar more
+likely than not. `TOP_BAND_PCT` says how close the best band came.
+
+**Look for agreement across grades and methods.** When the band and the
+crossing agree, and neighboring grades land in the same place, the evidence
+corroborates itself. Divergence is information too. Read it against Prep 2's
+composition findings and Check 1's attrition and selection findings: a grade
+with many long-term ELs, or one that lost many students, can land elsewhere
+for reasons unrelated to the language threshold. Never settle a divergence by
+picking one grade.
+
+**Check where the landings fall.** In the simulated data,
+`r sum(!is.na(ld$LANDING_BAND))` of `r nrow(ld)` panels land, and
+`r sum(ld$LANDING_AT_OR_ABOVE_EXIT %in% TRUE)` of those land at or above the
+exit band, in cells the exit rule is about to empty. A landing there rests on
+students the rule is removing, so treat it with the band-axis warning in
+mind. In real data, a top band whose median stops rising is a cue to do the
+same. (In `r fp` the top band's median is `r round(top$Y_MEDIAN)` against
+`r round(nexttop$Y_MEDIAN)` in the band below. The simulated scores depend on
+ELP level, not on how close a student is to exiting, so this gap cannot show
+selection either way.)
+
+**A fairness gap is a construct-validity signal, not a threshold
+recommendation.** An ELP test measures English proficiency, and a content cut
+is not automatically a language-access cut. Record the gap for the Decision
+stage. Check 3 does not resolve it.
+
+## Pitfalls
+
+- **Never pool grades.** Do not average landings or crossings across grades
+  or draw several panels on one axis. Use the selectors.
+- **A cross-section is not growth.** A band describes this year's students,
+  not a path anyone took.
+- **Same year is not same time.** The ELP test
+  (`r spec$elp$administration_window` here) comes before the content test, at
+  an interval no one controls.
+- **2020 is missing, not zero.** Never report it as a year with no
+  proficient students.
+- **Keep the join direction.** If you rebuild anything, start from the
+  academic table, or the reference groups disappear.
+- **Report English-only sizes weighted** (`N_WEIGHTED`), or label the sample
+  count as a sample.
+- **Do not lower the suppression minimum** to make cells appear.
+- **Do not read the top bands as the most proficient ELs.** Under the exit
+  rule they are mostly students in their final year of status.
+- **Do not quote an out-of-range crossing as an ELP level.** When
+  `CROSSING_IN_RANGE` is `FALSE`, the number is an extrapolation of the
+  fitted curve; report it as lying outside the observed scores, not as a
+  score students reach.
+- **Use official cuts.** Any cut not from an official table is
+  `[DERIVED — VERIFY]` until checked.
+- **The filtered English-only group is crude.** One lunch flag narrows the
+  comparison; it does not make the groups comparable.
+- **Simulated gaps are by construction.** Every EL and English-only gap here
+  is a parameter of the generator. Former ELs' advantage over English-only
+  students is a fixed shift the generator adds, so nothing here can show that
+  exiting causes academic gains. Present simulated output as a demonstration
+  of the machinery, never as a finding.
+
+## Decide before moving on
+
+1. **Is the landing stable enough to inform a threshold?** Do the band and the
+   crossing agree, and do grades agree? Or does the landing move by grade in
+   ways Prep 2 and Check 1 explain? Hold any landing as provisional.
+2. **Where do the standard and fairness versions land?** Record the gap
+   between the state-cut crossing and the English-only crossing for the
+   Decision stage.
+3. **Should the English-only comparison be narrowed to economically
+   comparable students or taken whole?** If narrowed, which variable in your
+   delivery should do it? The package filters on `FRL` only.
+4. **Which grades can be read at all?** Check that each has enough students
+   after suppression, and that the English-only group is still large enough
+   after the economic filter.
+
+Check 4 keeps the current ELs in this cross-section who have both an ELP
+level and a content score, and takes its panel from `compute_panel()`, so
+the grades you trust here are the ones to read there.
+
+## Additional checks for multi-criterion exit rules
+
+The package names six Types of exit rule: 1 a single overall composite, 2 a
+composite plus a floor, 3 a composite plus another source, 4 compensatory,
+5 tiered or discretionary, and 6 a domain profile. Check 3's additional check
+runs for Types 2, 4, 5 and 6. Check your spec's declaration:
+
+```{r}
+spec_exit_types(spec)
+spec_has_type(spec, c(2L, 4L, 5L, 6L))
+res$contested_zone_models
+```
+
+The simulated spec is Type 1. One criterion cannot disagree with itself, so
+the slot is `NULL`.
+
+Under a multi-criterion rule, the criteria disagree over a range of ELP
+levels, the *contested zone*, which Prep 2 finds. Inside it, Check 3 asks
+whether the second criterion does independent work or restates the first.
+`compute_contested_models()` returns:
+
+- `$zone`: the range of ELP levels where the criteria disagree, read from
+  Prep 2's criteria crosswalk rather than recomputed.
+- `$widen`: how far past that range the check looks, in ELP levels (0.5 by
+  default). `$n` and `$n_cleared` count the current ELs inside.
+- `$boxes`: box statistics by band, split by whether the student cleared the
+  other criteria.
+- `$model$coefficients` and `$model$curves`: one logistic with the ELP score,
+  a cleared-the-other-criteria indicator and their interaction, and the two
+  predicted curves it implies.
+- `$source`: where the per-criterion outcomes came from.
+  `compute_criterion_pass()` derives them from the spec's exit terms, and a
+  package test requires them to reproduce Prep 2's own list of students
+  blocked by exactly one criterion.
+
+`run_check3()` computes this for the focal panel only. For another grade or
+subject, pass a panel: `compute_contested_models(bundle, spec,
+compute_panel(bundle, spec, subject = "Math", grade = "8"))`.
+
+To show the shape, this code adds a hypothetical domain floor to the
+simulated rule, as the package's tests do. **It is an illustration, not any
+state's rule.** For a real state, declare the rule in its spec file.
+
+```{r}
+spec_t2 <- spec
+spec_t2$policy$exit$types <- 2L
+spec_t2$policy$exit$pathways[[1]]$terms <- c(
+  spec_t2$policy$exit$pathways[[1]]$terms,
+  list(list(component = "listening", measure = "level", op = ">=",
+            value = 3.5, exempt_if_absent = FALSE)))
+spec_t2 <- validate_el_spec(spec_t2)
+
+cz <- compute_contested_models(bundle, spec_t2)
+cz$criteria
+cz$boxes[, c("GROUP", "CLEARED", "N", "Y_MEDIAN", "PCT_AT_CUT", "SUPPRESSED")]
+```
+
+```{r}
+#| fig-cap: !expr cz_cap
+ggplot2::ggplot(cz$model$curves,
+                ggplot2::aes(ELP_SCALE, FITTED, linetype = CLEARED_LABEL)) +
+  ggplot2::geom_line() +
+  ggplot2::geom_hline(yintercept = 0.5, colour = "grey60") +
+  ggplot2::labs(x = "ELP scale score", y = "P(reached the cut)",
+                linetype = NULL) +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(legend.position = "bottom")
+```
+
+Curves that separate mean the second criterion sorts students in a way the
+main ELP score does not. Curves that coincide mean it restates the first.
+Here the rule is invented and the scores are simulated, so whether these
+curves separate says nothing about any real floor.
+
+## Render the stage report
+
+The stage report shows the same results with the stage's own interpretive
+text. `render_step()` writes Word and HTML to `reports/` and scans the output
+for student identifiers:
+
+```{r}
+#| eval: false
+render_step("check3")                       # check3_academics.docx and .html
+render_step("check3", formats = "html")     # HTML only
+```
+
+The example report on the simulated data is
+[on the project site](../check3_academics.html).
+
+On its own, `render_step()` builds the stage from the simulated data. For
+your delivery, save your results, render from them, and run the disclosure
+scan against your own bundle. The report renders in a temporary folder, so
+give the spec file as a full path:
+
+```{r}
+#| eval: false
+res <- run_check3(my_bundle, my_spec)
+dir.create("results", showWarnings = FALSE)
+saveRDS(res, "results/check3_results.rds")   # keep out of the shared folder
+
+files <- render_step("check3",
+                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
+                     results_file     = "results/check3_results.rds",
+                     check_disclosure = FALSE)
+check_output_disclosure(files, my_bundle)
+```
+
+[Guide home](index.html) | Previous: [Check 2: On-time vs. prolonged exiters](check2.html) | Next: [Check 4: Decision consistency](check4.html)

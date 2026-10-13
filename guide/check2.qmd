@@ -1,0 +1,622 @@
+---
+title: "Check 2: On-time vs. prolonged exiters"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Check 1: Cohort survival](check1.html) | Next: [Check 3: Academic patterns](check3.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+```{r}
+#| label: run-early
+#| include: false
+#| ref.label: run-check2
+```
+
+```{r}
+#| label: numbers
+#| include: false
+# Values the prose quotes, computed from the results so the text cannot drift
+# from the output. Aggregates only.
+pct <- function(x) paste0(formatC(100 * x, format = "f", digits = 0), "%")
+num <- function(x) format(x, big.mark = ",")
+
+ct  <- res$crosstab
+tb  <- ct[ct$BLOCK == "Total", ]
+tot <- stats::setNames(tb$N, tb$COLUMN)
+late_n      <- tot[["EXIT_EVER"]] - tot[["EXIT_ONTIME"]]
+prolonged_n <- late_n + tot[["NO_EXIT"]]
+
+iep     <- ct[ct$FIELD %in% "IEP", ]
+iep_pct <- stats::setNames(iep$PCT, iep$COLUMN)
+n_supp  <- sum(ct$SUPPRESSED)
+
+comp <- res$trajectories$composition
+ot   <- comp[comp$EXIT_GROUP == "on_time", ]
+ot   <- ot[order(ot$YEAR_IN_STATUS), ]
+ot_first <- ot$PCT_OF_MEASURED[[1]]
+ot_gone  <- min(ot$YEAR_IN_STATUS[ot$PCT_OF_MEASURED %in% 0])
+
+ac       <- res$academic_summary
+y_first  <- min(ac$YEAR_IN_STATUS)
+ac_first <- ac[ac$YEAR_IN_STATUS == y_first, ]
+ac_pct   <- stats::setNames(ac_first$PCT_PROFICIENT, ac_first$EXIT_GROUP)
+grade_first <- ac_first$GRADE_MODAL[!is.na(ac_first$GRADE_MODAL)][[1]]
+
+component  <- spec_headline_label(spec)
+panel_last <- res$meta$panel[[2]]
+
+# The on-time allowance (one value under the simulated spec's flat rule) and
+# the grade a kindergarten entrant is in during that year in status.
+on_time_y     <- max(res$flags$ON_TIME_YEARS)
+on_time_grade <- if (on_time_y == 1L) "kindergarten" else
+  paste("grade", on_time_y - 1L)
+
+# The Initial ELP block's "(not reported)" row: its size, and how many exit.
+nr <- ct[ct$BLOCK == "Initial ELP" & ct$ROW == "(not reported)", ]
+nr_n <- stats::setNames(nr$N, nr$COLUMN)
+```
+
+## What this step answers
+
+Check 2 asks **who exits on time, and who gets stuck?** It takes the entry
+cohort from Check 1 and splits it by exit outcome. It then compares the
+groups on who they are, on how they did on the state content assessment, and
+on the English language proficiency (ELP) levels they posted along the way.
+
+A few terms. An English learner (EL) is a student classified as needing
+English language support. ELP is measured each year by the state's ELP test.
+The simulated spec declares WIDA ACCESS, and its exit rule reads the
+`r component`. A student *exits* when they are reclassified as a former EL. A
+*cohort* is every student who entered EL status in the same grade in the same
+year.
+
+The stage puts a human face on the "stuck" population. Check 1 asks whether
+exit timing is driven by English proficiency, as intended. Check 2 is its
+descriptive companion. Suppose prolonged classification goes with a
+characteristic such as disability status. Then a change to the exit threshold
+alone will not fix it. The change would move some students and leave the ones
+held back by something other than their English where they were.
+
+## Sample
+
+::: {.callout-note appearance="default" icon=false}
+## Sample
+
+`r res$meta$sample`
+:::
+
+In plain terms:
+
+- **One entry cohort, the same one Check 1 analyzes.** Check 2 does not pick
+  its own. `run_check2()` takes the row that Check 1's `compute_cohorts()`
+  marks as selected: the qualifying kindergarten cohort with the longest
+  follow-up. In the simulated data that is `r res$meta$cohort`, with
+  `r num(res$meta$cohort_n)` students followed through `r panel_last`.
+- **Students already in EL status when the data begin are excluded.** Their
+  entry was never observed, so their time in status cannot be measured.
+- **Three groups, defined against the years observed.** *On time* means
+  exiting within `r res$meta$on_time_text` in status. The package dates an
+  exit to the first year a student appears as former and counts that year as
+  a year in status, with the entry year as year 1 (the same convention as
+  Check 1). So a kindergarten entrant first seen as former in
+  `r on_time_grade` exited in year `r on_time_y`, which is on time.
+  *Prolonged* means everyone still in view who did not exit on time: late
+  exiters plus students not observed to exit by the last year of data.
+  *Disappeared* means last seen before the window closed, with no exit
+  observed. Their outcome is unknown, so they belong to neither group.
+- **Censored is not did-not-exit.** A student whose outcome the data do not
+  show is *censored*. That covers the disappeared, and also students still
+  classified when the data end: they might exit next year. This is why
+  "prolonged" always means "prolonged within the years observed".
+
+This is not the state's whole EL population, and it is not the cross-sectional
+sample Checks 3 and 4 use. A kindergarten cohort is also the best case for
+exit: students who enter in later grades are not in it.
+
+## Status in the package
+
+**Built.** Every result slot the stage's instruction file names is filled:
+the exit flags, the crosstab with all five characteristic blocks, the academic
+summary, the trajectories, and the Type-gated blocked-groups check. The stage
+report (`inst/templates/check2_flows.qmd`) renders in Word and HTML.
+
+What that means for you:
+
+- You can run the stage end to end on your own data today.
+- Several design choices are recorded as `[PROPOSED — CONFIRM]` in
+  `internal_docs/NOTES-check2.md`. Examples: characteristics are read in the
+  entry year; a zero count is shown as zero, not suppressed; "comparable
+  point" means the same year in status. Read them before you report.
+- **Not built:** repeating the analysis for later start grades as a view of
+  its own, starting grade as a crosstab row block, a logistic regression that
+  separates correlated characteristics, and a mobility row (the roster has no
+  mobility field). The stage report names the first three as later
+  additions.
+
+## Before you start
+
+Check 2 does not need Check 1's results object. `run_check2()` calls Check
+1's `compute_cohorts()` itself and takes the cohort it selects. It does need
+that cohort to exist: if `compute_cohorts()` selects none, Check 2 has no
+sample. Running Check 1 first is still the sensible order, because Check 1's
+report tells you how the cohort behaves.
+
+| Input | Used for | If it is missing |
+|---|---|---|
+| Roster: `STUDENT_ID`, `YEAR`, `GRADE`, `EL_STATUS` | The cohort, exit dating, the flags | Required. With no qualifying cohort every analysis slot is `NULL` and `res$meta$note` says why. |
+| Roster: `LEFT_TRUNCATED` | Drops students already in status when the panel opens | Students entering in the panel's first year are treated as left-truncated and dropped. |
+| Roster: `HOME_LANGUAGE`, `GENDER`, `FRL` (low-income flag), `IEP` (special education), `SERVICE_MODEL` | The characteristic blocks, read in the entry year | That block (or row) is left out of the crosstab, not shown empty. |
+| Roster: `DISTRICT_ID`, plus `policy$district_size_bands` in the spec | The district size block | Block left out. |
+| Base table: annual-form scores on the ELP component your spec's analyses run on (the simulated spec's `r component`) | The initial ELP band block; the trajectories | Block left out; `$trajectories` is `NULL`. |
+| Academic table | `$academic_summary` | `NULL`. |
+
+From the spec, Check 2 reads `policy$timelines`, `policy$suppression$min_cell`,
+`policy$academic_benchmark$proficient_level`, `policy$district_size_bands`,
+`elp$bands`, `elp$level_scale`, and `policy$exit$types`. Within
+`policy$timelines`, the on-time allowance is `on_time_rule$default_years`. If
+that is absent, the package falls back to `essa_timeline_years`, then to
+`max_years_to_exit`. A `source` of `"provisional"` marks the timeline
+`[DERIVED — VERIFY]` in the Sample statement. If `elp$level_scale$type` is
+`"categorical"`, `$trajectories` is `NULL`, because category labels have no
+mean.
+
+Two spec settings stop the run rather than degrade it:
+
+- `policy$timelines$initial_elp_source` must be `"first_annual"` (or absent).
+  The package derives the initial band only as the first annual score.
+- An `on_time_rule` keyed by initial band (`by_initial_band`) needs a
+  delivered `INITIAL_ELP` column on the roster. See Pitfalls.
+
+## Run it
+
+One call does the stage. Build the spec and the data bundle once, then pass
+both:
+
+```{r}
+#| label: run-check2
+#| eval: false
+spec   <- read_el_spec("00_SIM_EL_Spec")
+bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+                     academic = academic_long_sim, spec = spec)
+res    <- run_check2(bundle, spec)
+```
+
+For your state, point `read_el_spec()` at your spec file and pass your own
+three tables to `as_el_data()` (see [Setup](setup.html)). `run_check2()` takes
+two optional arguments:
+
+- `start_grade`, default `"K"`. The stage's guidance is written for a
+  kindergarten cohort, and later start grades are not built as a view of
+  their own. Other grades run, but read the Disappeared column with care. A
+  student who finishes grade 12 still classified leaves the data and is
+  counted as disappeared. In the simulated data, that is what fills a grade 3
+  cohort's Disappeared column.
+- `subject`, the academic subject for `$academic_summary`. It defaults to the
+  spec's first subject (`r res$meta$academic_subject` here);
+  `run_check2(bundle, spec, subject = "Math")` reports the other.
+
+The cohort comes from Check 1's table. `SELECTED` marks the one both stages
+use:
+
+```{r}
+compute_cohorts(bundle, spec)
+res$meta$cohort
+```
+
+Under the hood, `run_check2()` chains the stage's exported functions. You can
+call them yourself to inspect one piece:
+
+```{r}
+#| eval: false
+co       <- compute_cohorts(bundle, spec)
+cohort   <- co$COHORT_LABEL[co$SELECTED]
+flags    <- compute_exit_flags(bundle, spec, cohort)      # one row per student
+profile  <- compute_cohort_profile(bundle, spec, flags)   # one row per student
+crosstab <- compute_crosstab(flags, spec, profile = profile)
+academic <- compute_academic_summary(bundle, spec, flags)
+traj     <- compute_trajectories(bundle, spec, flags)
+blocked  <- compute_blocked_groups(bundle, spec, flags)   # NULL unless Types 2-6
+```
+
+## What you get
+
+```{r}
+names(res)
+```
+
+### `$flags` and `$profile`: one row per student
+
+These two slots hold student-level rows. **Do not print them, and do not
+share them.** Look at their size and columns, or at counts built from them:
+
+```{r}
+nrow(res$flags)
+names(res$flags)
+colSums(res$flags[c("EXIT_EVER", "EXIT_MAX", "EXIT_ONTIME",
+                    "NO_EXIT", "DISAPPEARED", "PROLONGED")])
+table(res$flags$EXIT_GROUP)
+names(res$profile)
+```
+
+The indicators come from shared helpers (`build_student_spans()` and
+`add_exit_flags()`), so Check 1 and Check 2 date exits the same way:
+
+| Column | Meaning |
+|---|---|
+| `EXIT_EVER` | Exited at any point in the years observed. |
+| `EXIT_MAX` | Exited within the maximum timeline (`policy$timelines$max_years_to_exit`, `r res$meta$max_years` years here). |
+| `EXIT_ONTIME` | Exited within the student's on-time timeline (`ON_TIME_YEARS`, from `on_time_rule`). |
+| `NO_EXIT` | Still classified in the last year of data. |
+| `DISAPPEARED` | Left the data before the window closed, with no exit observed. |
+| `ON_TIME` / `PROLONGED` | The split: `PROLONGED` is late exiters plus `NO_EXIT`. |
+| `EXIT_GROUP` | `on_time`, `prolonged` or `disappeared`: one value per student. |
+
+The first three are nested: every on-time exiter is also a maximum-timeline
+exiter and an ever-exiter. What adds up is `EXIT_EVER` + `NO_EXIT` +
+`DISAPPEARED`, which equals the cohort.
+
+`$profile` holds each student's characteristics **in the entry year**. Two
+are derived, not delivered. `DISTRICT_SIZE_BAND` bands the entry-year
+district by its own current-EL count, using the spec's bands. The package
+never uses a delivered district-size column. `ELP_BAND` is the first annual
+`r component` level on record, banded the same way Check 1 bands it. For most
+students that score is from the entry year; for a student untested that year
+it is the first later one.
+
+### `$crosstab`: the cohort split by exit outcome
+
+This is the stage's main table. The display helper shows it as the stage
+report does:
+
+```{r}
+ft_check2_crosstab(res)
+```
+
+The six columns are All, then the five indicators. The report's headers use
+the familiar spellings (Exit_Ever, Exit_Max, Exit_OnTime, No_Exit,
+Disappeared), and the slot uses the ALL-CAPS codes. The first two rows give
+the count in each column and its share of the cohort. Every block below them
+is **column percentages**: within one column, they show what that group is
+made of.
+
+In the slot, the table is long, one row per block × row × column:
+
+```{r}
+names(res$crosstab)
+res$crosstab |>
+  dplyr::filter(FIELD %in% "IEP") |>
+  dplyr::select(ROW, COLUMN, N, N_BASE, PCT)
+```
+
+- `BLOCK_TYPE` says how a block's rows relate. `"distribution"` rows split
+  the column, so they sum to 100%. A `(not reported)` row keeps that true.
+  `"indicator"` rows (Male, Low SES, Special education) are separate shares
+  that sum to nothing. A student can count in all three or none.
+- `N_BASE` is the denominator behind each `PCT`. For a distribution block it
+  is the column total. For an indicator row it is the students in that column
+  whose value was reported: an unreported value leaves the denominator rather
+  than counting as "no".
+- `FIELD` names the roster column a row came from. `ROW` keeps your
+  delivery's own codes (for example `spa`). Readable labels are added only at
+  display time, from `inst/lookups/Display_Labels.R`.
+- `SUPPRESSED` marks cells under the spec's `min_cell`
+  (`r spec_min_cell(spec)` here). A suppressed cell has `N` and `PCT` set to
+  `NA` and the row is kept. The display shows a dash. A **zero** is shown as
+  zero, because an empty cell is not a small cell.
+- A dash also appears down a column that no student landed in, because there
+  is nobody to describe. That dash is not suppression. The column's count in
+  the first row says it is empty, and `SUPPRESSED` is `FALSE` there.
+- In the Initial ELP block, `(not reported)` holds students with no annual
+  `r component` score on record. In the simulated data these are students
+  who took only the alternate form, and students whose composite was never
+  reported because a domain was waived. Exit_Ever counts
+  `r nr_n[["EXIT_EVER"]]` of these `r num(nr_n[["ALL"]])` students, so the
+  row piles up under No_Exit. The generator lets only annual-form students with a composite
+  score exit (`sim_contract.md` §3.3). That is a modeling limit, not a
+  finding. In your data, check how your exit rule treats these students
+  before you read the row.
+
+```{r}
+res$crosstab |>
+  dplyr::filter(SUPPRESSED) |>
+  dplyr::select(BLOCK, ROW, COLUMN, N, PCT)
+```
+
+In this run `r n_supp` cells are suppressed: small home-language groups in the
+`NO_EXIT` column, and the top initial bands, which are near-empty in a
+kindergarten cohort. The Disappeared column is empty (count 0, dashes below)
+because the simulated data have no student mobility (`sim_contract.md` §3.2).
+Expect a real Disappeared column in your own data.
+
+### `$academic_summary`: achievement at the same year in status
+
+How did on-time and prolonged students do on the content assessment at the
+same point in their own trajectories? The comparison point is the same **year
+in status** (year 1 is the entry year), not the same calendar year.
+
+> `r check2_academic_note(res)`
+
+```{r}
+#| fig-cap: "Share at or above the proficiency cut, by exit group and year in status (simulated data). A group with nobody left to test has no point."
+plot_academic_summary(res$academic_summary, spec)
+```
+
+```{r}
+ft_check2_academic(res)
+```
+
+The slot's columns are `EXIT_GROUP`, `YEAR_IN_STATUS`, `GRADE_MODAL` (the
+most common grade among those students), `N`, `N_SCORED`, `PCT_PROFICIENT`,
+`MEDIAN_SCALE` and `SUPPRESSED`. Proficient means
+`ACHIEVEMENT_LEVEL` at or above `policy$academic_benchmark$proficient_level`.
+The rate is the main measure because it means the same thing in every grade;
+a scale score does not. Students without a level that year are counted in `N`
+but not in `N_SCORED` or the rate.
+
+The on-time group's counts fall to zero in the later years. In the simulated
+data, former ELs leave the panel after their fourth monitoring year
+(`sim_contract.md` §3.3), so there is no one left to test. The same section
+notes that a real delivery keeps former ELs, so expect the on-time group to
+stay in view in your data. The table shows a zero there, not a suppressed
+cell.
+
+### `$trajectories`: ELP levels, split by exit group
+
+```{r}
+#| fig-cap: "Mean reported ELP level by year in status, one line per exit group (simulated data). There is no pooled cohort line, by design."
+plot_trajectories(res$trajectories$levels, spec)
+```
+
+`$trajectories$levels` holds `EXIT_GROUP`, `YEAR_IN_STATUS`, `N`,
+`MEAN_LEVEL`, `MEDIAN_LEVEL` and `SUPPRESSED`. Use
+`plot_trajectories(..., measure = "median")` for medians. The on-time line
+stops when its students exit, because former ELs take no ELP test.
+
+`$trajectories$composition` shows who is still being tested each year. Its
+`PCT_OF_MEASURED` column is each group's share of the students with a score:
+
+```{r}
+ft_check2_composition(res)
+```
+
+Here the on-time group is `r pct(ot_first)` of the students tested in year 1
+and none of them by year `r ot_gone`. That is why the package never draws one
+cohort-average line. The plotting function refuses a frame without the group
+column:
+
+```{r}
+no_groups <- res$trajectories$levels[c("YEAR_IN_STATUS", "MEAN_LEVEL")]
+tryCatch(plot_trajectories(no_groups), error = conditionMessage)
+```
+
+### `$meta`
+
+`$meta` carries what the report's captions need. The Sample statement, the
+cohort, its size and the on-time text are all here:
+
+```{r}
+str(res$meta[c("cohort", "cohort_n", "on_time_text", "on_time_provisional",
+               "academic_subject", "type_gate_applies")])
+```
+
+`on_time_provisional` is `TRUE` when `policy$timelines$source` is
+`"provisional"`. The Sample statement then flags the timeline
+`[DERIVED — VERIFY]`. `band_clock_note` is `NA` unless the on-time rule
+varies by initial band (see Pitfalls). `blocked_note` explains an empty
+Additional check.
+
+## How to read it
+
+**Start with the first two rows.** They give the balance of the cohort. Here
+`r num(tot[["EXIT_ONTIME"]])` of `r num(tot[["ALL"]])` students exited on time
+(`r pct(tot[["EXIT_ONTIME"]] / tot[["ALL"]])`), and `r num(prolonged_n)` are
+prolonged: `r num(late_n)` late exiters plus `r num(tot[["NO_EXIT"]])` not
+observed to exit by `r panel_last`. Check the identity: `EXIT_EVER` + `NO_EXIT` + `DISAPPEARED`
+= All. These numbers illustrate the machinery, nothing more.
+
+**Then read each block down and across.** Read down a column to see what a
+group is made of. Read across a row to see how groups differ. The crosstab has
+no Prolonged column. For the sharpest contrast, compare `EXIT_ONTIME` with
+`NO_EXIT`. A characteristic over-represented among prolonged students is a
+candidate explanation for why they are still classified. One spread evenly
+across the groups is not. For example, special education students are
+`r pct(iep_pct[["EXIT_ONTIME"]])` of on-time exiters and
+`r pct(iep_pct[["NO_EXIT"]])` of the students not observed to exit in this
+simulated cohort. In real data, a gap like that would raise a question for the
+recommendation: a threshold change would not reach those students. Here, the
+generator built it in.
+
+**Ask whether the on-time group is already academically stronger.** In year
+`r y_first` (mostly grade `r grade_first`), `r pct(ac_pct[["on_time"]])` of
+on-time exiters and `r pct(ac_pct[["prolonged"]])` of prolonged students are
+proficient in `r res$meta$academic_subject` in the simulated data. Some gap is
+built into the definitions: on-time exiters cleared an English bar, and the
+content test is in English. The useful question is whether the gap is larger
+than that explains, and whether it persists at similar ELP levels. The
+trajectory figure lets you check the ELP side.
+
+**Read each trajectory line on its own.** A line shows how the students in
+that group scored while they were still classified. A pooled average falls
+for two reasons it cannot separate: students growing less, and the fastest
+growers leaving. The composition table shows the second. The same effect
+works inside the prolonged line: its late exiters stop testing once they
+exit, so its later years increasingly describe students who never exited.
+
+**This is not automatically about the cut score.** Findings here concern how
+policies, programs, population and exit criteria interact. The right response
+may be a program or support change, not a threshold change.
+
+## Pitfalls
+
+- **Never fold Disappeared students into either group.** Censored is not
+  did-not-exit. They have their own column and their own `EXIT_GROUP` value.
+  The simulated cohort has none; yours probably will.
+- **Do not average time to exit.** `$flags` carries `EXIT_YEAR_IN_STATUS`,
+  and its mean is tempting. Censoring biases it: the students still classified
+  have no exit year to average. Use Check 1's median years to exit and its
+  share exited within the timeline instead.
+- **The window is finite.** `NO_EXIT` means "not observed exiting by
+  `r panel_last`", not "will never exit". `EXIT_MAX` and `EXIT_ONTIME` count
+  against the years available. Say so in every caption you write.
+- **Nested columns do not add.** Only Ever + No_Exit + Disappeared sums to
+  All.
+- **Mind the denominators.** Distribution blocks use the column total;
+  indicator rows use students with a reported value. `N_BASE` tells you which.
+- **Suppressed cells stay `NA`.** Do not back them out by subtraction. Never
+  lower `min_cell` or pool cohorts or grades to make cells appear. If you
+  derive a new share (for example a Prolonged column from `N`), run
+  `apply_suppression()` on it before you report it.
+- **Description, not cause.** A crosstab shows one characteristic at a time.
+  Two that travel together, such as district size and program model, cannot
+  be told apart here. The model that would separate them is not built.
+- **Never plot a cohort-average ELP line over time without splitting by exit
+  group.** The fastest growers leave, so the average of whoever remains drifts
+  down even if no student slows.
+- **One kindergarten cohort is the best case.** Do not read it as the state's
+  overall exit picture. Later entrants, including newcomers in upper grades,
+  are not in it.
+- **An on-time rule keyed by initial band changes the Initial ELP block.** If
+  `on_time_rule$by_initial_band` is set, each band has its own deadline, and
+  `EXIT_ONTIME` down that block restates the policy rather than describing
+  students. `res$meta$band_clock_note` then carries the deadlines, and the
+  report shows it as a warning. Read `EXIT_MAX`, which uses one window for
+  everyone, down that block instead. Such a rule also reads the roster's
+  delivered `INITIAL_ELP`, while the crosstab bands the first annual score.
+  The two can disagree for a student, which the build notes record as an open
+  issue.
+- **Watch for circularity under a Type 3 rule.** If the exit rule itself
+  includes an academic criterion, the groups are partly defined by the score
+  the academic summary compares. The package does not flag this on its own
+  yet.
+- **Simulated gaps are parameters.** Every group difference in the simulated
+  data was set by the generator. None is a finding.
+- **The results object is not shareable.** `$flags` and `$profile` are one
+  row per student. Keep a saved `res` out of any folder you send to others.
+
+## Decide before moving on
+
+- **Do specific subgroups need separate treatment in Checks 3 and 4?** A
+  group heavily over-represented among prolonged students may need its own
+  analysis there, rather than being averaged into the whole.
+- **What equity considerations must the final recommendation address
+  explicitly?** In particular, note any characteristic that separates the
+  prolonged group but that a threshold change would leave untouched.
+
+Record both answers. Checks 3 and 4 and the final recommendation draw on
+them.
+
+## Additional checks for multi-criterion exit rules
+
+Some states exit students on more than one criterion: a composite plus a
+domain floor, or a profile across domains. The package names six exit-rule
+types (Types 2–6 have more than one criterion). For these, Check 2 adds the
+students **blocked by exactly one criterion** as extra comparison rows. If
+such a group looks systematically different from the cohort, that criterion is
+screening on something other than what the main score screens on.
+
+The spec declares the type. Check it like this:
+
+```{r}
+spec_exit_types(spec)
+el_exit_typology()[as.character(spec_exit_types(spec))]
+spec_has_type(spec, 2:6)
+is.null(res$blocked_groups)
+```
+
+The simulated spec is Type 1, a single overall composite, so
+`$blocked_groups` is `NULL`. `res$meta$blocked_note` says why:
+
+> `r res$meta$blocked_note`
+
+For a Type 2–6 spec, the slot holds `BLOCKED_BY`, `COLUMN`, `N`, `N_BASE`,
+`PCT` and `SUPPRESSED`. `PCT` is the group's share of each exit column. The
+groups come from Prep 2's `compute_criteria_crosswalk()`, so the two stages
+agree on who is blocked by what. A student blocked by different criteria in
+different years is counted under the one that blocked them most often. Show
+the table with:
+
+```{r}
+#| eval: false
+ft_check2_blocked_groups(res)
+```
+
+A multi-criterion spec can still come back `NULL` if no cohort student is
+blocked by exactly one criterion. `res$meta$type_gate_applies` tells the two
+cases apart, and `blocked_note` words each one.
+
+## Render the stage report
+
+The stage report carries the authored walkthrough, every table and figure
+above, and the Decide box. Render it with:
+
+```{r}
+#| eval: false
+render_step("check2")                    # reports/check2_flows.docx and .html
+render_step("check2", formats = "html")  # HTML only
+```
+
+`render_step()` scans the output for student IDs and stops if it finds any.
+The example report on the simulated data is
+[on the project site](../check2_flows.html).
+
+The report builds its own results from the simulated data. For your state,
+compute the results yourself, then render from the saved file. Pass full
+paths: the report renders in a temporary folder.
+
+```{r}
+#| eval: false
+res <- run_check2(bundle, spec)                    # your bundle and spec
+dir.create("results", showWarnings = FALSE)        # not a shared folder
+saveRDS(res, "results/check2_results.rds")
+files <- render_step(
+  "check2",
+  spec_file    = normalizePath("specs/XX_EL_Spec.R", winslash = "/"),
+  results_file = "results/check2_results.rds",
+  check_disclosure = FALSE
+)
+check_output_disclosure(files, bundle)             # scan against your IDs
+```
+
+Turn the automatic scan off with `check_disclosure = FALSE`: it can only build
+the simulated bundle, so it would check your report against the wrong IDs.
+`check_output_disclosure()` then checks the files against every `STUDENT_ID`
+in your bundle, and stops if any appears.
+
+Run `render_step()` from a project folder that has no `R/` subfolder. The
+report treats a working folder with an `R/` subfolder as the package's source
+and tries to load it with `devtools::load_all()`.
+
+[Guide home](index.html) | Previous: [Check 1: Cohort survival](check1.html) | Next: [Check 3: Academic patterns](check3.html)

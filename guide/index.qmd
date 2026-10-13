@@ -1,0 +1,516 @@
+---
+title: "Conducting the analysis"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+Next: [Setup: spec and data](setup.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+## What this guide is for
+
+`stateELP` is an R package for checking whether a state's English learner
+(EL) exit criteria work as intended. An EL is a student identified as needing
+language support to access instruction in English. **Exit**, also called
+reclassification, is the point at which a student leaves EL status. In most
+states the exit rule rests on the state's English language proficiency (ELP)
+assessment, such as WIDA ACCESS.
+
+The package does not prescribe a cut score. It describes how the current
+rule is functioning:
+
+- how long students stay in EL status;
+- who exits on time and who gets stuck;
+- where academic proficiency sits relative to ELP;
+- how well an ELP-based exit decision agrees with proficiency on the content
+  test.
+
+The aim is a defensible *range* of thresholds and an evidence trail behind
+it, not a single "true" number.
+
+This guide walks through the process one stage at a time, for the analyst
+who runs the package on a state's data. A policy lead can read along: every
+stage page says what the stage answers and what to decide before moving on.
+Start with this overview.
+
+## The eight stages
+
+The process, *Evaluating and Setting English Learner Exit Thresholds*, has
+eight stages in three groups:
+
+- three **Prep steps** that establish context;
+- four **Data Checks** that analyze the data;
+- one **Decision** stage that brings the evidence together.
+
+Before the first stage you set up a spec and a data bundle. The
+[Setup](setup.html) page covers that.
+
+| Stage | Question it answers | Sample |
+|---|---|---|
+| **Prep 1**: Policy documentation | How exactly does a student exit EL status, who decides at each point, and which of the six exit-rule Types is it? | None: policy documents only |
+| **Prep 2**: Population analysis | Where do ELs concentrate, how do they enter, and which cohorts and subgroups are large enough to analyze? | The full statewide EL population, across years |
+| **Prep 3**: Program implementation | What changes for a student the moment they exit, and which error is costlier: exiting too early or keeping a student too long? | None: program and policy structures |
+| **Check 1**: Cohort survival | How long do students who enter EL status in the same grade and year take to exit, and does academic performance shape who exits beyond what ELP explains? | One entry cohort (students who entered EL status in the same grade and year), followed forward |
+| **Check 2**: On-time vs. prolonged exiters | Who exits on time, who does not, and what characterizes the students who stay? | The same cohort as Check 1 |
+| **Check 3**: Academic patterns | At what ELP level does academic performance reach the proficiency cut, and do English-only peers clear the same bar? | A cross-section: ELs in one grade and year who took the content test, with former-EL and never-EL comparison groups |
+| **Check 4**: Decision consistency | Which cut on the ELP level best separates students who are proficient on the content test from those who are not, and where does the current rule sit? | Check 3's cross-section, narrowed to current ELs with both a same-year ELP level and a content score |
+| **Decision**: Synthesis and next steps | Keep, adjust or restructure the rule, and how will you monitor it? | None: reads the earlier stages |
+
+### Why the order matters
+
+The code does not enforce an order. Every built `run_<stage>()` function
+takes the data bundle and the spec, never another stage's results, so you
+could run Check 3 before Prep 2. The *reading* depends on order, because
+each stage feeds the ones after it.
+
+- **Prep 1 fixes the rule and its Type.** The spec declares which of six
+  exit-rule Types the state uses. That declaration decides which Additional
+  checks run in later stages. A mistake here carries into every document.
+- **Prep 2 is the backdrop for every Data Check.** It shows where ELs
+  concentrate, whether there is a clean kindergarten cohort for Check 1, and
+  where pooling all ELs together would hide more than it shows.
+- **Prep 3's error-tolerance answer feeds Check 4 and the Decision.** Check
+  4's optimal-cut statistic is Youden's J: sensitivity plus specificity,
+  minus one. It weights two error *rates* equally: the share of
+  content-proficient students a cut holds back, and the share of
+  not-proficient students it lets exit. If stakeholders weigh the two errors
+  differently, that is a documented reason to land above or below the J
+  optimum. The Check 4 page explains why the direction is not always
+  obvious.
+- **Check 1 chooses the cohort that Check 2 uses.** Its "Decide" box also
+  asks how much weight later grade-level findings can carry: how much of the
+  entry cohort is still classified at each grade, and whether academic
+  performance, not just ELP, shapes who exits. The package's index for
+  combining the two is experimental, and nothing uses it.
+- **Checks 3 and 4 draw on the same cross-section.** When they converge,
+  that is the strongest evidence the process produces. Their statistics aim
+  at different points, though, so a gap between them is not automatically a
+  disagreement. The Check 4 page says which comparisons are informative.
+- **The Decision stage runs no new analysis.** It weighs what the others
+  found.
+
+## A first look: the spec and the data
+
+Two objects drive every stage. The first is the **spec**, an R list that
+holds every state-specific value: the ELP instrument and its components, the
+exit rule and its Type, timelines, the suppression rule, academic cuts, and
+the map from your file's column names to the package's. No analysis function
+reads a state value from anywhere else.
+
+```{r}
+el_spec_files()
+spec <- read_el_spec("00_SIM_EL_Spec")
+spec
+```
+
+The simulated spec describes a Type `r spec_exit_types(spec)` rule: a
+single overall composite score, the `r spec_headline_label(spec)`
+(`overall` in the printout). Its maximum timeline for
+exiting is `r spec_max_years(spec)` years. A shorter
+`r spec_essa_years(spec)`-year timeline defines "on time"; the package calls
+it the ESSA timeline, after the federal Every Student Succeeds Act. The
+smallest cell it reports is `r spec_min_cell(spec)` students. The last line,
+headed `[DERIVED - VERIFY]`, lists the policy blocks whose `source` is
+`"provisional"`. The package marks such values **`[DERIVED — VERIFY]`**, and
+they must be checked against official documents before anything is reported
+publicly. In the simulated spec every policy value is provisional.
+
+The six Types are:
+
+```{r}
+el_exit_typology()
+```
+
+A state can use more than one. For a real state you start from
+`00_TEMPLATE_EL_Spec`; the [Setup](setup.html) page walks through it.
+
+The second object is the **data bundle**. The package works on three long
+tables, and every column name is in ALL CAPS:
+
+- the **base table**: one row per student, year and ELP component (domain,
+  composite or overall score);
+- the **roster**: one row per student and year, with `GRADE`, `EL_STATUS`
+  (`current`, `former` or `never`) and demographic and program fields. It is
+  the only table students are counted from;
+- the **academic table**: one row per student, year and subject.
+
+`as_el_data()` validates the three tables and bundles them with the spec.
+
+```{r}
+bundle <- as_el_data(el_long_sim,
+                     roster   = el_roster_sim,
+                     academic = academic_long_sim,
+                     spec     = spec)
+bundle
+```
+
+```{r}
+#| include: false
+n_never <- length(unique(el_roster(bundle)$STUDENT_ID[
+  el_roster(bundle)$EL_STATUS %in% "never"]))
+```
+
+The simulated roster follows
+`r format(bundle$meta$n_students, big.mark = ",")` students from
+`r bundle$meta$years[1]` to `r bundle$meta$years[2]`. That count includes
+`r format(n_never, big.mark = ",")` never-EL students, a sample drawn to
+stand for total enrollment. Build the bundle once per session and pass it to
+every stage.
+
+## The sample changes from stage to stage
+
+Each stage analyzes a different set of students. **Misreading the sample is
+the most common way to misread a stage**: a number that is true of one
+sample gets read as if it described another. So every stage document opens
+with a **Sample** statement, and every results object carries the same text
+in `$meta$sample`. Read it before anything else.
+
+There are four kinds of sample.
+
+1. **No student data** (Prep 1, Prep 3, Decision). These stages read the
+   spec or earlier results.
+2. **The full statewide EL population** (Prep 2). Every current EL, and
+   former ELs where the data have them, across all years delivered (five or
+   more is the target). Never-EL students enter only as the enrollment
+   denominator.
+3. **One entry cohort** (Checks 1 and 2). A cohort is the students who
+   entered EL status in the same grade in the same year, followed forward.
+   The default is a kindergarten-entry cohort.
+4. **A cross-section by grade and year** (Checks 3 and 4). Check 3 takes
+   every student in one grade and year who took the content test. Current
+   ELs with a same-year ELP score sit in their ELP band, a range of levels
+   such as `r spec_bands(spec)$labels[4]`. Current ELs without one get a
+   column of their own, and former ELs and English-only students are
+   reference columns. Check 4 keeps only current ELs with both a same-year
+   ELP level and a content score. Each grade is its own panel. Grades are
+   never pooled.
+
+Here is the same simulated data seen through three of them.
+
+### The statewide population (Prep 2)
+
+```{r}
+counts <- compute_counts_by_year(bundle, spec)
+counts[, c("YEAR", "N_CURRENT", "N_FORMER", "N_NEVER_WEIGHTED")]
+```
+
+```{r}
+#| include: false
+last_year  <- max(counts$YEAR)
+n_cur_last <- counts$N_CURRENT[counts$YEAR == last_year]
+```
+
+`N_CURRENT` counts current ELs in each year and `N_FORMER` former ELs still
+in the data. `N_NEVER_WEIGHTED` counts never-ELs weighted by `SAMPLE_WEIGHT`,
+because the simulated never-EL rows are a sample. In `r last_year` the
+simulated state has `r format(n_cur_last, big.mark = ",")` current ELs.
+Those students are at every point in their time in status, from first-year
+entrants to long-term ELs.
+
+### One entry cohort (Checks 1 and 2)
+
+```{r}
+cohorts <- compute_cohorts(bundle, spec)
+cohorts
+```
+
+```{r}
+#| include: false
+sel <- cohorts[cohorts$SELECTED, ]
+```
+
+Each row is a candidate kindergarten cohort. A candidate needs data for its
+entry year and the full maximum timeline after it. `FOLLOWUP_YEARS` counts
+the years the data observe the cohort, from its entry year through the last
+year of data. Check 1 selects one cohort (`SELECTED`): the candidate with
+the longest follow-up that clears the minimum cell size.
+Here that is `r sel$COHORT_LABEL`, with
+`r format(sel$N_ENTRY, big.mark = ",")` students, against
+`r format(n_cur_last, big.mark = ",")` current ELs statewide in a single
+year. Check 2 calls the same function, so the two stages describe the same
+students.
+
+Two things about this sample shape everything Checks 1 and 2 say.
+
+- **A kindergarten cohort is a best case.** Its results do not carry over to
+  students who enter later, such as newcomers arriving in high school.
+- **Some students are censored.** A student is censored when the data stop
+  following them before they exit: they leave the data, or the data end
+  while they are still an EL. Their outcome after that point is unknown.
+  Censored is not the same as did-not-exit.
+
+### A cross-section by grade (Checks 3 and 4)
+
+Check 4 is quick to run, so it serves to show the third kind of sample:
+
+```{r}
+res4 <- run_check4(bundle, spec)
+```
+
+::: {.callout-note appearance="simple"}
+## Check 4's Sample statement
+
+`r res4$meta$sample`
+:::
+
+Check 3 draws on the same grade-and-year cross-section, but wider: every
+student who took the content test, with former ELs and an English-only
+(never-EL) group as reference columns. Neither stage
+follows anyone over time. Read their results as a snapshot of who sits at
+each ELP level now, not as growth.
+
+## The working pattern for every stage
+
+Every built stage works the same way.
+
+1. **Run it.** `run_<stage>(bundle, spec)` returns a named list of results,
+   called slots, plus `$meta`. Most slots are plain data frames; fitted
+   models are small lists of coefficients and counts.
+2. **Read `$meta$sample`.**
+3. **Look at the slots** through the package's display helpers:
+   `ft_<stage>_*()` functions build flextables and `plot_*()` functions build
+   ggplots. They are the same tables and figures the stage document shows.
+4. **Render the stage document** with `render_step()`.
+
+When a slot cannot be computed, it is `NULL`, and the stage document says
+why; often a note in `$meta` says so too. The input may be missing (no
+academic table), the exit rule may be the wrong Type for an Additional
+check, or the piece may not be built yet. A missing input does not crash
+the stage, and nothing invents a denominator. Check 4's results show the
+last two reasons:
+
+```{r}
+vapply(res4, is.null, logical(1))
+res4$meta$pending
+```
+
+`$candidate_region` is a later pass, so `$meta$pending` lists it.
+`$dependence` has no package support yet. `$policy_as_whole` is an
+Additional check that does not apply to a Type 1 rule, and
+`$meta$policy_as_whole_note` says so.
+
+To render a stage document on the simulated data:
+
+```{r}
+#| eval: false
+render_step("check1")                    # Word and HTML, written to reports/
+render_step("check3", formats = "html")
+```
+
+In its default mode a stage document builds the simulated bundle itself.
+Passing your own `spec_file` does not change that: without a
+`results_file`, the document still runs on the simulated data. To render one
+from your own data, run the stage yourself, save the result, and pass the
+file. Here `my_bundle` and `my_spec` are your own bundle and spec, built as
+on the [Setup](setup.html#rendering-your-own-data) page:
+
+```{r}
+#| eval: false
+dir.create("results", showWarnings = FALSE)
+res <- run_check1(my_bundle, my_spec)
+saveRDS(res, "results/check1_results.rds")
+
+files <- render_step("check1",
+                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
+                     results_file     = "results/check1_results.rds",
+                     check_disclosure = FALSE)
+check_output_disclosure(files, my_bundle)
+```
+
+`render_step()` scans every file it writes for student IDs and stops if any
+appear. On the simulated data it does this by itself. It cannot rebuild your
+bundle, so on your own data you turn the automatic scan off and run
+`check_output_disclosure()` against your bundle instead. Keep saved results
+out of any folder you share: some slots hold one row per student (Check 2's
+`$flags` and `$profile`, for example).
+
+Two practical details. Give `spec_file` as a full path, as above: the
+document renders in a temporary folder, where a relative path does not
+resolve. And call `render_step()` from a working directory that has no `R/`
+subfolder. If it has one, the document tries to load that folder as the
+package source (that is how the package's own developers work), and the
+render fails.
+
+## What you need before you start
+
+### People
+
+- Someone who knows the exit policy as written and as practiced: every
+  pathway, who decides at each point, and any committee or discretionary
+  route (Prep 1).
+- Program staff who can say what EL status controls on the ground: program
+  models, access to grade-level and advanced coursework, and educator
+  credentialing (Prep 3).
+- The team and stakeholders whose support the result needs. They answer the
+  error-tolerance question: which is worse, exiting a student too early or
+  keeping one too long? That is a values judgment the data cannot make
+  (Prep 3).
+- A policy lead who will make the call at the Decision stage.
+
+### Policy documents
+
+- The exit rule: every pathway, its criteria, and who set it and when.
+- Timelines: the maximum years to exit, the ESSA-expected timeline that
+  defines "on time", the long-term EL definition, and annual growth targets
+  with how they were set.
+- Academic proficiency cuts by subject and grade.
+- The state's minimum cell size for public reporting.
+
+Each value goes into the spec with its `source`. Anything you derive rather
+than take from an official document stays `"provisional"` and displays as
+`[DERIVED — VERIFY]`.
+
+### Data
+
+Student IDs must be stable across years. The analysis follows individual
+students over time.
+
+- **Roster**: at minimum `STUDENT_ID`, `YEAR`, `GRADE` and `EL_STATUS`.
+  Demographic and program fields (home language, service model, disability,
+  sex, economic status, district) unlock the disaggregated views. Never-EL
+  rows supply the enrollment denominator and the comparison groups; if they
+  are a sample, include `SAMPLE_WEIGHT`.
+- **Base ELP table**: at least the component your exit rule uses, with
+  `SCALE_SCORE` and `ACHIEVEMENT_LEVEL`. If your bands or your rule use a
+  decimal level such as 4.5, deliver the level with its decimal.
+- **Academic table**, with `GRADE`: needed for Check 1's Model 2, Check 2's
+  academic summary, Check 3 and Check 4.
+- **Enough years.** Prep 2 wants five or more. It still runs on fewer: it
+  sets `$meta$short_panel` to `TRUE`, and its report flags the trends as
+  provisional. A Check 1 cohort needs its entry year plus the full maximum
+  timeline after it: `r spec_max_years(spec) + 1` school years for the
+  simulated spec's `r spec_max_years(spec)`-year timeline. Students already
+  in EL status when your data begin are excluded from cohorts, because
+  nobody saw them enter. Without a `LEFT_TRUNCATED` flag on the roster,
+  every student first seen as a current EL in your first year of data is
+  treated that way.
+
+A roster plus base-table rows for the exit-rule component is enough to run
+Check 1's Model 1 and Check 2. The scale score and the academic table unlock
+the rest.
+
+### Software
+
+- R 4.3.0 or later. The package is developed and tested on R 4.4.2.
+- The package itself: `remotes::install_github("ndadey/stateELP")`.
+- The [Quarto CLI](https://quarto.org/docs/get-started/) and the `quarto` R
+  package, to render stage documents.
+
+## What the package builds today
+
+The package is in development (version `r res4$meta$package_version`).
+Five stages have code and a stage document: four are complete, and Check 4
+is a first pass. Three are not built yet, and you do them by hand, guided by
+their pages here.
+
+| Stage | Status | What that means for you |
+|---|---|---|
+| Prep 1 | Not yet built | No `run_prep1()` or document. Write the policy into your spec and review it with `print()`, `validate_el_spec()` and the `spec_*()` accessors. |
+| Prep 2 | Built | `run_prep2()` and its document. |
+| Prep 3 | Not yet built | No `run_prep3()` or document. Record the program inventory in `policy$program` and the error-tolerance answer in `policy$error_tolerance$costlier_error` (`"premature_exit"`, `"prolonged_retention"`, `"equal"` or `"unknown"`). Check 4 reads the answer from the spec. |
+| Check 1 | Built | `run_check1()` and its document, for one kindergarten-entry cohort. The function has a `start_grade` argument, but later start grades have not been worked through or tested. |
+| Check 2 | Built | `run_check2()` and its document, on Check 1's cohort. |
+| Check 3 | Built | `run_check3()` and its document, for every tested grade and subject in the most recent year each has data. |
+| Check 4 | First pass | `run_check4()` and its document, for one grade and subject. The candidate region across grades is a later pass. The dependence analysis is not supported yet. |
+| Decision | Not yet built | No `run_decision()` or document. Bring the stage findings together by hand, using each stage's "Decide before moving on" box. |
+
+Function names and result slots may still change while the package is in
+development.
+
+### Additional checks for multi-criterion rules
+
+Several stages carry **Additional checks** that apply only when the exit
+rule combines more than one criterion (Types 2 to 6, depending on the
+check). Examples are a crosswalk of which criteria students pass and fail,
+and the ELP range where criteria disagree. Their slots are `NULL` unless the
+spec declares a relevant Type. Check 4's Additional check is not built yet,
+so its slot stays `NULL` even then. The simulated spec is Type
+`r spec_exit_types(spec)`, so all of them are `NULL` throughout this guide.
+
+```{r}
+spec_exit_types(spec)
+spec_has_type(spec, 2:6)
+```
+
+## Rules that hold in every stage
+
+The package builds these in, most of them as tests. Carry them into
+anything you write from its output.
+
+- **Resist the urge to average.** A statewide or "average district" number
+  hides the profiles that matter. Look at distributions and subgroups.
+- **No mean time in status.** Censoring makes it misleading. The package
+  reports median years to exit and the share exited within the timeline
+  instead.
+- **Censored is not did-not-exit.** A student who leaves the data, or is
+  still an EL when the data end, has an unknown outcome from that point on.
+- **A kindergarten cohort is a best case.** Its exit timing does not carry
+  over to students who enter later.
+- **Grades are never pooled** in Checks 3 and 4.
+- **Check 1's models of exit timing never use the current year's ELP score
+  as a predictor.** The exit decision is made on that score, so using it
+  would build the answer into the model. Predictors are fixed at entry or
+  taken from an earlier year.
+- **Small cells are suppressed to `NA`, not dropped.** The threshold is
+  `policy$suppression$min_cell`: counts from 1 to `min_cell - 1` are
+  blanked. A true zero is not a small cell, so it is shown as 0. Never lower
+  the threshold to make a cell appear.
+- **Never-EL counts are weighted** wherever they enter a statewide share.
+- **No student rows in a document.** Results objects may hold student-level
+  rows on your machine. Rendered files must not.
+- **Simulated numbers are not findings.** Every gap, ratio and rate in the
+  simulated data comes from how the data were generated.
+
+## How to use this guide
+
+Read the pages in order the first time. Every stage page has the same
+outline, from "What this step answers" through "Decide before moving on" to
+"Render the stage report". Example reports rendered on the simulated data
+are on the [project site](https://ndadey.github.io/stateELP/).
+
+| Page | What it covers |
+|---|---|
+| [Conducting the analysis](index.html) | This overview: the stages, their samples, what you need, and what is built. |
+| [Setup: spec and data](setup.html) | Writing your state's spec from the template, building and validating the data bundle, and checking coverage. |
+| [Prep 1: Policy documentation](prep1.html) | Recording the exit rule, who decides, and its Type, and confirming them. Done by hand for now. |
+| [Prep 2: Population analysis](prep2.html) | Who your ELs are: counts, grades, districts, entry patterns, initial ELP and profiles. |
+| [Prep 3: Program implementation](prep3.html) | What exit changes for a student, and which error your stakeholders consider costlier. Done by hand for now. |
+| [Check 1: Cohort survival](check1.html) | The life table, exit curves, median years to exit, and the two models of exit timing for one entry cohort. |
+| [Check 2: On-time vs. prolonged exiters](check2.html) | Who exits on time and who stays, by student characteristics, with academic results and ELP trajectories by group. |
+| [Check 3: Academic patterns](check3.html) | Content scores by ELP band, the ELP score where proficiency becomes likely, and the fairness checks against English-only peers. |
+| [Check 4: Decision consistency](check4.html) | Agreement and Youden's J across candidate ELP cuts, and where the current rule sits. |
+| [Decision: Synthesis and next steps](decision.html) | Weighing the evidence into a defensible range, and planning the monitoring. Done by hand for now. |
+
+Next: [Setup: spec and data](setup.html)

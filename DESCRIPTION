@@ -24,6 +24,8 @@ Imports:
     utils
 Suggests:
     devtools,
+    officer,
+    openxlsx,
     quarto,
     roxygen2,
     testthat (>= 3.0.0),

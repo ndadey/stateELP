@@ -1,0 +1,970 @@
+---
+title: "Setup: spec and data"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Conducting the analysis](index.html) | Next: [Prep 1: Policy documentation](prep1.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+## What setup covers
+
+Every stage of the analysis needs the same two inputs. Setup builds them
+once, before Prep 1.
+
+1. **A spec.** One R object, built with `el_spec()`, that holds every
+   state-specific value the package reads: the English language proficiency
+   (ELP) assessment, the exit rule for English learners (ELs), timelines,
+   academic proficiency cuts, the suppression minimum (the smallest count a
+   report will show), and how your data files name their columns. No
+   analysis function reads a state value from anywhere else.
+2. **A data bundle.** Your data, checked and reshaped by `as_el_data()` into
+   three long tables, with the spec carried along. Every `run_<stage>()`
+   function takes this bundle, never raw tables.
+
+The work runs in this order:
+
+1. Install the package.
+2. Write your state's spec, starting from the shipped template.
+3. Shape your data into the three tables, or one of the accepted delivery
+   forms.
+4. Build the bundle and read its coverage table.
+5. Confirm the ELP score the exit rule uses resolves as expected.
+6. Learn where rendered reports and saved results go, and how the disclosure
+   check protects the reports.
+
+**Status.** Everything on this page is built and tested, with three gaps.
+The package does not ingest raw state files: you shape the tables yourself.
+It does not accept one wide student-year table with a column per ELP score.
+And it accepts, but does not resolve, an academic block that points to
+another spec by `spec_id` (see [The academic block](#the-academic-block)).
+
+## Install
+
+```{r}
+#| eval: false
+# install.packages("remotes")
+remotes::install_github("ndadey/stateELP")
+
+# Rendering the stage reports also needs the Quarto CLI
+# (https://quarto.org) and the quarto R package:
+install.packages("quarto")
+```
+
+The package requires R 4.3.0 or later. It is developed and tested on R
+4.4.2. It ships three simulated tables and three example specs, so every
+built stage runs as soon as it is installed.
+
+## The spec
+
+### What a spec holds
+
+A spec is a named list with class `el_spec`. It has seven blocks. The split
+between `elp`, `policy` and `data` follows who can change a value:
+
+| Block | What it holds | Who changes it |
+|---|---|---|
+| `program` | The ELP assessment program the spec describes: `name`, `short_name`, `state`, `vendor`, `administration_year` | |
+| `elp` | The ELP instrument, its components, the component the exit rule uses (`headline`), the level scale, the ELP bands | The test vendor |
+| `policy` | The exit rule, timelines, growth targets, suppression, the academic benchmark, district-size bands, the inventory of what EL status gates (`policy$program`, not the `program` block), error tolerance | The agency or legislature |
+| `academic` | Content subjects, tested grades, proficiency cuts | The content-assessment program |
+| `data` | The column crosswalk (a map from your column names to the package's) and value maps for your files | Whoever delivers the files |
+| `verification` | How far the spec has been checked | You |
+| `source_documents` | Citations for the values | You |
+
+A **component** is one score the ELP assessment reports. A **domain** is a
+component measured directly (listening, speaking, reading, writing). A
+**composite** combines domains, such as WIDA's Overall Composite.
+
+The package ships three specs. Read one by its id, or read your own by path.
+Reading a spec file also validates it.
+
+```{r}
+el_spec_files()
+spec <- read_el_spec("00_SIM_EL_Spec")
+spec
+```
+
+The printout summarizes the spec: the instrument, the number of components
+and which one the exit rule uses, the declared exit-criteria Type, the
+timelines (the maximum years to exit, and the ESSA timeline: the time to
+proficiency the state set under the federal Every Student Succeeds Act,
+which Check 2 uses to define on-time exit), the suppression minimum and the
+verification status. The last
+line lists the policy entries still marked provisional. In the simulated
+spec that is all of them, by design. The simulated state calls its score
+the "`r spec_headline_label(spec)`", and every stage report uses that name.
+
+### Start from the template
+
+`00_TEMPLATE_EL_Spec` is the starting point for a real state. It has the
+published WIDA ACCESS component structure, a six-level scale, and a column
+crosswalk that renames vendor-style column names. **Every policy value in it
+is a placeholder that describes no state.** The simulated spec,
+`00_SIM_EL_Spec`, is the complete worked example. Copy from it the pieces
+the template lacks: an inline academic block, `policy$timelines$lt_el_years`
+and `data$columns$value_maps`.
+
+```{r}
+template <- read_el_spec("00_TEMPLATE_EL_Spec")
+template
+```
+
+Copy the file into your own project, edit it, and read it back by path. Keep
+your spec out of the package's own `inst/specs/` folder: the package treats
+every file there as a shipped spec.
+
+```{r}
+#| eval: false
+dir.create("specs", showWarnings = FALSE)
+file.copy(el_spec_path("00_TEMPLATE_EL_Spec"), "specs/XX_EL_Spec.R")
+# Edit specs/XX_EL_Spec.R, then:
+my_spec <- read_el_spec("specs/XX_EL_Spec.R")
+```
+
+The file must define exactly one `el_spec` object. Renaming the template's
+`TEMPLATE_EL_Spec` object is optional but avoids confusion. Then work
+through the blocks:
+
+- **`program`.** Set `short_name`. The bundle and every results object
+  record it as `$meta$spec_id`. It is a label, not the file id you pass to
+  `read_el_spec()`. Do not use `"SIM"`: the stage reports treat that id as
+  the simulated data and say so in their captions.
+- **`elp`.** Keep the components your instrument reports and give each its
+  `native_name`, the name your state uses. Component names come from a fixed
+  vocabulary, shown below. Map your instrument onto it; never invent a new
+  name for something the vocabulary covers. Set `headline` to the component
+  your exit rule uses. Check `level_scale` and `bands`.
+- **`policy`.** Replace every placeholder with your state's rule and give
+  each entry a `source`. [Prep 1](prep1.html) walks through every policy
+  entry and what it controls downstream.
+- **`academic`.** Replace the template's pointer with an inline block (see
+  [The academic block](#the-academic-block)).
+- **`data`.** Map your file's column names (see
+  [The data crosswalk](#the-data-crosswalk)).
+- **`verification`.** Set `status` to `"verified"`, `"unverified"`,
+  `"provisional"` or `"synthetic"`, and record who checked it and when.
+
+```{r}
+el_component_vocabulary()
+```
+
+The template also lacks `lt_el_years`. A long-term EL is a student who
+stays in EL status for many years; `lt_el_years` is the year in status from
+which the state counts a current EL as long-term, the structured form of
+the text in `lt_el_definition`. Without it, the package cannot flag
+long-term ELs: the `LT_EL` flag is `NA` throughout, Prep 2's time-in-status
+view (`$time_in_status`) is `NULL`, and its profile of current ELs loses the
+new versus long-term split. Add it to `policy$timelines`.
+
+### Sources and `[DERIVED — VERIFY]`
+
+Only a fixed list of entries may appear under `policy`:
+
+```{r}
+el_policy_fields()
+```
+
+`exit`, `timelines` and `suppression` are required. Every policy entry must
+carry a `source` string that says where its values came from. Use
+`source = "provisional"` for anything not yet taken from an official
+document. The spec's printout lists provisional entries on its
+**`[DERIVED - VERIFY]`** line, and the stage reports flag the provisional
+values they rely on the same way (Check 2's on-time timeline, for example),
+so a reader can see what still needs checking.
+
+The validator rejects an entry with no source. It reports every problem at
+once, so you can fix a spec in one pass:
+
+```{r}
+no_source <- spec
+no_source$policy$growth$source <- NULL
+tryCatch(validate_el_spec(no_source), error = function(e) cat(conditionMessage(e)))
+```
+
+The source is recorded per entry, not per value. If some values in an entry
+are verified and others are not, keep the entry provisional and say which in
+a comment.
+
+### Exit-criteria Types
+
+The package sorts exit rules into six Types:
+
+```{r}
+typology <- el_exit_typology()
+knitr::kable(tibble::tibble(TYPE = names(typology), STRUCTURE = unname(typology)))
+```
+
+Declare the Types your rule has in `policy$exit$types`. A state can declare
+more than one. The declaration matters: several stages carry **Additional
+checks** for multi-criterion rules, and each one runs only when the spec
+declares a relevant Type. For a Type 1 state they are all `NULL`.
+
+```{r}
+spec_exit_types(spec)
+spec_has_type(spec, 2:6)
+```
+
+The validator checks the declaration against the shape of the rule's
+`terms`, the structured criteria behind the display `rule`. A Type 6 (domain
+profile) declaration on a single composite term, for example, is an error:
+
+```{r}
+wrong_type <- spec
+wrong_type$policy$exit$types <- 6L
+tryCatch(validate_el_spec(wrong_type), error = function(e) cat(conditionMessage(e)))
+```
+
+The validator checks Types 1, 2, 3, 5 and 6 against the rule's structure. It
+accepts a Type 4 (compensatory) declaration as written. It never evaluates
+the exit rule against student data.
+
+### The academic block
+
+Content-area (academic) results feed Check 2's academic summary, Check 1's
+Model 2, and Checks 3 and 4. Those stages read the subjects, tested grades
+and proficiency cuts from `spec$academic`. The simulated spec writes the
+block inline:
+
+```{r}
+spec_academic_subjects(spec)
+str(spec$academic$ELA)
+spec$policy$academic_benchmark$proficient_level
+```
+
+- `grades` lists the tested grades as character. Use `NULL` for an
+  end-of-course subject; the tested grade then comes from the data.
+- `cuts` are the **minimum** scale score of each level above the first, read
+  with `op = ">="`. A score exactly at a cut belongs to the higher level. The
+  validator rejects any other operator.
+- `policy$academic_benchmark$proficient_level` says which level counts as
+  proficient. The simulated spec uses level
+  `r spec$policy$academic_benchmark$proficient_level` on a scale of
+  `r length(spec$academic$ELA$cuts) + 1` levels.
+
+The template uses a pointer form instead, naming another spec by
+`spec_id`:
+
+```{r}
+template$academic
+spec_academic_subjects(template)
+```
+
+The package does not resolve that pointer, so the template names no
+subjects. The stages that need them do not degrade to `NULL` slots, either.
+With an academic table in the bundle, `run_check2()` and `run_check3()` stop
+with the error "subscript out of bounds", and so does `run_check1()` when
+the delivery also carries the scale score. `run_check4()` returns `NULL`
+slots, and its `$meta$note` says the spec declares no academic subject.
+Write the block inline for your state, using the same subject names your
+academic table carries in `SUBJECT`.
+
+### The data crosswalk
+
+Your files will not use the package's column names. `data$columns` maps
+them. Each entry is a named character vector, **canonical name = delivered
+name**, with one vector per table (`roster`, `base`, `academic`). A column
+the crosswalk does not mention keeps its own name. The template renames two
+roster columns:
+
+```{r}
+template$data$columns$roster
+```
+
+`data$columns$value_maps` maps delivered *values*:
+
+```{r}
+str(spec$data$columns$value_maps)
+```
+
+- `CONTENT_AREA$base` maps the content-area codes in an SGP LONG_DATA file
+  to ELP components. `CONTENT_AREA$academic` maps them to academic subjects.
+  The simulated spec maps `READING` to `overall`. That is correct for some
+  states' WIDA files and wrong for others, where `READING` is the reading
+  domain. The package never guesses from a label.
+- `GRADE` recodes grade values, such as `"0"` to `"K"`.
+
+The template also carries per-component column names under
+`data$columns$components`. The validator checks them against the component
+model, but `as_el_data()` does not read them: deliver ELP scores long, one
+row per component, as described next.
+
+Prep 2 also reads a few optional `data` fields, such as `entry_date_rule`,
+which says how to turn a program start date into a school year. See
+[Prep 2](prep2.html).
+
+## The data: three long tables
+
+ELP instruments do not share a score structure. WIDA ACCESS reports four
+domains, three composites and an overall score. ELPA21 reports four domains
+and an overall determination. So the package stores the component as a
+**row key**, not as a set of columns. Every column name is ALL CAPS.
+
+| Table | One row per | Simulated object | Holds |
+|---|---|---|---|
+| **Base** | student × year × component | `el_long_sim` | Every ELP score: `COMPONENT`, `ELP_FORM`, `SCALE_SCORE`, `ACHIEVEMENT_LEVEL` |
+| **Roster** | student × year | `el_roster_sim` | `GRADE`, `EL_STATUS`, demographics, program fields. No scores |
+| **Academic** | student × year × subject | `academic_long_sim` | Content scores: `SUBJECT`, `SCALE_SCORE`, `ACHIEVEMENT_LEVEL`, `ACHIEVEMENT_LEVEL_ALT` |
+
+All three are keyed on `STUDENT_ID` and `YEAR`, the spring year of the
+school year (2023 is 2022-23). `EL_STATUS` takes three values: `current`
+(classified as an EL that year), `former` (exited), and `never` (never
+classified). Monitoring years after exit are part of `former`, not a fourth
+value.
+
+```{r}
+dims <- tibble::tibble(
+  OBJECT  = c("el_long_sim", "el_roster_sim", "academic_long_sim"),
+  TABLE   = c("base", "roster", "academic"),
+  ROWS    = c(nrow(el_long_sim), nrow(el_roster_sim), nrow(academic_long_sim)),
+  COLUMNS = c(ncol(el_long_sim), ncol(el_roster_sim), ncol(academic_long_sim))
+)
+knitr::kable(dims, format.args = list(big.mark = ","))
+names(el_long_sim)
+names(academic_long_sim)
+head(names(el_roster_sim), 12)
+```
+
+### Count students from the roster only
+
+The roster is the only table you count students from. The base table has a
+row for every component a student took, and the academic table has a row for
+every subject. Counting rows in either inflates the count:
+
+```{r}
+count_rows <- function(d) {
+  c(ROWS = nrow(d),
+    STUDENT_YEARS = nrow(dplyr::distinct(d, STUDENT_ID, YEAR)))
+}
+counts <- rbind(roster   = count_rows(el_roster_sim),
+                base     = count_rows(el_long_sim),
+                academic = count_rows(academic_long_sim))
+counts <- tibble::tibble(TABLE = rownames(counts),
+                         ROWS = counts[, "ROWS"],
+                         STUDENT_YEARS = counts[, "STUDENT_YEARS"],
+                         ROWS_PER_STUDENT_YEAR = round(ROWS / STUDENT_YEARS, 2))
+knitr::kable(counts, format.args = list(big.mark = ","))
+```
+
+The roster also holds student-years that have no scores at all: ELs who
+were not tested that year, former ELs and never-ELs. Those are missing from
+the base table by design, so the base table cannot count enrollment either.
+
+### Weight never-EL rows
+
+The roster may carry only a sample of never-EL students, with a
+`SAMPLE_WEIGHT` column. In the simulated data, never-EL rows are a 10%
+sample with weight 10, and every other row has weight 1. A statewide share
+must be weighted; a statistic computed within ELs must not be. The
+difference is large:
+
+```{r}
+r23 <- el_roster_sim[el_roster_sim$YEAR == 2023, ]
+c(unweighted = mean(r23$EL_STATUS == "current"),
+  weighted   = weighted_share(r23$EL_STATUS == "current", r23$SAMPLE_WEIGHT))
+```
+
+Unweighted, current ELs look like
+`r round(100 * mean(r23$EL_STATUS == "current"), 1)`% of simulated 2023
+enrollment. Weighted, they are
+`r round(100 * weighted_share(r23$EL_STATUS == "current", r23$SAMPLE_WEIGHT), 1)`%.
+If your delivery carries every never-EL student, give them weight 1 or leave
+the column out; the package then treats every row as weight 1.
+
+### Missing by design
+
+Some gaps are part of the data model. Do not fill them in:
+
+- Former and never-EL student-years have **no base-table rows**. They do not
+  take the ELP test.
+- A domain the student was excused from is an **absent row**, and so is
+  every composite built on it. There is no "waived" column.
+- Students who take the alternate ELP assessment have
+  `ELP_FORM = "alternate"`. Their levels are on a different scale, so they
+  never enter the ELP bands. The stages count them as a separate group.
+- The simulated academic table covers grades 3–11 only and has **no 2020
+  rows**, because no state test was given that spring. A missing year is
+  different from an empty one.
+
+## Build the bundle
+
+`as_el_data()` takes the three tables and the spec and returns a validated
+bundle:
+
+```{r}
+bundle <- as_el_data(el_long_sim,
+                     roster   = el_roster_sim,
+                     academic = academic_long_sim,
+                     spec     = spec)
+bundle
+```
+
+The printout gives the row counts for each table, the number of distinct
+students and the span of years on the roster, the spec id, and the version
+of the simulated data. When the academic table is absent, it says which
+analyses will degrade. The same facts are in `bundle$meta`:
+
+```{r}
+str(bundle$meta[c("sim_contract_version", "spec_id", "n_students", "years")])
+```
+
+Building the bundle checks the delivery and stops with a plain message when
+something is wrong:
+
+- The roster has `STUDENT_ID`, `YEAR`, `GRADE` and `EL_STATUS`, is unique on
+  `STUDENT_ID` × `YEAR`, and uses only the three `EL_STATUS` values.
+- The base table keys on `COMPONENT` (not `SUBJECT`), is unique on student ×
+  year × component, and every `COMPONENT` value is a component in the spec.
+  It may carry only its six columns (`STUDENT_ID`, `YEAR`, `COMPONENT`,
+  `ELP_FORM`, `SCALE_SCORE`, `ACHIEVEMENT_LEVEL`); any other column, such as
+  a roster attribute, stops the build. It needs `SCALE_SCORE`,
+  `ACHIEVEMENT_LEVEL` or both; a missing one is added as `NA`. `COMPONENT`
+  must be character, not a factor, and `ACHIEVEMENT_LEVEL` must be numeric.
+- `ELP_FORM` is present on the base table or the roster, and the two agree.
+  If your instrument has no alternate form, set it to `"annual"`.
+- Every base and academic row has a roster row.
+- The academic table keys on `SUBJECT`, carries `GRADE`, and that grade
+  matches the roster's. The package does not fill a missing grade from the
+  roster.
+
+Years can arrive as spring years or as SGP-style `"2022_2023"`; both become
+the integer spring year. `STUDENT_ID` becomes character. Use the accessors
+to reach the tables, rather than the list elements:
+
+```{r}
+#| eval: false
+el_base(bundle)       # the ELP base table
+el_roster(bundle)     # the counting frame
+el_academic(bundle)   # NULL when no academic table was supplied
+el_coverage(bundle)   # the coverage table (next section)
+```
+
+### Accepted delivery forms
+
+**1. Separate objects**, as above: base, roster and academic tables passed
+separately.
+
+**2. One merged long file.** Some deliveries repeat the roster attributes on
+every component row. Pass the merged file as the first argument with
+`roster = NULL`, and it is split on intake. A student-year with no score
+(an untested year, a former or never-EL year) is carried as one row with
+`COMPONENT` set to `NA`. This example builds a merged file for 200 simulated
+students and shows that both forms give the same bundle:
+
+```{r}
+ids      <- head(unique(el_roster_sim$STUDENT_ID[el_roster_sim$EVER_EL == "Y"]), 200)
+roster_s <- el_roster_sim[el_roster_sim$STUDENT_ID %in% ids, ]
+base_s   <- el_long_sim[el_long_sim$STUDENT_ID %in% ids, ]
+merged   <- dplyr::left_join(roster_s, base_s,
+                             by = c("STUDENT_ID", "YEAR", "ELP_FORM"))
+
+from_merged   <- as_el_data(merged, spec = spec)
+from_separate <- as_el_data(base_s, roster = roster_s, spec = spec)
+from_merged
+c(roster_rows_match = nrow(el_roster(from_merged)) == nrow(el_roster(from_separate)),
+  base_rows_match   = nrow(el_base(from_merged)) == nrow(el_base(from_separate)))
+```
+
+The package's tests check that the two forms give identical tables, not
+only identical row counts.
+
+**3. SGP LONG_DATA.** The SGP (Student Growth Percentiles) R package
+stores results in a long layout called `LONG_DATA`, and some states deliver
+ELP files in it. These files use `ID`, `CONTENT_AREA`, `"YYYY_YYYY"` years
+and a `VALID_CASE` flag.
+`as_el_data_sgp()` recodes them and hands them to `as_el_data()`. It keeps
+only `VALID_CASE` rows, maps `CONTENT_AREA` values to components through the
+spec's value map, and recodes grades. A small invented example:
+
+```{r}
+long_data <- tibble::tibble(
+  VALID_CASE        = c(rep("VALID_CASE", 5), "INVALID_CASE"),
+  CONTENT_AREA      = "READING",
+  YEAR              = c("2022_2023", "2023_2024", "2022_2023", "2023_2024",
+                        "2024_2025", "2023_2024"),
+  ID                = c("A1", "A1", "A2", "A2", "A2", "A9"),
+  GRADE             = c("0", "1", "3", "4", "5", "1"),
+  SCALE_SCORE       = c(250, 300, 480, 520, NA, 999),
+  ACHIEVEMENT_LEVEL = c(1.5, 2.5, 4.2, 4.6, NA, 6.0),
+  EL_STATUS         = c("current", "current", "current", "current",
+                        "former", "current"),
+  ELP_FORM          = "annual"
+)
+academic_sgp <- tibble::tibble(
+  VALID_CASE        = "VALID_CASE",
+  ID                = "A2",
+  YEAR              = "2022_2023",
+  GRADE             = "3",
+  CONTENT_AREA      = c("ELA", "MATHEMATICS"),
+  SCALE_SCORE       = c(700, 720),
+  ACHIEVEMENT_LEVEL = c(2L, 2L)
+)
+
+sgp_bundle <- as_el_data_sgp(long_data, spec, academic = academic_sgp)
+sgp_bundle
+table(el_roster(sgp_bundle)$GRADE)
+unique(el_base(sgp_bundle)$COMPONENT)
+unique(el_academic(sgp_bundle)$SUBJECT)
+```
+
+The invalid row is gone, grade `"0"` became `"K"`, the years became spring
+years, `READING` became the `overall` component, and `MATHEMATICS` became
+the spec's `Math` subject. The former year has a roster row and no base row.
+
+The 4.0–4.4 and 4.5–4.9 bands need decimal levels. If every delivered level
+is a whole number but the spec's bands split at a decimal, the adapter
+warns:
+
+```{r}
+whole_levels <- long_data
+whole_levels$ACHIEVEMENT_LEVEL <- floor(whole_levels$ACHIEVEMENT_LEVEL)
+tryCatch(as_el_data_sgp(whole_levels, spec),
+         warning = function(w) cat(conditionMessage(w)))
+```
+
+`as_academic_long()` does the same job for an academic file on its own. It
+leaves a file already in the package's shape (ReportR's
+`student_results_long` plus `ACHIEVEMENT_LEVEL_ALT`) almost unchanged, and
+renames and recodes an SGP-shaped one. `as_el_data_sgp()` calls it for you.
+
+`as_el_data()` does not call it. When you pass a separate academic table,
+its `SUBJECT` values must already match the spec's subject names (here
+`r paste(spec_academic_subjects(spec), collapse = " and ")`). If your file
+uses other codes, add them to `value_maps$CONTENT_AREA$academic` and run
+the file through `as_academic_long(my_academic, spec)` first. It maps the
+codes, and stops on any code that is neither in the map nor a subject name.
+
+### Renaming through the crosswalk
+
+Here the 200-student extract is renamed to the template's vendor-style
+names, and a copy of the spec maps them back:
+
+```{r}
+roster_d <- dplyr::rename(roster_s, Student_UID = STUDENT_ID, school_year = YEAR)
+base_d   <- dplyr::rename(base_s,   Student_UID = STUDENT_ID, school_year = YEAR)
+
+spec_x <- spec
+spec_x$data$columns$roster <- c(STUDENT_ID = "Student_UID", YEAR = "school_year")
+spec_x$data$columns$base   <- c(STUDENT_ID = "Student_UID", YEAR = "school_year")
+validate_el_spec(spec_x)
+
+renamed <- as_el_data(base_d, roster = roster_d, spec = spec_x)
+names(el_roster(renamed))[1:4]
+names(el_base(renamed))
+```
+
+On the roster and the academic table, columns the package does not use
+pass through under their own names. The base table is stricter: it accepts
+only its six columns, so drop anything else before you build the bundle.
+
+## Read the coverage table
+
+The coverage table shows how much data each year and grade has, counted from
+the roster. It is the place to see gaps before any stage runs. It answers:
+how many current ELs there are, how many have an ELP score that year, and
+how large the comparison groups and the academic results are.
+
+```{r}
+cv <- el_coverage(bundle)
+names(cv)
+
+by_year <- cv |>
+  dplyr::group_by(YEAR) |>
+  dplyr::summarise(dplyr::across(c(N_CURRENT, N_CURRENT_ELP, N_ALTERNATE,
+                                   N_FORMER, N_NEVER_WEIGHTED,
+                                   N_ACADEMIC_SCORED), sum)) |>
+  dplyr::mutate(YEAR = as.character(YEAR))
+knitr::kable(by_year, format.args = list(big.mark = ","))
+```
+
+The table has one row per year and grade. The view above adds up the grades
+in each year. The columns:
+
+- `N_CURRENT`: current-EL student-years.
+- `N_CURRENT_ELP`: current ELs with a same-year, annual-form score on the
+  component the exit rule uses. The gap from `N_CURRENT` is ELs who took the
+  alternate form, were not tested that year, or (when that component is a
+  composite) had a domain waived, which leaves every composite built on it
+  absent.
+- `N_ALTERNATE`: current ELs who took the alternate ELP assessment.
+- `N_FORMER`: former-EL student-years.
+- `N_NEVER_SAMPLE` and `N_NEVER_WEIGHTED`: never-EL student-years, as
+  delivered and weighted by `SAMPLE_WEIGHT`. The package never reports a
+  never-EL count unweighted without labeling it as sample rows.
+- `N_ACADEMIC_SCORED`: student-years of any status with at least one
+  academic scale score, counted as delivered.
+
+Gaps show up instead of disappearing. The simulated 2020 row has
+`r format(sum(cv$N_CURRENT[cv$YEAR == 2020]), big.mark = ",")` current ELs
+and `r sum(cv$N_ACADEMIC_SCORED[cv$YEAR == 2020])` academic scores. The
+by-grade view shows the untested grades:
+
+```{r}
+latest <- max(cv$YEAR)
+by_grade <- cv[cv$YEAR == latest, ]
+by_grade <- by_grade[order(match(by_grade$GRADE, c("K", 1:12))), ]
+by_grade$YEAR <- as.character(by_grade$YEAR)
+knitr::kable(by_grade[c("YEAR", "GRADE", "N_CURRENT", "N_CURRENT_ELP",
+                        "N_ALTERNATE", "N_FORMER", "N_ACADEMIC_SCORED")],
+             format.args = list(big.mark = ","))
+```
+
+Kindergarten through grade 2 and grade 12 have no academic scores, because
+the simulated state tests grades 3–11. Check 3 keeps this table in its
+results as `$coverage`, and Prep 2's report opens with a similar by-year
+coverage table. `el_coverage_table()` builds the same table from tables you
+pass it directly, for example a subset of the roster.
+
+## The ELP score the exit rule uses
+
+Your ELP assessment reports several components. The exit rule and the
+analyses use one of them, named in `spec$elp$headline`. Every stage reads it
+through a single accessor, `elp_headline()`. The accessor filters the base
+table to that component on the annual form, keeps student-years on the
+roster, and assigns each score an ELP band from `spec$elp$bands`. Never
+filter the base table yourself to get this score.
+
+The result is one row per student-year, so look at its size and its bands,
+not its rows:
+
+```{r}
+h <- elp_headline(bundle)
+nrow(h)
+names(h)
+table(factor(h$ELP_BAND, levels = spec_bands(spec)$labels))
+```
+
+Compare `nrow(h)` with the coverage table. Here the `N_CURRENT_ELP` column
+sums to `r format(sum(cv$N_CURRENT_ELP), big.mark = ",")`, and the accessor
+returns `r format(nrow(h), big.mark = ",")` rows. They agree because the
+accessor drops alternate-form scores, and because former and never-EL
+student-years have no base-table rows. The accessor does not itself filter
+on `EL_STATUS`. If the two numbers differ on your delivery, the base table
+carries scores on student-years the roster does not mark `current`. Find out
+why before going on.
+
+Bands include their lower edge. A level exactly at a break belongs to the
+band above it:
+
+```{r}
+assign_elp_band(c(1.9, 2.0, 4.4, 4.5, 6.0), spec)
+```
+
+In the simulated spec, the 4.5 break is also the exit threshold. A current
+EL in the 4.5–4.9 or 5.0+ band is therefore in their last year in status:
+that year's score meets the rule, and the package dates their exit to the
+next year, their first as a former EL. The top bands describe students on
+their way out, not a stable group of highly proficient ELs.
+
+The same accessor works for an instrument with a different structure. In
+the ELPA21 example spec, the exit-rule score is a categorical determination
+with no scale score, and no bands are declared:
+
+```{r}
+elpa21 <- read_el_spec("00_ELPA21_EL_Spec")
+spec_headline_label(elpa21)
+elpa21$elp$level_scale$levels
+is.null(spec_bands(elpa21))
+```
+
+With no bands declared, each level is its own band. Such an instrument has
+no scale score on that component, so the analyses that use one stay `NULL`:
+Check 1's model with the entry score and its Model 2, and Check 3's logistic
+models.
+
+## Minimum viable delivery
+
+You do not need every column to start. The smallest useful delivery is:
+
+- a roster with `STUDENT_ID`, `YEAR`, `GRADE` and `EL_STATUS`,
+- `ELP_FORM` on the roster or the base table, and
+- base-table rows for the component the exit rule uses, with a level.
+
+Each further piece unlocks more:
+
+| Add | What it unlocks |
+|---|---|
+| The scale score on that component | Check 1's model with the entry score (`$model1_baseline`) |
+| An academic table with `GRADE` | Check 2's academic summary; Check 3's box plots, summary table and landing statistics; Check 4. With the scale score as well: Check 1's Model 2 and Check 3's logistic model |
+| `DISTRICT_ID`, `HOME_LANGUAGE`, `SERVICE_MODEL`, `GENDER`, `FRL`, `IEP` and other roster fields | Prep 2's district and profile views, Check 2's crosstab rows |
+| Never-EL rows, with `SAMPLE_WEIGHT` if they are a sample | Prep 2's EL share of enrollment; Check 3's English-only comparison group and its fairness checks |
+| `LEFT_TRUNCATED` | Marks students already in EL status when the data begin. Without it, Check 1 assumes that every student first seen as an EL in the data's first year entered earlier, and leaves them out of the entry cohorts (the groups of students who entered EL status in the same grade and year) |
+
+To see this in practice, the code below builds the smallest delivery from
+the simulated data: ever-EL students only, five roster columns, and a level
+on one component. Then it runs every built stage.
+
+```{r}
+min_roster <- el_roster_sim[el_roster_sim$EVER_EL == "Y",
+                            c("STUDENT_ID", "YEAR", "GRADE", "EL_STATUS", "ELP_FORM")]
+min_base <- el_long_sim[el_long_sim$COMPONENT == spec_headline(spec),
+                        c("STUDENT_ID", "YEAR", "COMPONENT", "ACHIEVEMENT_LEVEL")]
+min_bundle <- as_el_data(min_base, roster = min_roster, spec = spec)
+min_bundle
+
+runs <- list(prep2  = run_prep2(min_bundle, spec),
+             check1 = run_check1(min_bundle, spec),
+             check2 = run_check2(min_bundle, spec),
+             check3 = run_check3(min_bundle, spec),
+             check4 = run_check4(min_bundle, spec))
+```
+
+```{r}
+why <- c(
+  el_share              = "No never-EL rows to form an enrollment total",
+  by_district           = "No DISTRICT_ID on the roster",
+  district_bins         = "No DISTRICT_ID on the roster",
+  monitoring            = "No EL_MONITOR_YEAR or EL_STATUS_DETAIL on the roster",
+  model1_baseline       = "No scale score on the exit-rule component",
+  model2                = "No academic table, and no scale score",
+  academic_summary      = "No academic table",
+  box_data              = "No academic table",
+  summary_table         = "No academic table",
+  logistic              = "No academic table",
+  landing               = "No academic table",
+  fairness_boxes        = "No academic table",
+  fairness_logistic     = "No academic table",
+  consistency_curve     = "No academic table",
+  youden_j              = "No academic table",
+  j_optimal             = "No academic table",
+  criteria_crosswalk    = "Type-gated (Types 2-6): NULL for this Type 1 spec",
+  blocked_groups        = "Type-gated (Types 2-6): NULL for this Type 1 spec",
+  contested_zone        = "Type-gated (Types 2-6): NULL for this Type 1 spec",
+  type3_covariate       = "Type-gated (Type 3): NULL for this Type 1 spec",
+  contested_zone_models = "Type-gated (Types 2, 4, 5, 6), and no academic table",
+  policy_as_whole       = "Type-gated (Types 2-6), and not yet built",
+  candidate_region      = "Not yet built",
+  dependence            = "Not yet built"
+)
+null_slots <- dplyr::bind_rows(lapply(names(runs), function(stage) {
+  r <- runs[[stage]]
+  slots <- setdiff(names(r), "meta")
+  empty <- slots[vapply(r[slots], is.null, logical(1))]
+  tibble::tibble(STAGE = stage, NULL_SLOT = empty,
+                 WHY = unname(ifelse(empty %in% names(why), why[empty], "")))
+}))
+knitr::kable(null_slots)
+```
+
+Nothing crashes. Each stage fills what the delivery supports and leaves the
+rest `NULL`. Check 1's life table, exit curves and unconditional model are
+all present, and Check 2's flags and crosstab are present. The crosstab
+keeps only the blocks this delivery supports:
+`r paste(unique(runs$check2$crosstab$BLOCK), collapse = " and ")`. With the
+full simulated roster it adds primary language, district size, other
+demographics and type of EL services. Some slots are `NULL` for every
+delivery: the Type-gated Additional checks under a Type 1 spec, and slots
+not yet built.
+
+## Render a stage report
+
+Each built stage has a Quarto document, the stage report. `render_step()`
+renders one:
+
+```{r}
+stage_ids()
+vapply(stage_ids(), function(s) !is.na(stage_qmd_path(s)), logical(1))
+```
+
+Prep 1, Prep 3 and the Decision stage have no document yet, and
+`render_step()` stops if you ask for one. If a render fails, run it again
+with `quiet = FALSE` to see Quarto's own error message.
+
+```{r}
+#| eval: false
+render_step("check1")                            # Word and HTML, into reports/
+render_step("check3", formats = "html", out_dir = "reports/sim")
+```
+
+### Where outputs go
+
+| Argument | Default | What goes there |
+|---|---|---|
+| `out_dir` | `"reports"` | The rendered `.docx` and `.html`. These are meant to be shared |
+| `results_dir` | `"results"` | With `save_results = TRUE`, the stage's results object as `<stage>_results.rds`. **Not** for sharing |
+| `results_file` | none | An existing `<stage>_results.rds` to render from, instead of computing in the document |
+
+The two folders are separate on purpose. A results object can hold
+student-level slots (Check 2's `$flags` and `$profile` have one row per
+student). If the results sat beside the reports, zipping the reports folder
+to send to a colleague would send the student rows too.
+
+`render_step()` renders in a temporary folder and copies the finished files
+into `out_dir`, so Quarto's working files never land in your project.
+
+### Rendering your own data
+
+In their default mode, the stage documents build their bundle from the
+shipped simulated data. `save_results = TRUE` also computes from the
+simulated data. To report on your state, compute the results yourself and
+render from the saved file:
+
+```{r}
+#| eval: false
+my_spec   <- read_el_spec("specs/XX_EL_Spec.R")
+my_bundle <- as_el_data(my_base, roster = my_roster,
+                        academic = my_academic, spec = my_spec)
+
+dir.create("results", showWarnings = FALSE)
+saveRDS(run_check1(my_bundle, my_spec), "results/check1_results.rds")
+
+files <- render_step("check1",
+                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
+                     results_file     = "results/check1_results.rds",
+                     check_disclosure = FALSE)
+check_output_disclosure(files, my_bundle)
+```
+
+Pass `spec_file` as a full path: the document runs in a different folder
+from your session, and a relative path stops it with "No spec named ...".
+`render_step()` returns the paths of the files it wrote, which you then
+scan, as the next section explains.
+
+### The disclosure check
+
+Student-level data may be saved to disk, but it must never reach a document.
+After rendering, `render_step()` scans every file it wrote for every
+`STUDENT_ID` in the shipped simulated data. If any appears, it **stops with
+an error**. The scan reads the whole file, including the XML inside a Word
+document, and checks every identifier, not a sample.
+
+Because the automatic scan builds its list of identifiers from the
+simulated data, it cannot see yours. For your own delivery, turn it off
+with `check_disclosure = FALSE` and call `check_output_disclosure()` with
+your own bundle, as above. On a clean file it returns zero rows:
+
+```{r}
+clean <- tempfile(fileext = ".html")
+writeLines("<p>A cohort of 2,373 students.</p>", clean)
+nrow(check_output_disclosure(clean, bundle))
+```
+
+On a file that carries a student identifier, it stops:
+
+```{r}
+leaky <- tempfile(fileext = ".html")
+writeLines(paste0("<td>", el_roster(bundle)$STUDENT_ID[100], "</td>"), leaky)
+tryCatch(check_output_disclosure(leaky, bundle),
+         error = function(e) cat(conditionMessage(e)))
+```
+
+If the check fires, find the table, figure or code chunk that printed the
+rows and fix it there. Do not turn the check off to get a report out.
+`scan_output_for_ids()` is the lower-level function behind it: give it one
+file and a vector of identifiers.
+
+## Pitfalls
+
+- **Counting from the wrong table.** Count students and student-years from
+  `el_roster()` only. The base table repeats a student once per component,
+  and the academic table once per subject.
+- **Unweighted never-EL totals.** If never-EL rows are a sample, deliver
+  `SAMPLE_WEIGHT`. Without it, the package gives every row weight 1, and the
+  EL share of enrollment is overstated.
+- **A missing `ELP_FORM`.** The bundle will not build without it. If your
+  instrument has no alternate form, set it to `"annual"` on the roster.
+- **Rounded levels.** Some files carry whole-number levels only. The bands
+  that split at 4.5 cannot be filled from them. Get the decimal level from
+  the vendor's score file. `as_el_data_sgp()` warns about this;
+  `as_el_data()` does not, so check the band counts from `elp_headline()`
+  yourself.
+- **Guessing `CONTENT_AREA`.** Map every code by value in
+  `data$columns$value_maps`. The same label means different components in
+  different states' files.
+- **Delivered derived columns.** The package recomputes year in status, exit
+  dates, censoring and the exit flags from `EL_STATUS` transitions. (A
+  student who leaves the data without being seen to exit, or is still an EL
+  when the data end, is *censored*: their outcome from then on is unknown,
+  which is not the same as not exiting.) A
+  delivered `YEAR_IN_STATUS` is replaced in those derivations, not trusted.
+  Delivered fields are read only where the data alone cannot answer: the
+  cohort checks read `LEFT_TRUNCATED` (see the table above), and Prep 2
+  reads entry fields such as `LEP_PROGRAM_START_DATE` and `YEAR_IN_STATUS`
+  to date entry for students the data cannot see enter, and reports where
+  they disagree with the data.
+  Exit is dated to the first year a student is `former`; if you set
+  `policy$timelines$exit_dating`, it must be `"first_former_year"`. A file
+  that flags exit on the last `current` year is one year earlier than this
+  convention.
+- **"Fixing" designed gaps.** Do not add base rows for former students, fill
+  absent domain rows, or create empty 2020 academic rows.
+- **Making cells appear.** Counts from 1 to
+  `policy$suppression$min_cell - 1` are blanked to `NA`; a true zero is
+  shown as 0. Do not lower `min_cell`, or pool grades, to fill a table.
+- **Grades and keys.** `GRADE` is character and kindergarten is `"K"`. Map
+  `"0"` in `value_maps$GRADE`. Keep `COMPONENT` on the base table and
+  `SUBJECT` on the academic table; WIDA's reading domain and a Reading
+  subject would otherwise mix in a join.
+- **Treating the template as a rule.** Every policy value in
+  `00_TEMPLATE_EL_Spec` is a placeholder. Nothing in it describes your state
+  until you replace it and cite the source.
+- **The academic pointer.** Write `spec$academic` inline. A `spec_id`
+  pointer leaves the stages with no subjects, and with an academic table in
+  the bundle Checks 2 and 3 stop with an error rather than returning `NULL`
+  slots.
+- **Subject codes that do not match.** `as_el_data()` does not recode
+  `SUBJECT`. Map your codes in `value_maps$CONTENT_AREA$academic` and pass
+  the academic table through `as_academic_long()` first.
+- **Where you call `render_step()`.** It hands your working directory to
+  the document as `pkg_path`. If that folder has an `R/` subfolder, the
+  document tries to load it as a package with `devtools::load_all()`. Call
+  `render_step()` from a folder without one, or from the package source.
+
+## Before moving on
+
+Confirm each of these before starting Prep 1:
+
+1. **The spec validates**, and each policy entry is either sourced or
+   deliberately left `provisional`. The printout's `[DERIVED - VERIFY]` line
+   is your to-do list.
+2. **The declared Types match the rule.** They decide which Additional
+   checks run in every later stage. Prep 1 is where you confirm them with
+   the state.
+3. **The component the exit rule uses is right**, and
+   `spec_headline_label()` returns the name your state uses for it.
+4. **The bundle builds** from your delivery with no errors, and the
+   crosswalk renames every column you expected.
+5. **The coverage table looks like your state.** Missing years and untested
+   grades are visible, current ELs mostly have a same-year ELP score, and
+   the comparison groups are large enough.
+6. **`elp_headline()` returns the counts you expect** and fills the bands
+   you expect. If the decimal bands are empty, check for rounded levels.
+7. **You know what your delivery unlocks.** Stages without the data they
+   need will return `NULL` slots. Decide now whether to request more data.
+8. **Reports and results are kept apart.** Results files go in a folder you
+   never share, and you scan every rendered report with
+   `check_output_disclosure()`.
+
+[Guide home](index.html) | Previous: [Conducting the analysis](index.html) | Next: [Prep 1: Policy documentation](prep1.html)

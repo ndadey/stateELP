@@ -1,0 +1,596 @@
+---
+title: "Check 4: Decision consistency"
+subtitle: "Conducting the analysis with stateELP"
+params:
+  pkg_path: ""
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    code-overflow: wrap
+execute:
+  echo: true
+  warning: false
+  message: false
+fig-width: 8
+fig-height: 4.5
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+```
+
+[Guide home](index.html) | Previous: [Check 3: Academic patterns](check3.html) | Next: [Decision: Synthesis and next steps](decision.html)
+
+::: {.callout-warning}
+## Simulated data
+Every output on this page comes from the package's simulated data. It shows what this step produces and how to read it. It says nothing about any real state: every gap, ratio and rate here comes from how the data were generated.
+:::
+
+```{r}
+#| eval: false
+library(stateELP)
+```
+
+## What this step answers
+
+Suppose the exit threshold were set only by how English language
+proficiency (ELP) lines up with proficiency on the content test. Where would
+it land, and how does the current rule compare?
+
+The stage works on the ELP **level**. A **cut** is a candidate threshold on
+that level. At each cut, every current English learner (EL) is classified
+twice: *ready to exit* or not by ELP level (at or above the cut), and
+*proficient* or not on the same year's content test. Two statistics
+summarize how the classifications line up:
+
+- **Decision consistency** (agreement): the share of students the two
+  classifications agree on.
+- **Youden's J**: sensitivity plus specificity, minus one. **Sensitivity**
+  is the share of proficient students the cut calls ready; **specificity**
+  is the share of not-proficient students it calls not ready. J is 0 when
+  a cut separates nothing and 1 when it separates perfectly.
+
+**J is the primary statistic**, and the cut where it is highest is the **J
+optimum**. The reason is the **base rate**, the share of current ELs who are
+proficient. It is usually well below one half, and then agreement is pulled
+toward calling everyone "not ready". J weights the two kinds of error equally
+*as rates*, however common each group is.
+
+**Why the level, not the scale score.** The exit rule is written on the
+level, so the rule and the J optimum can share one axis. The spec declares a
+range only for the level scale; it has no map from scale scores to levels
+(`elp$cuts` is `NULL`). Scale scores depend on grade, so a scale-score
+optimum would not compare across grades. And some instruments report only a
+level.
+
+[Check 3](check3.html) shows content scores by ELP band. Check 4 turns the
+same pairing into a yes/no classification. The two are read together.
+
+## Sample
+
+**Cross-sectional: every current EL in one grade and one year with both a
+same-year annual ELP level and a same-year content score in one subject.**
+The level is on the component the spec names for every stage
+(`spec$elp$headline`): the "Overall Composite" in the simulated spec, which
+is also what the exit rule is written on.
+
+This is the current-EL part of Check 3's paired cross-section, **not** the
+entry cohort of Checks 1 and 2 (students who entered EL status in the same
+grade and year, followed forward). Left out are former ELs and English-only
+students (they have no ELP level to classify), students on an alternate
+academic assessment (another score scale), current ELs with no annual ELP
+level that year, and any level outside the spec's declared scale (counted in
+`res$meta$n_out_of_scale`).
+
+Each grade × subject × year is its own **panel**; grades are never pooled.
+By default `run_check4()` takes the panel Check 3's `compute_panel()`
+derives: the spec's first academic subject, its first tested grade, and the
+latest year with academic rows. Both stages call the same function, so they
+describe the same students. Scores are paired within the school year, not to
+the day.
+
+## Status in the package
+
+::: {.callout-note}
+## First pass built
+The stage computes and renders one grade × subject panel. Three of its six
+result slots are built; the other three are `NULL` by design.
+:::
+
+| Slot | Status | What it holds |
+|---|---|---|
+| `$consistency_curve` | Built | Classification counts and agreement at every candidate cut |
+| `$youden_j` | Built | The same rows, plus sensitivity, specificity and J |
+| `$j_optimal` | Built | One row per panel: J optimum, highest agreement, current rule, error-tolerance reading |
+| `$candidate_region` | `NULL`: later pass | The region across grades, annotated with Check 1's reliability |
+| `$dependence` | `NULL`: no package support | The copula / Kendall's-tau dependence analysis |
+| `$policy_as_whole` | `NULL`: Type-gated, not built | The whole multi-criterion rule as a classifier (Types 2–6) |
+
+What this means for you:
+
+- **One panel per call.** Use the `subject`, `grade` and `year` arguments
+  for others; "How to read it" loops over grades.
+- **The candidate region is yours to write for now**, by hand.
+- **Prep 3 is not built**, so the error-tolerance answer is read straight
+  from `spec$policy$error_tolerance`. The simulated spec says `"unknown"`.
+- **Some choices await confirmation** in the package's build notes: the
+  suppression rule, tie-breaking (lowest tied cut wins), the per-student
+  reading of error tolerance, and the comparison with Check 3.
+
+## Before you start
+
+You need:
+
+- **An `el_data` bundle with an academic table** (see [Setup](setup.html)).
+- **Decimal ELP levels** if your instrument reports them. The candidate cuts
+  are the distinct levels the delivery carries, so whole numbers give few.
+- **A spec that declares** the level scale and bands (`elp$level_scale`,
+  `elp$bands`); the exit rule as structured terms (`policy$exit`); the
+  academic subjects, grades and cut scores (`academic`) with the proficient
+  level (`policy$academic_benchmark$proficient_level`); the suppression
+  minimum (`policy$suppression$min_cell`), the smallest group a published
+  number may describe; and Prep 3's answer (`policy$error_tolerance`), or
+  `"unknown"`.
+- **Check 3's results at hand.** Check 4 does not need them to run, but you
+  read the two together.
+
+Build the spec and bundle once, and look at what the stage will read:
+
+```{r}
+spec <- read_el_spec("00_SIM_EL_Spec")
+bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
+                     academic = academic_long_sim, spec = spec)
+
+spec_headline_label(spec)              # the ELP component the stages use
+spec$elp$level_scale$range             # the level scale the cuts live on
+spec$policy$exit$pathways[[1]]$rule    # the current rule, as written
+spec$policy$error_tolerance$costlier_error
+spec_min_cell(spec)
+```
+
+Then check which panel the stage will draw, and how many students it can
+draw on:
+
+```{r}
+panel <- compute_panel(bundle, spec)
+panel[c("subject", "grade", "year")]
+
+cov <- el_coverage(bundle)
+cov[cov$YEAR == panel$year & cov$GRADE == panel$grade,
+    c("YEAR", "GRADE", "N_CURRENT", "N_CURRENT_ELP", "N_ALTERNATE")]
+```
+
+`N_ALTERNATE` counts current ELs on the alternate ELP form. They have no
+annual level, so they are outside the sample too. The paired sample is
+smaller than `N_CURRENT_ELP`, because each student also needs a content score
+in the subject.
+
+**What degrades to `NULL`.** The stage never crashes on a missing input; it
+empties the slot and says why in `res$meta$note`. With no academic table, or
+a spec that declares no academic subject (the shipped ELPA21 example points
+to a separate academic spec), every slot is `NULL`. So is a panel that
+cannot be derived; the R error is kept in `res$meta$panel_error`. With no
+proficiency cut, or no student with both scores, the curves are `NULL`. If
+the exit rule has no term on the component's own level, the curves are
+drawn without a rule marked, and `res$meta$threshold_note` says why.
+
+## Run it
+
+```{r}
+res <- run_check4(bundle, spec)
+names(res)
+```
+
+`run_check4()` takes the panel and calls three functions in order. You can
+run them yourself to inspect each step:
+
+```{r}
+curve <- compute_consistency_curve(bundle, spec, panel)
+yj    <- compute_youden_j(curve)
+opt   <- compute_j_optimal(yj, spec)
+identical(opt, res$j_optimal)
+```
+
+For another panel: `run_check4(bundle, spec, subject = "Math", grade = "8")`.
+A subject or grade the spec does not declare is an error, not a silent
+switch.
+
+```{r}
+#| include: false
+o <- res$j_optimal
+y <- res$youden_j
+shown <- y[!y$SUPPRESSED, ]
+pct <- function(x) paste0(round(100 * x), "%")
+num <- function(x, d = 2) formatC(x, format = "f", digits = d)
+big <- function(x) format(x, big.mark = ",")
+k <- match(o$J_CUT, shown$CUT)
+nb <- shown[max(1, k - 2):min(nrow(shown), k + 1), ]
+nb_txt <- paste0(nb$CUT_LABEL, " (J = ", num(nb$J), ")", collapse = ", ")
+notes <- c("axis_note", "pairing_note", "threshold_note", "resolution_note",
+           "dependence_note", "policy_as_whole_note")
+na_notes <- notes[vapply(notes, function(x) is.na(res$meta[[x]]), logical(1))]
+na_notes_txt <- if (length(na_notes)) {
+  paste0("the ", paste(sub("_note$", "", na_notes), collapse = " and "),
+         if (length(na_notes) > 1) " notes" else " note")
+} else "none of them"
+side_txt <- switch(if (is.na(o$THRESHOLD_SIDE)) "none" else o$THRESHOLD_SIDE,
+  above  = "sits above the J optimum",
+  below  = "sits below the J optimum",
+  same   = "classifies exactly as the J optimum",
+  within = "falls inside the suppressed range around the J optimum",
+  "cannot be placed against an optimum")
+agree_where <- paste0(o$AGREE_CUT_LABEL,
+  if (isTRUE(o$AGREE_CUT == max(shown$CUT))) " (the highest cut that can be shown)" else "")
+agree_vs_floor <- if (o$AGREE <= o$AGREE_FLOOR) {
+  "does not even beat that floor"
+} else {
+  paste0("beats that floor by ", round(100 * (o$AGREE - o$AGREE_FLOOR)),
+         " percentage points")
+}
+```
+
+## What you get
+
+### The Sample statement
+
+Read it first:
+
+```{r}
+#| output: asis
+cat(res$meta$sample)
+```
+
+### The figure
+
+```{r}
+#| fig-height: 5.5
+plot_consistency_curve(res$youden_j, res$j_optimal, spec)
+```
+
+Agreement is on top and J below, each on its own vertical scale. The dashed
+line is the J optimum, the dotted line the current rule, and the circle
+agreement's highest reportable point. Suppressed cuts are not drawn.
+
+### The optimum
+
+The stage report's summary table:
+
+```{r}
+ft_check4_optimum(res)
+```
+
+The full `$j_optimal` row carries more:
+
+```{r}
+o <- res$j_optimal
+o[, c("N", "BASE_RATE", "J_CUT", "J", "N_J_TIED", "J_MAX_HIDDEN")]
+o[, c("AGREE_CUT", "AGREE", "AGREE_FLOOR", "OPTIMA_DIVERGE")]
+o[, c("THRESHOLD", "THRESHOLD_CUT", "THRESHOLD_SIDE", "J_AT_THRESHOLD")]
+o[, c("IMPLIED_COST_RATIO", "COSTLIER_ERROR", "LEAN", "NO_OPTIMUM")]
+```
+
+- `BASE_RATE`: the share of the panel's current ELs who are proficient.
+- `J_CUT`, `J`: the J optimum and its value. `N_J_TIED` counts cuts tied at
+  the maximum. `J_MAX_HIDDEN` is `TRUE` when a suppressed cut sits between
+  the optimum and the shown cuts either side of it. The optimum is then
+  located only to within the range from `J_SHOWN_BELOW` to `J_SHOWN_ABOVE`.
+  `FALSE` does not promise that no suppressed cut farther away has a higher
+  J.
+- `AGREE_CUT`, `AGREE`: agreement's highest reportable point.
+  `AGREE_FLOOR` is the agreement of calling *every* student not ready (one
+  minus the base rate). `OPTIMA_DIVERGE` is `TRUE` when the two peak at
+  different cuts.
+- `THRESHOLD`: the current rule, read from the spec. `THRESHOLD_CUT` is the
+  observed cut it classifies as (a 4.5 rule with nobody at exactly 4.5
+  classifies like the next observed level). `THRESHOLD_SIDE` places that cut
+  `"above"`, `"below"`, the `"same"` as, or `"within"` the hidden range
+  around the J optimum.
+- `IMPLIED_COST_RATIO`, `COSTLIER_ERROR`, `LEAN`: the error-tolerance
+  reading, explained below.
+- `NO_OPTIMUM`: `NA` when an optimum is reported; otherwise
+  `"suppressed"`, `"no_variation"` (nobody or everybody proficient) or
+  `"uninformative"` (no cut has J above zero, and none was hidden).
+
+### The curve, cut by cut
+
+`$youden_j` has one row per candidate cut. The cuts that can be shown:
+
+```{r}
+y <- res$youden_j
+y[!y$SUPPRESSED,
+  c("CUT", "TP", "FP", "FN", "TN", "AGREE", "SENSITIVITY", "SPECIFICITY", "J")]
+```
+
+The four counts are a two-by-two table at that cut. `TP`: proficient and at
+or above the cut. `FP`: not proficient but at or above it (a premature exit,
+if this were the rule). `FN`: proficient but below it (held back). `TN`: not
+proficient and below it. `AGREE` is `(TP + TN) / N`; `J` is
+`TP / (TP + FN) + TN / (TN + FP) - 1`. `ft_check4_curve(res)` is the
+report's version, listing every cut with suppressed ones as dashes.
+
+**Suppression.** Here `r sum(!y$SUPPRESSED)` of `r nrow(y)` cuts can be
+shown. A blanked cut keeps its row, `CUT` and `N`; its counts and rates are
+`NA` and `SUPPRESSED` is `TRUE`. A cut is blanked when one of its cells is a
+non-zero count below `min_cell`, or when subtracting it from a neighboring
+published count, including Check 3's band counts, would reveal a group that
+small. And if the ELP bands whose shares Check 3 cannot show hold, together,
+a small group of proficient or not-proficient students, every cut is
+blanked. The J optimum is the best *reportable* cut. Small panels can lose
+the curve entirely: in the package's own experiments, most panels of about
+160 students reported no optimum.
+
+### The notes
+
+The sentences the report prints beside the figure:
+
+```{r}
+#| output: asis
+cat(check4_optimum_note(res), "\n\n")
+cat(check4_tolerance_note(res), "\n")
+```
+
+`res$meta` also holds `axis_note`, `pairing_note`, `threshold_note`,
+`resolution_note`, `dependence_note` and `policy_as_whole_note`. A note is
+`NA` when it does not apply. Here that is true of `r na_notes_txt`.
+
+### The empty slots
+
+```{r}
+vapply(res[c("candidate_region", "dependence", "policy_as_whole")],
+       is.null, logical(1))
+res$meta$pending
+```
+
+`$meta$pending` lists slots that apply to this spec but are not built.
+`$dependence` is not listed: the method has no package support yet.
+
+## How to read it
+
+### The base-rate pull
+
+Agreement equals the base rate times sensitivity plus (one minus the base
+rate) times specificity. With a low base rate, specificity dominates:
+calling everyone "not ready" already agrees for every non-proficient student.
+
+In this panel `r pct(o$BASE_RATE)` of `r big(o$N)` current ELs are
+proficient, so calling everyone not ready agrees `r pct(o$AGREE_FLOOR)` of
+the time. Agreement's highest reportable point, `r pct(o$AGREE)` at
+`r agree_where`, `r agree_vs_floor`.
+J peaks at `r o$J_CUT_LABEL` (J = `r num(o$J)`). These come from the
+generator's settings; they show the method's behavior, not a finding.
+
+In general, when proficiency rises with level, agreement peaks where the
+proficiency rate among students *at a level* crosses one half, and J where
+it crosses the *overall base rate*. So when the base rate is below one half,
+the J optimum sits at or below agreement's peak, usually well below.
+
+**Confirm you are computing J, not agreement relabeled.** This is the
+stage's checkpoint. The package tests it on a fixture with a 16% base rate
+where the two optima differ by construction. On your own output:
+
+```{r}
+with(res$youden_j, all.equal(J, TP / (TP + FN) + TN / (TN + FP) - 1))
+res$j_optimal$OPTIMA_DIVERGE
+```
+
+The first line recomputes J from the four counts. The second says whether
+the two optima differ in this panel. `FALSE` is not by itself an error: the
+two can land on the same cut, especially when the base rate is near one
+half. What must hold is that the reported optimum is J's.
+
+### The shape, not only the peak
+
+A flat top means several cuts separate students almost equally well. Here
+the shown cuts around the optimum read `r nb_txt`. The optimum alone
+overstates how precisely the data locate a threshold, which is why the
+stage's eventual output is a *region*.
+
+### The current rule against the optimum
+
+The current rule (level `r if (identical(o$THRESHOLD_OP, ">=")) "≥" else ">"`
+`r o$THRESHOLD_LABEL`) `r side_txt` here, with J = `r num(o$J_AT_THRESHOLD)`
+against `r num(o$J)` at the optimum. That difference is the separation the
+rule gives up on this one criterion, content proficiency in this grade.
+
+Read the right-hand end of the axis with care. A student still an EL at or
+above the exit level is, in most states, in their final year, so those cuts
+rest on students on their way out. In the simulated data every current EL at
+or above 4.5 is in their exit year.
+
+### Error tolerance: what J assumes
+
+J weights the two errors equally **as rates**, not per student. Maximizing J
+is the same as minimizing `FP + R × FN`, with
+`R = (1 − base rate) / base rate`, reported as `IMPLIED_COST_RATIO`. Here
+`R` is `r num(o$IMPLIED_COST_RATIO, 1)`: at the J optimum, holding back one
+proficient student counts as much as exiting
+`r num(o$IMPLIED_COST_RATIO, 1)` who are not proficient.
+
+Prep 3 (not yet built) asks stakeholders which error is costlier for a
+student: exiting them prematurely, or holding them longer than necessary.
+The package reads the answer per student, and `LEAN` gives the side of the
+reported J optimum it points to:
+
+- **Premature exit costlier:** `"above"` whenever the base rate is at or
+  below one half; otherwise `NA`.
+- **Equal per student:** `"above"`, toward agreement's maximum, when the
+  base rate is below one half, and `"below"` when it is above. It is
+  `"at"` when the J optimum is itself agreement's maximum, beats the
+  everyone-not-ready floor, and no suppressed cut lies above it.
+- **Prolonged retention costlier:** `"below"` only if a hold is judged more
+  than `R` times as costly. Prep 3 does not record how much, so `LEAN` is `NA`
+  unless the base rate is at least one half (`R` at most 1).
+
+Trying each answer on a copy of the spec (hypothetical answers, not anything
+a state said):
+
+```{r}
+answers <- c("premature_exit", "equal", "prolonged_retention")
+vapply(answers, function(a) {
+  s <- spec
+  s$policy$error_tolerance$costlier_error <- a
+  compute_j_optimal(res$youden_j, s)$LEAN
+}, character(1))
+```
+
+With `"unknown"`, `LEAN` is `NA` and the note says the question is open. A
+stated asymmetry is a documented reason to land above or below the J
+optimum: a values input, not a departure from the evidence. This
+per-student reading awaits confirmation. To record a real answer, set
+`costlier_error`, `asked_of`, `asked_date`, `rationale` and `source` under
+`policy$error_tolerance` in your spec.
+
+### Across grades
+
+The report shows one panel, but the evidence is read across grades. Until
+the candidate-region pass exists, run each grade and keep the panels apart:
+
+```{r}
+grades <- spec_academic_grades(spec, "ELA")
+ela <- lapply(grades, function(g) {
+  run_check4(bundle, spec, subject = "ELA", grade = g)
+})
+ela_opt <- dplyr::bind_rows(lapply(ela, function(r) r$j_optimal))
+ela_opt[, c("GRADE", "N", "BASE_RATE", "J_CUT", "J", "J_MAX_HIDDEN",
+            "AGREE_CUT", "THRESHOLD_SIDE")]
+```
+
+Each row is its own panel. Here the J optima run from
+`r min(ela_opt$J_CUT)` to `r max(ela_opt$J_CUT)`, and the rule sits above
+the optimum in `r sum(ela_opt$THRESHOLD_SIDE %in% "above")` of
+`r nrow(ela_opt)` grades: patterns the simulation built in. Each panel takes
+the latest year by default. On real data, look at whether the optima
+cluster, which rows have `J_MAX_HIDDEN = TRUE`, and what Prep 2 found about
+each grade's composition and Check 1 about attrition. Heavy attrition or a
+large long-term EL share can move a grade's optimum for reasons unrelated to
+the language threshold. This table is not the candidate region, and Check 1's
+experimental `$grade_weights` are not used here.
+
+### Beside Check 3
+
+Treat convergence between Checks 3 and 4 as the strongest evidence. But
+compare like with like. Check 3's `$landing` reports `LANDING_BAND` (the
+first ELP band where half the students reach the cut) and `LANDING_CROSSING`
+(the ELP *scale score*, a different axis, where a fitted logistic crosses
+50%). Both mark where proficiency becomes more likely than not, which is
+agreement's target, not J's. With a base rate below one half they should
+land at or above the J optimum, or not appear at all. That gap is expected.
+The informative comparisons are Check 3's band landing against Check 4's
+agreement curve, and both against J.
+
+## Pitfalls
+
+- **Do not take the agreement peak as the optimal cut.** Use the J optimum,
+  and run the checkpoint above.
+- **Do not pool grades.** Each panel has its own base rate.
+- **Do not report the J optimum as "the" threshold.** Report the shape, ties
+  (`N_J_TIED`) and any hidden range (`J_MAX_HIDDEN`).
+- **"Equal costs" means equal rates**, not equal per student.
+- **Never lower `min_cell`** to recover suppressed cuts. Report that the
+  panel is too small.
+- **Whole-number levels against a fractional rule** (such as 4.5) trigger a
+  `check4_coarse_levels` warning and a report callout. Ask for decimal
+  levels.
+- **Do not type the threshold.** It is read from `policy$exit`.
+- **Do not place Check 3's logistic crossing on this axis.** It is a scale
+  score; Check 4's cuts are levels.
+- **Read the cuts at and above the exit level with care.** They rest on
+  students in their final year as ELs.
+- **This is a snapshot, not growth**: one grade, one year.
+- **On simulated data the J optimum is machinery, not a finding.** It is set
+  by the generator's parameters and by how the simulated exit rule thins the
+  top of the scale.
+
+## Decide before moving on
+
+::: {.callout-tip}
+## Decide before moving on
+1. **A candidate region**, not necessarily a single number, supported by the
+   balance of evidence across Checks 3 and 4. Note which grades and years
+   carry the most and least reliable evidence, per Check 1.
+2. **Record Prep 3's error-tolerance answer beside the region**, or that the
+   question is still open, for the Decision stage.
+:::
+
+The package does not build the region yet, so write it down: the range of
+cuts you consider supported, the grades that drive it, the grades you
+discount and why, and where the current rule sits.
+
+## Additional checks for multi-criterion exit rules
+
+The spec declares the exit-criteria Types in `policy$exit$types` (Prep 1,
+not yet built, is where the state confirms them). Type 1 is a single overall
+composite score. Types 2–6 bring in more than one criterion: a composite
+plus a floor, a composite plus another source, a compensatory combination,
+tiered or discretionary pathways (a **pathway** is one route to exit), or a
+domain profile. For those, `$policy_as_whole` would feed the whole rule's
+pass/fail outcome through the same consistency and J analysis. Which
+criterion drives the result comes from Prep 2's crosswalk and Check 3's
+contested zone.
+
+```{r}
+spec_exit_types(spec)
+spec_has_type(spec, 2:6)
+```
+
+```{r}
+#| output: asis
+cat(res$meta$policy_as_whole_note)
+```
+
+The simulated spec is Type 1, so the slot is `NULL` and does not apply.
+**Under Types 2–6 it is also `NULL` today**: it applies but is not built,
+and `res$meta$pending` lists it. Two `$j_optimal` flags already help there;
+both are `FALSE` unless the spec declares a Type from 2 to 6.
+`RULE_IS_TERM` is `TRUE` when the marked threshold is one term of a pathway
+that also requires another criterion. `RULE_IS_ROUTE` is `TRUE` when another
+pathway, or another term of an "any" pathway, lets students below it exit.
+Either way the marked line is one piece of the rule, and the figure's legend
+says so.
+
+## Render the stage report
+
+On the simulated data:
+
+```{r}
+#| eval: false
+render_step("check4")
+```
+
+This writes Word and HTML to `reports/` and scans them for student
+identifiers. The example report on the simulated data is
+[on the project site](../check4_consistency.html).
+
+For your state, run the stage on your bundle, save the results outside the
+folder you share, and render from them:
+
+```{r}
+#| eval: false
+res <- run_check4(my_bundle, my_spec)
+dir.create("results", showWarnings = FALSE)
+saveRDS(res, "results/check4_results.rds")
+
+files <- render_step("check4",
+                     spec_file = normalizePath("specs/XX_EL_Spec.R"),
+                     results_file = "results/check4_results.rds",
+                     check_disclosure = FALSE)
+check_output_disclosure(files, my_bundle)
+```
+
+Without `results_file`, the document runs on the simulated data whatever
+spec you pass. Give `spec_file` as a full path, as above: the document
+renders in a temporary folder, where a relative path does not resolve. Call
+`render_step()` from a folder with no `R/` subfolder; otherwise the document
+tries to load that folder as the package source and fails. The built-in scan
+knows only the simulated bundle, so turn it off and run
+`check_output_disclosure()` against your own students' identifiers instead.
+
+[Guide home](index.html) | Previous: [Check 3: Academic patterns](check3.html) | Next: [Decision: Synthesis and next steps](decision.html)
