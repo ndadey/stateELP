@@ -116,7 +116,7 @@ Maintain this table. It starts as the shell inventory.
 | Package skeleton, `DESCRIPTION`, `renv` | **built** | `renv::init()`, explicit snapshot — which pins `Imports`/`Depends`/`LinkingTo` only (`renv/settings.json`), so no `Suggests` is in `renv.lock` (75 entries); `officer` and `tidyr` are there only because `flextable` pulls them in. `officer` and `openxlsx` joined `Suggests` (edited 2026-10-09, committed with this file) for `test-disclosure.R` (their absence was the one `check()` WARNING in `4f402c3`); `openxlsx` is not in the project library, so that file's `.xlsx` case skips here — `renv::install("openxlsx")` runs it. `NAMESPACE`/`man` generated |
 | `data-raw/el_long_sim.R` + `sim_contract.md` | **written, RUN** | contract **v0.4.0**; every `[FILL IN]` filled from the 2026-09-16 build; values verified identical to the 0.2.0 build after renaming (§2.1) |
 | `data/` (three `.rda`) | **built** | `el_long_sim` (base) / `el_roster_sim` / `academic_long_sim`, 6.84 MB, `sim_contract_version` 0.4.0; `elp_components_sim` retired; regenerate, don't hand-edit |
-| `R/spec.R` + three specs | **built** | SIM (Type 1) / TEMPLATE / ELPA21 (Type 6); ALL-CAPS `data$columns` crosswalks + `value_maps`. No `demographics_spec`: display labels moved out of the spec tree to `inst/lookups/Display_Labels.R` and no spec points at them |
+| `R/spec.R` + four specs | **built** | SIM (Type 1) / TEMPLATE / ELPA21 (Type 6) / **MA (Type 2, added 2026-10-14)**; ALL-CAPS `data$columns` crosswalks + `value_maps`. No `demographics_spec`: display labels moved out of the spec tree to `inst/lookups/Display_Labels.R` and no spec points at them. MA is the only spec carrying a real state's exit rule and the only one whose Type gate opens on one — §5 item 4 for what is sourced in it (one field) and what is not (the other eight) |
 | `R/el_data.R` (bundle, adapter, coverage) | **built** | `as_el_data()` (separate objects, merged single file), `as_el_data_sgp()`, `as_academic_long()`, `elp_headline()`, coverage table |
 | `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below. `render_step()` renders a copy in `tempdir()` and copies only the finished files to `out_dir` (default `reports/`) — since the dev-loop commit `3356ad8` (2026-09-15; environment fact 3). Since `d63e2eb` (2026-10-09): `save_results` writes to `results_dir` (default `results/`, gitignored, never `out_dir`); `results_file` reaches RDS mode; `check_disclosure` scans every output for student ids and errors on a hit (§9). Dev helpers in `dev/render_step.R`: `rs()`, `rs_all()`, `rs_site()` (example reports into `docs/`), `rs_site_index()` (`docs/index.md` from the README), `rs_guide()` (guide pages into `docs/guide/`, disclosure-scanned). Known gaps in this path are under "Known issues" below |
@@ -254,11 +254,18 @@ CLAUDE.md, `sim_contract.md`, the stage instruction files and the NOTES — but
 not the deck or Process Overview extractions. Ask for them rather than
 inferring their content.
 
-**Current, as of 2026-10-10 (HEAD `f4b2e41` plus the site / guide /
-`Suggests` changes committed with this file): the whole suite is 1,565
-passing, 22 `skip()`ped, 0 failing, 0 warnings.** Per file: check1 261,
-check2 148, check3 167, check4 370, data 44, disclosure 26, el_data 88,
-prep2 283, render 16, spec 97, utils 65. The 22 skips: the three stages with
+**Current, as of 2026-10-14 (HEAD `aed5938` plus the MA spec committed with
+this file): the whole suite is 1,611 passing, 22 `skip()`ped, 0 failing, 0
+warnings.** Per file: check1 261, check2 148, check3 167, check4 370, data
+44, disclosure 26, el_data 88, prep2 283, render 16, **spec 143**, utils 65.
+The only change from the 1,565 recorded on 2026-10-10 is `test-spec.R`'s 97
+→ 143: the MA spec's four tests (§5 item 4) plus the shipped-spec loop moving
+to `el_spec_files()`. The skips are unchanged — the MA spec adds none, and
+`aed5938`/`abe2960` added no tests.
+
+*The 2026-10-10 figures, for provenance:* 1,565 passing, same 22 skips, spec
+97, at HEAD `f4b2e41` plus that day's site / guide / `Suggests` changes. The
+22 skips: the three stages with
 no code (`test-prep1.R` 7, `test-prep3.R` 4, `test-decision.R` 7); Check 4's
 later passes (`test-check4.R` 3: `$candidate_region` ×2, `$policy_as_whole`);
 and `test-disclosure.R` 1 — the `.xlsx` scan, which needs `openxlsx`, a
@@ -387,7 +394,21 @@ commit's hash and date, as §13 does for built items — never deletes it.
   headline has a scale, and not caught: `run_check1()` catches only
   `check1_unfittable`) error on them exactly as `compute_panel()` does —
   each run function guards only on the table. Only `run_check4()` checks for
-  a declared subject.
+  a declared subject. *Added 2026-10-14:* the MA spec's `academic` block is a
+  third unresolved pointer, and its own header records the consequence; its
+  `district_size_bands` copies the same off-by-one label as SIM's, since both
+  take the deck default. The same `MA_MCAS` pointer is also the one spec id
+  `read_el_spec()` would fail on, because no such file exists — nothing
+  resolves it, so nothing tries (§5).
+- *Roxygen (foundation owner, found 2026-10-14).* `devtools::document()`
+  prints `✖ stateELP-package.R:17: Block must have a @name` under roxygen2
+  8.1.0: the `NULL` block carrying `@importFrom rlang .data .env` and its
+  `@details` has no `@name`. **Cosmetic, verified** — the import still
+  reaches `NAMESPACE:155` and `document()` changes neither `NAMESPACE` nor
+  `man/`, so `check()` stays clean. It predates this session (nothing in
+  `R/` was touched) and is unmentioned above only because no earlier session
+  recorded it. Fix by giving the block an `@name` or folding the `@details`
+  into the `"_PACKAGE"` block.
 - ~~*Build.* `results/` (saved stage results, student-level) is gitignored but
   not `.Rbuildignore`d (`^results$` missing), so `devtools::build()` /
   `install()` from the repo root would bundle it.~~ Fixed 2026-10-13:
@@ -562,6 +583,37 @@ above, 7.7 min; since `4f402c3` only `test-disclosure.R`'s `officer` skip
 line and `DESCRIPTION`'s two `Suggests` lines differ
 (`git diff --stat 4f402c3 -- tests/ R/ inst/ DESCRIPTION`).
 
+**The Massachusetts spec (2026-10-14).** Added on the user's explicit
+decision that it **ships in the public repo**, which is the reverse of the
+NJ call five days earlier and defensible for one reason: MA's exit rule is
+stated in a public document, so publishing it discloses nothing. §5 item 4
+records the spec; what is worth keeping here is the method, because the next
+state spec faces the same problem. The source
+(`wida.wisc.edu/.../MA-Understanding-and-Implementing-ACCESS-Tests-August-2024.pdf`,
+17 pages, read with `pdftotext -layout` — the Read tool cannot render a PDF
+on this machine, no poppler, and neither `pdftools` nor `tesseract` is
+installed) is an **operational testing deck**, and a keyword scan said so
+before anything was written: `exit` 2 hits, `reclassif` 0, `threshold` 0,
+`composite` 0, `former` 0. So exactly one policy field could be sourced and
+eight could not, and the spec was built to make that boundary legible rather
+than to look complete — `source = "provisional"` on all eight,
+`verification$status = "provisional"`, the unknowable timeline fields
+**omitted** instead of placeheld, and no MCAS block at all. **The rule to
+carry forward: a `source` per field is what lets a part-sourced spec ship
+honestly; reach for it instead of either inventing values or withholding the
+spec.** Verified before committing: the full suite 1,611 / 22 / 0 / 0 (above),
+`tools::checkDocFiles()` silent, both new files pure ASCII, and
+`devtools::check()` on a staging export of exactly the committed files —
+**0 errors, 0 warnings, 3 NOTEs** (the three known: `openxlsx` absent, the
+6.5 MB `data/`, "unable to verify current time"), 18m 3s, its own
+`testthat.R` run 438 s. The Type 2 gates were exercised against the sim's
+tables rather than asserted (§5 item 4 has the numbers). The site refresh is
+**deferred** (§14 allows it if said): `docs/index.md` is regenerated and
+ships here, but `guide/setup.qmd`'s new MA section and `guide/index.qmd`'s
+`el_spec_files()` output — now four ids — are not re-rendered into
+`docs/guide/`, so those two pages lag the sources by one spec until
+`rs_guide(c("index", "setup"))` runs from a clean export of this commit.
+
 **Concurrent-session note (2026-09-21).** Check 1's Model 1 pass and Check 2's
 completion were built in two sessions running at the same time, which is worth
 recording because two *generated* files are shared. `NAMESPACE` is regenerated
@@ -582,7 +634,8 @@ derived and summary alike — the rule and its rationale live in §4. Confirmed
 2026-09-20.
 
 **Environment facts a later session will otherwise rediscover the hard
-way** (1–3 first recorded 2026-09-15, still true; 4–7 added 2026-10-10):
+way** (1–3 first recorded 2026-09-15, still true; 4–7 added 2026-10-10;
+8–9 added 2026-10-14):
 
 1. **R 4.3.3 is not installed on this machine** (4.2.1 / 4.4.2 / 4.5.3 are).
    The shipped data is built on **4.4.2** (`sim_contract.md` §2.1 records the
@@ -651,6 +704,20 @@ way** (1–3 first recorded 2026-09-15, still true; 4–7 added 2026-10-10):
    `git add .`); then, as a separate step, list `git log origin/main..main`
    and confirm it is exactly the approved commits; push by hash,
    `git push origin <hash>:main`.
+8. **`devtools::check()` prints a scary-looking Quarto error that is not a
+   check result** (2026-10-14). After `Status: 3 NOTEs`, the log carries
+   `ERROR: Unknown command "TMPDIR=..."` and a warning from
+   `system2("quarto", "-V", stdout = TRUE, env = paste0("TMPDIR=", ...))`.
+   That is devtools' own post-check Quarto version probe passing `env` in a
+   form Windows takes as an argument, not a package problem and not part of
+   the `0 errors | 0 warnings` tally above it. **Read the
+   `── R CMD check results ──` block, not the lines after `DONE`.**
+9. **No Python on this machine** (2026-10-14). `python` resolves to the
+   Microsoft Store shim and exits 49, so a scripted multi-line text edit
+   wants the Edit tool or `sed`, not a Python one-liner. **Quoted heredocs
+   into `cat >` also fail here** for large R blocks (bash reports
+   `unexpected EOF while looking for matching "'"`, as a 2026-10-09 session
+   also found), so write a new source file with the Write tool.
 
 ## 4. Data contract — three long tables
 
@@ -1009,10 +1076,13 @@ on it:
 | `data$columns` | `data$columns` | extended: roster, per-component entries, academic table |
 | `as_assessment_spec()` | `el_spec()` | shell constructor; shape stays acceptable to stateSpecs later (`as_assessment_spec()` is a local, unpublished draft, not an old field; §9) |
 
-**Three instantiations** under `inst/specs/`, all through `test-spec.R` — and
-nothing else in that directory, because `el_spec_files()` lists every `.R` there
-and treats it as a spec id. Display labels live outside the spec tree in
-`inst/lookups/Display_Labels.R`; no spec points at them:
+**Four instantiations** under `inst/specs/`, all through `test-spec.R` — whose
+shipped-spec test is driven off `el_spec_files()` with a `setequal` on the
+roster (2026-10-14), so a spec added without a test of its own is still
+validated — and nothing else in that directory, because `el_spec_files()`
+lists every `.R` there and treats it as a spec id. Display labels live
+outside the spec tree in `inst/lookups/Display_Labels.R`; no spec points at
+them:
 
 1. `00_SIM_EL_Spec.R` — WIDA-shaped, matches the sim; **Type 1**; identity
    crosswalk; `verification$status = "synthetic"`.
@@ -1047,6 +1117,62 @@ and treats it as a spec id. Display labels live outside the spec tree in
    it now exercises the typology as well as the component abstraction, and it
    is the guardrail against WIDA assumptions leaking into `spec.R` or any
    `compute_*()`. Do not pre-enumerate other instruments.
+4. `00_MA_EL_Spec.R` — **Massachusetts; the first and only shipped spec that
+   carries a real state's exit rule** (added 2026-10-14, the user's decision
+   that it ships publicly). **Type 2**, composite plus floor: Overall
+   Composite level `>= 4.2` **and** Literacy (`written`) level `>= 3.9`,
+   conjunctive, one pathway. WIDA-shaped, no data, no `data$columns`
+   crosswalk (no delivery inspected), `verification$status = "provisional"`.
+
+   **Exactly one policy field is sourced** — `policy$exit`, whose `source`
+   quotes MA DESE, "Understanding and Implementing ACCESS Tests"
+   (14 August 2024), slide 3: *"Exit criteria for ACCESS is 4.2 overall and
+   3.9 literacy. WIDA Alternate ACCESS exit criteria will be announced this
+   fall."* That document is an operational testing deck, so **every other
+   policy field is a placeholder** carrying `source = "provisional"` and is
+   **not Massachusetts policy**: `timelines` (only the validator-required
+   `max_years_to_exit` is set, deliberately to the TEMPLATE's `6L`, with
+   `essa_timeline_years`, `on_time_rule` and `lt_el_years` *omitted* so that
+   absence reads as unknown rather than as policy — Check 2's on-time split
+   and Check 1's within-timeline row therefore fall back to that placeholder
+   and `LT_EL` is `NA`), `growth`, `accountability_indicator`,
+   `suppression`, `academic_benchmark`, `district_size_bands`, `program`,
+   `error_tolerance`. `print.el_spec()` lists all eight as
+   `[DERIVED — VERIFY]`; `exit` is correctly absent from that list.
+
+   `academic` is **pointer form** (`spec_id = "MA_MCAS"`) and so declares no
+   subjects: the source carries no MCAS cuts, and inventing them is the NJ
+   failure mode. Consequence, recorded in the file: with an academic table
+   delivered, Check 4 degrades to `NULL` with a note but Check 3, Check 1's
+   Model 2 and Check 2's academic summary **error** (§3 Known issues).
+   Inline the subjects *and* set `academic_benchmark$proficient_level` in the
+   same edit — `.check3_cut()` errors on an `NA` benchmark the moment a spec
+   declares subjects.
+
+   **Term order is load-bearing** and a test pins it: `.check3_exit_band()`
+   (`R/check3_models.R:210-223`) takes the first term with
+   `measure = "level"` **and** `is.null(tm$from)`, whatever component it
+   names, so the headline term must come first and neither term may set
+   `from` explicitly, or Check 3 reports the 3.9 Literacy floor as the exit
+   threshold. Check 4 is order-independent (it matches the headline by name,
+   `R/check4_compute.R:613-640`) and reads 4.2 with `conjunctive = TRUE`.
+
+   `elp$bands` keeps the deck's scheme unchanged, which puts MA's 4.2 cut
+   **inside** the `4.0-4.4` band — so Check 3's exit band and Check 2's
+   crosstab rows are coarser than the rule. A break at the state's own cut
+   is written out in the file as the alternative and **not taken**
+   `[PROPOSED — CONFIRM]`. `program$short_name` is `"ACCESS"` per the
+   convention, which means `$meta$spec_id` does not distinguish MA from
+   TEMPLATE; `program$state` does `[PROPOSED — CONFIRM]`.
+
+   **It is the first spec whose Type gate opens on a real rule** — verified
+   2026-10-14 by running it against the sim's tables (same component keys):
+   Prep 2's `$criteria_crosswalk` centres its near-cut window on 4.2, its
+   `$contested_zone` spans 3.5–4.4 (core 90% 3.8–4.2) with 14,088 of 231,954
+   student-years disagreeing, `$blocked_groups` holds 11,087 rows, and Check
+   2's `$blocked_groups` fills with both directions
+   (`OVERALL_LEVEL only` / `WRITTEN_LEVEL only`). Until this spec those paths
+   were exercised only by the synthetic `make_check3_type2_spec()` fixture.
 
 ## 6. Per-stage blocks
 
@@ -1719,7 +1845,8 @@ The shell is built across **nine scoped sessions** — the foundation session (`
 3. `as_el_data()` + validator + coverage table, tested against the
    separate-objects form and the SGP-long fixture with identical output;
    `as_academic_long()` tested against a stateSummative-shaped fixture.
-4. `test-spec.R`: all three specs pass; every policy field carries a
+4. `test-spec.R`: every spec `el_spec_files()` lists passes (three at the
+   shell, four since 2026-10-14); every policy field carries a
    `source` (per field, not per scalar, §5); `types` validates against
    `terms`; ELPA21 (Type 6) constructs.
 5. **All eight `.qmd` render to docx and html** against the sim + SIM spec,

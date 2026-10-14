@@ -108,7 +108,7 @@ A **component** is one score the ELP assessment reports. A **domain** is a
 component measured directly (listening, speaking, reading, writing). A
 **composite** combines domains, such as WIDA's Overall Composite.
 
-The package ships three specs. Read one by its id, or read your own by path.
+The package ships four specs. Read one by its id, or read your own by path.
 Reading a spec file also validates it.
 
 ```{r}
@@ -142,9 +142,31 @@ template <- read_el_spec("00_TEMPLATE_EL_Spec")
 template
 ```
 
-Copy the file into your own project, edit it, and read it back by path. Keep
-your spec out of the package's own `inst/specs/` folder: the package treats
-every file there as a shipped spec.
+`00_MA_EL_Spec` is what a part-finished state spec looks like. Its exit rule
+is real — Massachusetts exits ACCESS at an Overall Composite of 4.2 together
+with a Literacy floor of 3.9, cited in the file to a public DESE document —
+and everything else under `policy` is a placeholder. That is the normal state
+of a spec early on, and the `source` field is how the difference stays
+visible: the exit block carries the citation, every other block carries
+`provisional`, and the last line of the printout lists exactly which ones.
+
+```{r}
+ma <- read_el_spec("00_MA_EL_Spec")
+ma
+```
+
+It is also the only shipped spec that declares a Type other than 1 against a
+real rule, so it is the one to read if you want to see what the Type-gated
+Additional checks are for: a composite-plus-floor rule is the case where
+Prep 2's criteria crosswalk, Check 2's blocked-by-one-criterion groups and
+Check 3's contested-zone models all have something to say. Two things it
+deliberately does not have: an academic block, because the source document
+carries no MCAS cuts and inventing them would attribute them to the state,
+and a column crosswalk, because no Massachusetts delivery has been seen.
+
+Copy whichever file fits into your own project, edit it, and read it back by
+path. Keep your spec out of the package's own `inst/specs/` folder: the
+package treats every file there as a shipped spec.
 
 ```{r}
 #| eval: false

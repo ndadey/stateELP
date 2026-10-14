@@ -274,13 +274,14 @@ reads a state value from anywhere else. A spec has these blocks:
 `source = "provisional"` renders as **`[DERIVED — VERIFY]`**, and the validator
 rejects a policy value that has no source.
 
-Three specs ship in `inst/specs/`:
+Four specs ship in `inst/specs/`:
 
 | Spec | Instrument | Exit type | Purpose |
 |---|---|---|---|
 | `00_SIM_EL_Spec` | WIDA-shaped | Type 1 | Matches the simulated data |
 | `00_TEMPLATE_EL_Spec` | WIDA ACCESS | Type 1 | **Starting point for a real state spec.** Uses a non-identity column crosswalk and vendor component names. Every policy value is a placeholder and describes no state. No data |
 | `00_ELPA21_EL_Spec` | ELPA21 | Type 6 | Guardrail against WIDA assumptions: a categorical headline, a level-only component and a domain-profile exit rule. Illustrative values, no data |
+| `00_MA_EL_Spec` | WIDA ACCESS | Type 2 | **Massachusetts.** The only shipped spec with a real state's exit rule, and the only one whose Type gate opens on one: Overall Composite ≥ 4.2 **and** Literacy ≥ 3.9, cited to a public DESE document. Every other policy value is a placeholder marked `provisional`. No data |
 
 ```r
 el_spec_files()                         # list shipped specs
@@ -292,8 +293,18 @@ validate_el_spec(spec)
 To set up a new state, copy `inst/specs/00_TEMPLATE_EL_Spec.R`, replace every
 placeholder with the state's value and its `source`, keep anything not taken
 from an official document marked `provisional`, and set
-`verification$status`. **No shipped spec describes a real state's exit
-criteria.**
+`verification$status`.
+
+**One shipped spec describes a real state's exit criteria, and only that
+part of it is real.** `00_MA_EL_Spec` carries Massachusetts' ACCESS exit
+rule because it is stated in a public DESE document, which is cited in the
+file. Nothing else in that spec is Massachusetts policy: the maximum
+timeline, the on-time rule, the long-term-EL definition, the growth targets,
+the academic benchmark, the suppression minimum and the district-size bands
+are placeholders, each marked `provisional` and so rendered as
+`[DERIVED — VERIFY]`, and the spec's own `verification$status` is
+`provisional` rather than `verified`. It ships without data and without a
+column crosswalk. Read the file's header before using any number in it.
 
 ### Exit-criteria typology
 

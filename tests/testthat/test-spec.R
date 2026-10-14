@@ -1,10 +1,17 @@
-# Spec layer: constructor, validator, the three shipped instantiations, and the
+# Spec layer: constructor, validator, the four shipped instantiations, and the
 # guardrail that keeps component names out of the rest of the package.
 
-# ---- the three shipped specs -------------------------------------------------
+# ---- the shipped specs -------------------------------------------------------
 
-test_that("all three shipped specs construct and validate", {
-  for (id in c("00_SIM_EL_Spec", "00_TEMPLATE_EL_Spec", "00_ELPA21_EL_Spec")) {
+test_that("every shipped spec constructs and validates", {
+  # Driven off el_spec_files() rather than a literal list, because that is
+  # what the package itself enumerates: a spec dropped into inst/specs/ with
+  # no test of its own would otherwise go unvalidated. The setequal pins the
+  # roster so an addition is a decision rather than a drift.
+  ids <- el_spec_files()
+  expect_setequal(ids, c("00_SIM_EL_Spec", "00_TEMPLATE_EL_Spec",
+                         "00_ELPA21_EL_Spec", "00_MA_EL_Spec"))
+  for (id in ids) {
     spec <- read_el_spec(id)
     expect_s3_class(spec, "el_spec")
     expect_silent(validate_el_spec(spec))
@@ -81,6 +88,84 @@ test_that("the template spec's renamed components keep their native labels", {
   # cohort_anchor_grade is gone; the starting cohort is a function argument.
   expect_null(spec$years)
   expect_identical(spec$verification$status, "unverified")
+})
+
+test_that("MA spec carries the sourced exit rule and nothing else sourced", {
+  # The one policy fact the source document states, pinned so a later edit
+  # cannot drift it: MA DESE, "Understanding and Implementing ACCESS Tests"
+  # (14 August 2024), slide 3 -- 4.2 overall and 3.9 literacy.
+  spec <- read_el_spec("00_MA_EL_Spec")
+
+  expect_identical(spec$program$state, "MA")
+  expect_identical(spec_headline(spec), "overall")
+
+  # Composite plus floor: one conjunctive pathway, two level terms.
+  expect_identical(spec_exit_types(spec), 2L)
+  expect_true(spec_has_type(spec, 2))
+  expect_false(spec_has_type(spec, c(1, 3, 4, 5, 6)))
+  expect_length(spec$policy$exit$pathways, 1L)
+
+  terms <- spec$policy$exit$pathways[[1]]$terms
+  expect_length(terms, 2L)
+  expect_identical(spec$policy$exit$pathways[[1]]$combine, "all")
+  expect_identical(terms[[1]]$value, 4.2)
+  expect_identical(terms[[2]]$value, 3.9)
+  expect_true(all(vapply(terms, function(t) t$measure, "") == "level"))
+  expect_true(all(vapply(terms, function(t) t$op, "") == ">="))
+
+  # Only the exit rule is sourced; every other policy field is provisional,
+  # so print.el_spec() and Prep 1 list them as [DERIVED - VERIFY].
+  expect_false(identical(spec$policy$exit$source, "provisional"))
+  expect_match(spec$policy$exit$source, "4\\.2 overall and 3\\.9 literacy")
+  others <- setdiff(names(spec$policy), "exit")
+  for (nm in others) {
+    expect_identical(spec$policy[[nm]]$source, "provisional", info = nm)
+  }
+  expect_identical(spec$verification$status, "provisional")
+
+  # No MCAS cuts are invented: the academic block is a pointer, so the spec
+  # declares no subjects (CLAUDE.md 5) and the benchmark stays unset.
+  expect_length(spec_academic_subjects(spec), 0L)
+  expect_true(is.na(spec$policy$academic_benchmark$proficient_level))
+})
+
+test_that("the MA rule's headline term comes first, which Check 3 depends on", {
+  # .check3_exit_band() takes the FIRST term with measure = "level" whatever
+  # component it names, and only when `from` is unset. Reorder these terms,
+  # or set from = "elp" explicitly, and Check 3 silently reports the Literacy
+  # floor (3.9) as the exit threshold instead of the composite cut (4.2).
+  # Check 4 matches the headline by name and is not order dependent.
+  spec <- read_el_spec("00_MA_EL_Spec")
+  terms <- spec$policy$exit$pathways[[1]]$terms
+
+  first_level <- Find(function(t) identical(t$measure, "level") &&
+                        is.null(t$from), terms)
+  expect_identical(first_level$component, spec_headline(spec))
+  expect_identical(first_level$value, 4.2)
+  # Neither term may name `from`, or that reader skips it entirely.
+  expect_true(all(vapply(terms, function(t) is.null(t$from), TRUE)))
+})
+
+test_that("MA is the first shipped spec whose Type gate opens on a real rule", {
+  # Prep 2's crosswalk and contested zone are Type 2-6 only, and until this
+  # spec the sole Type 2 exercise was a synthetic fixture. Run on the sim's
+  # tables, which are WIDA-shaped with the same component keys, so the rule
+  # resolves against real rows.
+  spec <- read_el_spec("00_MA_EL_Spec")
+  b <- as_el_data(stateELP::el_long_sim, roster = stateELP::el_roster_sim,
+                  spec = spec)
+  cw <- compute_criteria_crosswalk(b, spec)
+
+  # The near-cut window centres on the state's own cut, not on a default.
+  expect_identical(unname(cw$crosswalk$window[["cut"]]), 4.2)
+  expect_identical(cw$contested_zone$cut, 4.2)
+  expect_identical(cw$crosswalk$combine, "all")
+  expect_identical(nrow(cw$crosswalk$criteria), 2L)
+
+  # Blocked by exactly one criterion: with two criteria, both directions
+  # must appear, or the second criterion is doing no independent work.
+  expect_gt(nrow(cw$blocked_groups), 0L)
+  expect_length(unique(cw$blocked_groups$BLOCKED_BY), 2L)
 })
 
 # ---- the policy / measurement boundary --------------------------------------
