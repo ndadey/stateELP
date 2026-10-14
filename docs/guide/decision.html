@@ -3298,7 +3298,7 @@ Simulated data
 <h2 class="anchored" data-anchor-id="run-it">Run it</h2>
 <section id="run-each-built-stage-and-save-its-results" class="level3">
 <h3 class="anchored" data-anchor-id="run-each-built-stage-and-save-its-results">1. Run each built stage and save its results</h3>
-<p>Build the data bundle once, run each built stage, and save each results object as <code>&lt;stage&gt;_results.rds</code>. That is the file name <code>render_step()</code> uses.</p>
+<p>Build the data bundle once, run each built stage, and save each results object as <code>&lt;stage&gt;_results.rds</code>. That is the file name <code>render_step()</code> uses. The template script <code>dev/run_all_stages.R</code> does the same for every stage and reports which slots were filled (<a href="index.html#run-every-stage-at-once">Conducting the analysis</a>); the chunk below writes the steps out.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="ot">&lt;-</span> <span class="fu">as_el_data</span>(el_long_sim, <span class="at">roster =</span> el_roster_sim,</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>                     <span class="at">academic =</span> academic_long_sim, <span class="at">spec =</span> spec)</span>

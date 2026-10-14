@@ -395,6 +395,9 @@ rs_all()                                   # every stage that has a document
 rs_site()                                  # refresh the example reports in docs/
 rs_site_index()                            # rebuild the site page from this README
 rs_guide()                                 # re-render the walkthrough guide
+
+source("dev/run_all_stages.R")             # run every built stage, save each
+                                           # results list, report the slots
 ```
 
 The project site's landing page, `docs/index.md`, is generated from this

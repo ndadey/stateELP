@@ -363,6 +363,74 @@ subfolder. If it has one, the document tries to load that folder as the
 package source (that is how the package's own developers work), and the
 render fails.
 
+## Run every stage at once
+
+The repository includes a template script,
+[`dev/run_all_stages.R`](https://github.com/ndadey/stateELP/blob/main/dev/run_all_stages.R),
+that applies the working pattern to every stage in one pass. It:
+
+1. builds the data bundle once;
+2. runs every stage that has a `run_<stage>()` function, collecting the
+   results in one named list, `results`, with an entry for all eight stages;
+3. saves each stage's results as `results/<stage>_results.rds`, the file name
+   `render_step()` uses; and
+4. builds `slot_report`, which lists every slot of every stage, whether it
+   was filled, and why not when it was not.
+
+The `dev/` folder is not part of the installed package. Download the file
+from GitHub, or copy it from a clone of the repository, and edit its first
+section to point at your own spec and data. Stages that are not built yet
+(Prep 1, Prep 3 and Decision) stay `NULL` in `results`; the script picks each
+one up, with no edit, once its function exists.
+
+The script below runs exactly as written, on the simulated data:
+
+```{r}
+#| label: run-all-stages
+#| code-fold: true
+#| code-summary: "Show the script (dev/run_all_stages.R)"
+#| results: hide
+#| code: !expr readLines(file.path(params$pkg_path, "dev", "run_all_stages.R"))
+```
+
+```{r}
+stage_summary <- do.call(rbind, lapply(names(results), function(s) {
+  rows <- slot_report[slot_report$STAGE == s, ]
+  built <- !is.null(results[[s]])
+  data.frame(STAGE  = s,
+             BUILT  = built,
+             SLOTS  = if (built) nrow(rows) else NA_integer_,
+             FILLED = if (built) sum(rows$FILLED) else NA_integer_)
+}))
+knitr::kable(stage_summary)
+```
+
+On the simulated data, `r sum(slot_report$FILLED)` of the
+`r sum(!is.na(slot_report$SLOT))` slots of the built stages are filled. The
+rest are empty for a stated reason:
+
+```{r}
+knitr::kable(slot_report[!slot_report$FILLED & !is.na(slot_report$SLOT),
+                         c("STAGE", "SLOT", "DETAIL")],
+             row.names = FALSE)
+```
+
+Every empty slot here is empty by design. Some are Additional checks for
+multi-criterion exit rules, which a Type
+`r types_label(spec_exit_types(spec))` spec does not trigger. The others are
+later passes or analyses the package does not support yet. On your own
+delivery, read the report the same way. A slot you expected to be filled
+that comes back empty usually means a missing input, such as no academic
+table or no district on the roster, and its `DETAIL` names the stage's own
+note where the stage keeps one. The full `slot_report` also lists the size
+of every filled slot.
+
+The saved files hold student-level rows in places: Check 2's `$flags` and
+`$profile` have one row per student. Keep `results/` out of any folder you
+share. The [Decision](decision.html) page reads the saved files back to
+build its evidence map, and any one of them can feed a stage document
+through `render_step(results_file = ...)`, as shown above.
+
 ## What you need before you start
 
 ### People

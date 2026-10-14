@@ -166,7 +166,11 @@ Carry those notes into the map, so a gap says why there is no evidence.
 ### 1. Run each built stage and save its results
 
 Build the data bundle once, run each built stage, and save each results object
-as `<stage>_results.rds`. That is the file name `render_step()` uses.
+as `<stage>_results.rds`. That is the file name `render_step()` uses. The
+template script `dev/run_all_stages.R` does the same for every stage and
+reports which slots were filled
+([Conducting the analysis](index.html#run-every-stage-at-once)); the chunk
+below writes the steps out.
 
 ```{r}
 bundle <- as_el_data(el_long_sim, roster = el_roster_sim,

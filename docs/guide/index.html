@@ -3092,6 +3092,7 @@ vertical-align: -.125em;
   <li><a href="#a-first-look-the-spec-and-the-data" id="toc-a-first-look-the-spec-and-the-data" class="nav-link" data-scroll-target="#a-first-look-the-spec-and-the-data">A first look: the spec and the data</a></li>
   <li><a href="#the-sample-changes-from-stage-to-stage" id="toc-the-sample-changes-from-stage-to-stage" class="nav-link" data-scroll-target="#the-sample-changes-from-stage-to-stage">The sample changes from stage to stage</a></li>
   <li><a href="#the-working-pattern-for-every-stage" id="toc-the-working-pattern-for-every-stage" class="nav-link" data-scroll-target="#the-working-pattern-for-every-stage">The working pattern for every stage</a></li>
+  <li><a href="#run-every-stage-at-once" id="toc-run-every-stage-at-once" class="nav-link" data-scroll-target="#run-every-stage-at-once">Run every stage at once</a></li>
   <li><a href="#what-you-need-before-you-start" id="toc-what-you-need-before-you-start" class="nav-link" data-scroll-target="#what-you-need-before-you-start">What you need before you start</a></li>
   <li><a href="#what-the-package-builds-today" id="toc-what-the-package-builds-today" class="nav-link" data-scroll-target="#what-the-package-builds-today">What the package builds today</a></li>
   <li><a href="#rules-that-hold-in-every-stage" id="toc-rules-that-hold-in-every-stage" class="nav-link" data-scroll-target="#rules-that-hold-in-every-stage">Rules that hold in every stage</a></li>
@@ -3412,6 +3413,317 @@ Check 4’s Sample statement
 <p><code>render_step()</code> scans every file it writes for student IDs and stops if any appear. On the simulated data it does this by itself. It cannot rebuild your bundle, so on your own data you turn the automatic scan off and run <code>check_output_disclosure()</code> against your bundle instead. Keep saved results out of any folder you share: some slots hold one row per student (Check 2’s <code>$flags</code> and <code>$profile</code>, for example).</p>
 <p>Two practical details. Give <code>spec_file</code> as a full path, as above: the document renders in a temporary folder, where a relative path does not resolve. And call <code>render_step()</code> from a working directory that has no <code>R/</code> subfolder. If it has one, the document tries to load that folder as the package source (that is how the package’s own developers work), and the render fails.</p>
 </section>
+<section id="run-every-stage-at-once" class="level2">
+<h2 class="anchored" data-anchor-id="run-every-stage-at-once">Run every stage at once</h2>
+<p>The repository includes a template script, <a href="https://github.com/ndadey/stateELP/blob/main/dev/run_all_stages.R"><code>dev/run_all_stages.R</code></a>, that applies the working pattern to every stage in one pass. It:</p>
+<ol type="1">
+<li>builds the data bundle once;</li>
+<li>runs every stage that has a <code>run_&lt;stage&gt;()</code> function, collecting the results in one named list, <code>results</code>, with an entry for all eight stages;</li>
+<li>saves each stage’s results as <code>results/&lt;stage&gt;_results.rds</code>, the file name <code>render_step()</code> uses; and</li>
+<li>builds <code>slot_report</code>, which lists every slot of every stage, whether it was filled, and why not when it was not.</li>
+</ol>
+<p>The <code>dev/</code> folder is not part of the installed package. Download the file from GitHub, or copy it from a clone of the repository, and edit its first section to point at your own spec and data. Stages that are not built yet (Prep 1, Prep 3 and Decision) stay <code>NULL</code> in <code>results</code>; the script picks each one up, with no edit, once its function exists.</p>
+<p>The script below runs exactly as written, on the simulated data:</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Show the script (dev/run_all_stages.R)</summary>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Run every built stage once and keep each stage&#39;s results list.</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="co"># A copy-and-edit template. Copy this file, edit section 1 to point at your</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="co"># own spec and delivery, and run it from the package root -- or from anywhere,</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="co"># with stateELP installed:</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   source(&quot;run_all_stages.R&quot;)</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a><span class="co"># It builds the data bundle once, runs every stage that has a run_&lt;stage&gt;()</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a><span class="co"># function into one named list, `results`, saves each stage&#39;s list as</span></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a><span class="co"># results/&lt;stage&gt;_results.rds, and leaves `slot_report`: every slot of every</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a><span class="co"># stage, whether it was filled, and why not when it was not.</span></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a><span class="co"># `results` always carries all eight stage ids in run order. A stage with no</span></span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a><span class="co"># run function yet (Prep 1, Prep 3 and Decision today) stays a NULL</span></span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a><span class="co"># placeholder, and is picked up here with no edit once its function exists.</span></span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a><span class="co"># The saved files are student-level in places -- Check 2&#39;s $flags and</span></span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a><span class="co"># $profile are one row per student -- so results/ is gitignored and</span></span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a><span class="co"># .Rbuildignored. Keep it apart from rendered documents and never send it</span></span>
+<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a><span class="co"># with them (CLAUDE.md 9). A saved file can feed a stage document:</span></span>
+<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a><span class="co">#   render_step(&quot;check1&quot;, results_file = &quot;results/check1_results.rds&quot;)</span></span>
+<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Do not edit this copy in place: the walkthrough guide (guide/index.qmd) runs</span></span>
+<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a><span class="co"># it as written on the simulated data.</span></span>
+<span id="cb21-26"><a href="#cb21-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-27"><a href="#cb21-27" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">isNamespaceLoaded</span>(<span class="st">&quot;stateELP&quot;</span>)) {</span>
+<span id="cb21-28"><a href="#cb21-28" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">file.exists</span>(<span class="st">&quot;DESCRIPTION&quot;</span>) <span class="sc">&amp;&amp;</span> <span class="fu">dir.exists</span>(<span class="st">&quot;R&quot;</span>)) {</span>
+<span id="cb21-29"><a href="#cb21-29" aria-hidden="true" tabindex="-1"></a>    devtools<span class="sc">::</span><span class="fu">load_all</span>(<span class="st">&quot;.&quot;</span>, <span class="at">quiet =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb21-30"><a href="#cb21-30" aria-hidden="true" tabindex="-1"></a>  } <span class="cf">else</span> {</span>
+<span id="cb21-31"><a href="#cb21-31" aria-hidden="true" tabindex="-1"></a>    <span class="fu">library</span>(stateELP)</span>
+<span id="cb21-32"><a href="#cb21-32" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-33"><a href="#cb21-33" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-34"><a href="#cb21-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-35"><a href="#cb21-35" aria-hidden="true" tabindex="-1"></a><span class="co"># ---- 1. Your spec and your delivery (edit these) ----------------------------</span></span>
+<span id="cb21-36"><a href="#cb21-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-37"><a href="#cb21-37" aria-hidden="true" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_SIM_EL_Spec&quot;</span>)   <span class="co"># or read_el_spec(&quot;path/to/MY_Spec.R&quot;)</span></span>
+<span id="cb21-38"><a href="#cb21-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-39"><a href="#cb21-39" aria-hidden="true" tabindex="-1"></a>bundle <span class="ot">&lt;-</span> <span class="fu">as_el_data</span>(el_long_sim,          <span class="co"># the base table</span></span>
+<span id="cb21-40"><a href="#cb21-40" aria-hidden="true" tabindex="-1"></a>                     <span class="at">roster   =</span> el_roster_sim,</span>
+<span id="cb21-41"><a href="#cb21-41" aria-hidden="true" tabindex="-1"></a>                     <span class="at">academic =</span> academic_long_sim,</span>
+<span id="cb21-42"><a href="#cb21-42" aria-hidden="true" tabindex="-1"></a>                     <span class="at">spec     =</span> spec)</span>
+<span id="cb21-43"><a href="#cb21-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-44"><a href="#cb21-44" aria-hidden="true" tabindex="-1"></a>results_dir <span class="ot">&lt;-</span> <span class="st">&quot;results&quot;</span>                   <span class="co"># never the folder of reports</span></span>
+<span id="cb21-45"><a href="#cb21-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-46"><a href="#cb21-46" aria-hidden="true" tabindex="-1"></a><span class="co"># Arguments for individual stages. A stage left out runs on its defaults:</span></span>
+<span id="cb21-47"><a href="#cb21-47" aria-hidden="true" tabindex="-1"></a><span class="co"># Checks 1-2 take start_grade; Checks 3-4 take subject, grade and year.</span></span>
+<span id="cb21-48"><a href="#cb21-48" aria-hidden="true" tabindex="-1"></a>stage_args <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb21-49"><a href="#cb21-49" aria-hidden="true" tabindex="-1"></a>  <span class="at">check1 =</span> <span class="fu">list</span>(<span class="at">start_grade =</span> <span class="st">&quot;K&quot;</span>),</span>
+<span id="cb21-50"><a href="#cb21-50" aria-hidden="true" tabindex="-1"></a>  <span class="at">check2 =</span> <span class="fu">list</span>(<span class="at">start_grade =</span> <span class="st">&quot;K&quot;</span>)</span>
+<span id="cb21-51"><a href="#cb21-51" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb21-52"><a href="#cb21-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-53"><a href="#cb21-53" aria-hidden="true" tabindex="-1"></a><span class="co"># ---- 2. Run every stage that has a run function ------------------------------</span></span>
+<span id="cb21-54"><a href="#cb21-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-55"><a href="#cb21-55" aria-hidden="true" tabindex="-1"></a>ns <span class="ot">&lt;-</span> <span class="fu">asNamespace</span>(<span class="st">&quot;stateELP&quot;</span>)</span>
+<span id="cb21-56"><a href="#cb21-56" aria-hidden="true" tabindex="-1"></a>results <span class="ot">&lt;-</span> stats<span class="sc">::</span><span class="fu">setNames</span>(<span class="fu">vector</span>(<span class="st">&quot;list&quot;</span>, <span class="fu">length</span>(<span class="fu">stage_ids</span>())), <span class="fu">stage_ids</span>())</span>
+<span id="cb21-57"><a href="#cb21-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-58"><a href="#cb21-58" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (s <span class="cf">in</span> <span class="fu">stage_ids</span>()) {</span>
+<span id="cb21-59"><a href="#cb21-59" aria-hidden="true" tabindex="-1"></a>  fn <span class="ot">&lt;-</span> <span class="fu">paste0</span>(<span class="st">&quot;run_&quot;</span>, s)</span>
+<span id="cb21-60"><a href="#cb21-60" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">exists</span>(fn, <span class="at">envir =</span> ns, <span class="at">inherits =</span> <span class="cn">FALSE</span>)) {</span>
+<span id="cb21-61"><a href="#cb21-61" aria-hidden="true" tabindex="-1"></a>    <span class="fu">message</span>(s, <span class="st">&quot;: not built yet (no &quot;</span>, fn, <span class="st">&quot;()), left NULL&quot;</span>)</span>
+<span id="cb21-62"><a href="#cb21-62" aria-hidden="true" tabindex="-1"></a>    <span class="cf">next</span></span>
+<span id="cb21-63"><a href="#cb21-63" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-64"><a href="#cb21-64" aria-hidden="true" tabindex="-1"></a>  run <span class="ot">&lt;-</span> <span class="fu">get</span>(fn, <span class="at">envir =</span> ns)</span>
+<span id="cb21-65"><a href="#cb21-65" aria-hidden="true" tabindex="-1"></a>  t0 <span class="ot">&lt;-</span> <span class="fu">Sys.time</span>()</span>
+<span id="cb21-66"><a href="#cb21-66" aria-hidden="true" tabindex="-1"></a>  res <span class="ot">&lt;-</span> <span class="cf">switch</span>(s,</span>
+<span id="cb21-67"><a href="#cb21-67" aria-hidden="true" tabindex="-1"></a>    <span class="at">prep1 =</span> , <span class="at">prep3 =</span> <span class="fu">run</span>(spec),           <span class="co"># these take the spec alone</span></span>
+<span id="cb21-68"><a href="#cb21-68" aria-hidden="true" tabindex="-1"></a>    <span class="at">decision =</span> <span class="fu">run</span>(results[<span class="fu">setdiff</span>(<span class="fu">names</span>(results), <span class="st">&quot;decision&quot;</span>)], spec),</span>
+<span id="cb21-69"><a href="#cb21-69" aria-hidden="true" tabindex="-1"></a>    <span class="fu">do.call</span>(run, <span class="fu">c</span>(<span class="fu">list</span>(bundle, spec), stage_args[[s]])))</span>
+<span id="cb21-70"><a href="#cb21-70" aria-hidden="true" tabindex="-1"></a>  results[s] <span class="ot">&lt;-</span> <span class="fu">list</span>(res)                  <span class="co"># `[&lt;-` keeps the name if res is NULL</span></span>
+<span id="cb21-71"><a href="#cb21-71" aria-hidden="true" tabindex="-1"></a>  <span class="fu">message</span>(s, <span class="st">&quot;: done in &quot;</span>, <span class="fu">format</span>(<span class="fu">round</span>(<span class="fu">Sys.time</span>() <span class="sc">-</span> t0, <span class="dv">1</span>)))</span>
+<span id="cb21-72"><a href="#cb21-72" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-73"><a href="#cb21-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-74"><a href="#cb21-74" aria-hidden="true" tabindex="-1"></a><span class="co"># ---- 3. Save each stage&#39;s results --------------------------------------------</span></span>
+<span id="cb21-75"><a href="#cb21-75" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-76"><a href="#cb21-76" aria-hidden="true" tabindex="-1"></a><span class="fu">dir.create</span>(results_dir, <span class="at">showWarnings =</span> <span class="cn">FALSE</span>, <span class="at">recursive =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb21-77"><a href="#cb21-77" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (s <span class="cf">in</span> <span class="fu">names</span>(results)) {</span>
+<span id="cb21-78"><a href="#cb21-78" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.null</span>(results[[s]])) <span class="cf">next</span></span>
+<span id="cb21-79"><a href="#cb21-79" aria-hidden="true" tabindex="-1"></a>  <span class="fu">saveRDS</span>(results[[s]], <span class="fu">file.path</span>(results_dir, <span class="fu">paste0</span>(s, <span class="st">&quot;_results.rds&quot;</span>)))</span>
+<span id="cb21-80"><a href="#cb21-80" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-81"><a href="#cb21-81" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-82"><a href="#cb21-82" aria-hidden="true" tabindex="-1"></a><span class="co"># ---- 4. Slot report: what was filled, and why the rest was not ---------------</span></span>
+<span id="cb21-83"><a href="#cb21-83" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-84"><a href="#cb21-84" aria-hidden="true" tabindex="-1"></a><span class="co"># Slots that only fill when the spec declares one of these exit-rule Types.</span></span>
+<span id="cb21-85"><a href="#cb21-85" aria-hidden="true" tabindex="-1"></a>type_gates <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">criteria_crosswalk    =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>,</span>
+<span id="cb21-86"><a href="#cb21-86" aria-hidden="true" tabindex="-1"></a>                   <span class="at">blocked_groups        =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>,</span>
+<span id="cb21-87"><a href="#cb21-87" aria-hidden="true" tabindex="-1"></a>                   <span class="at">contested_zone        =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>,</span>
+<span id="cb21-88"><a href="#cb21-88" aria-hidden="true" tabindex="-1"></a>                   <span class="at">type3_covariate       =</span> <span class="dv">3</span>,</span>
+<span id="cb21-89"><a href="#cb21-89" aria-hidden="true" tabindex="-1"></a>                   <span class="at">contested_zone_models =</span> <span class="fu">c</span>(<span class="dv">2</span>, <span class="dv">4</span>, <span class="dv">5</span>, <span class="dv">6</span>),</span>
+<span id="cb21-90"><a href="#cb21-90" aria-hidden="true" tabindex="-1"></a>                   <span class="at">policy_as_whole       =</span> <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span>
+<span id="cb21-91"><a href="#cb21-91" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-92"><a href="#cb21-92" aria-hidden="true" tabindex="-1"></a><span class="co"># Slots empty whatever the delivery, until the package supports them.</span></span>
+<span id="cb21-93"><a href="#cb21-93" aria-hidden="true" tabindex="-1"></a>not_supported <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="at">dependence =</span> <span class="st">&quot;No package support yet (the copula analysis)&quot;</span>)</span>
+<span id="cb21-94"><a href="#cb21-94" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-95"><a href="#cb21-95" aria-hidden="true" tabindex="-1"></a>types_label <span class="ot">&lt;-</span> <span class="cf">function</span>(x) {</span>
+<span id="cb21-96"><a href="#cb21-96" aria-hidden="true" tabindex="-1"></a>  x <span class="ot">&lt;-</span> <span class="fu">sort</span>(<span class="fu">unique</span>(x))</span>
+<span id="cb21-97"><a href="#cb21-97" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">length</span>(x) <span class="sc">&gt;</span> <span class="dv">2</span>L <span class="sc">&amp;&amp;</span> <span class="fu">all</span>(<span class="fu">diff</span>(x) <span class="sc">==</span> <span class="dv">1</span>L)) {</span>
+<span id="cb21-98"><a href="#cb21-98" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(<span class="fu">paste0</span>(x[<span class="dv">1</span>], <span class="st">&quot;-&quot;</span>, x[<span class="fu">length</span>(x)]))</span>
+<span id="cb21-99"><a href="#cb21-99" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-100"><a href="#cb21-100" aria-hidden="true" tabindex="-1"></a>  <span class="fu">paste</span>(x, <span class="at">collapse =</span> <span class="st">&quot;, &quot;</span>)</span>
+<span id="cb21-101"><a href="#cb21-101" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-102"><a href="#cb21-102" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-103"><a href="#cb21-103" aria-hidden="true" tabindex="-1"></a>why_null <span class="ot">&lt;-</span> <span class="cf">function</span>(slot, res) {</span>
+<span id="cb21-104"><a href="#cb21-104" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (slot <span class="sc">%in%</span> res<span class="sc">$</span>meta<span class="sc">$</span>pending) <span class="fu">return</span>(<span class="st">&quot;Later pass: not built yet&quot;</span>)</span>
+<span id="cb21-105"><a href="#cb21-105" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (slot <span class="sc">%in%</span> <span class="fu">names</span>(not_supported)) <span class="fu">return</span>(not_supported[[slot]])</span>
+<span id="cb21-106"><a href="#cb21-106" aria-hidden="true" tabindex="-1"></a>  gate <span class="ot">&lt;-</span> type_gates[[slot]]</span>
+<span id="cb21-107"><a href="#cb21-107" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(gate) <span class="sc">&amp;&amp;</span> <span class="sc">!</span><span class="fu">spec_has_type</span>(spec, gate)) {</span>
+<span id="cb21-108"><a href="#cb21-108" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(<span class="fu">paste0</span>(<span class="st">&quot;Needs exit-rule Type &quot;</span>, <span class="fu">types_label</span>(gate),</span>
+<span id="cb21-109"><a href="#cb21-109" aria-hidden="true" tabindex="-1"></a>                  <span class="st">&quot;; this spec declares Type &quot;</span>,</span>
+<span id="cb21-110"><a href="#cb21-110" aria-hidden="true" tabindex="-1"></a>                  <span class="fu">types_label</span>(<span class="fu">spec_exit_types</span>(spec))))</span>
+<span id="cb21-111"><a href="#cb21-111" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-112"><a href="#cb21-112" aria-hidden="true" tabindex="-1"></a>  <span class="co"># The stage&#39;s own note, where it keeps one under a guessable name.</span></span>
+<span id="cb21-113"><a href="#cb21-113" aria-hidden="true" tabindex="-1"></a>  stem <span class="ot">&lt;-</span> <span class="fu">sub</span>(<span class="st">&quot;_.*$&quot;</span>, <span class="st">&quot;&quot;</span>, slot)</span>
+<span id="cb21-114"><a href="#cb21-114" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (key <span class="cf">in</span> <span class="fu">unique</span>(<span class="fu">c</span>(<span class="fu">paste0</span>(slot, <span class="st">&quot;_note&quot;</span>), <span class="fu">paste0</span>(stem, <span class="st">&quot;_note&quot;</span>)))) {</span>
+<span id="cb21-115"><a href="#cb21-115" aria-hidden="true" tabindex="-1"></a>    note <span class="ot">&lt;-</span> res<span class="sc">$</span>meta[[key]]</span>
+<span id="cb21-116"><a href="#cb21-116" aria-hidden="true" tabindex="-1"></a>    usable <span class="ot">&lt;-</span> <span class="fu">is.character</span>(note) <span class="sc">&amp;&amp;</span> <span class="fu">length</span>(note) <span class="sc">==</span> <span class="dv">1</span>L <span class="sc">&amp;&amp;</span></span>
+<span id="cb21-117"><a href="#cb21-117" aria-hidden="true" tabindex="-1"></a>      <span class="sc">!</span><span class="fu">is.na</span>(note) <span class="sc">&amp;&amp;</span> <span class="fu">nzchar</span>(note)</span>
+<span id="cb21-118"><a href="#cb21-118" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (usable) <span class="fu">return</span>(<span class="fu">gsub</span>(<span class="st">&quot;</span><span class="sc">\\</span><span class="st">s+&quot;</span>, <span class="st">&quot; &quot;</span>, note))</span>
+<span id="cb21-119"><a href="#cb21-119" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-120"><a href="#cb21-120" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;No input for it in this delivery; the stage document says why&quot;</span></span>
+<span id="cb21-121"><a href="#cb21-121" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-122"><a href="#cb21-122" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-123"><a href="#cb21-123" aria-hidden="true" tabindex="-1"></a>describe <span class="ot">&lt;-</span> <span class="cf">function</span>(x) {</span>
+<span id="cb21-124"><a href="#cb21-124" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.data.frame</span>(x)) {</span>
+<span id="cb21-125"><a href="#cb21-125" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(<span class="fu">sprintf</span>(<span class="st">&quot;%d %s x %d columns&quot;</span>, <span class="fu">nrow</span>(x),</span>
+<span id="cb21-126"><a href="#cb21-126" aria-hidden="true" tabindex="-1"></a>                   <span class="cf">if</span> (<span class="fu">nrow</span>(x) <span class="sc">==</span> <span class="dv">1</span>L) <span class="st">&quot;row&quot;</span> <span class="cf">else</span> <span class="st">&quot;rows&quot;</span>, <span class="fu">ncol</span>(x)))</span>
+<span id="cb21-127"><a href="#cb21-127" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-128"><a href="#cb21-128" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.list</span>(x)) <span class="fu">return</span>(<span class="fu">sprintf</span>(<span class="st">&quot;list of %d&quot;</span>, <span class="fu">length</span>(x)))</span>
+<span id="cb21-129"><a href="#cb21-129" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sprintf</span>(<span class="st">&quot;%s, length %d&quot;</span>, <span class="fu">class</span>(x)[<span class="dv">1</span>], <span class="fu">length</span>(x))</span>
+<span id="cb21-130"><a href="#cb21-130" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-131"><a href="#cb21-131" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-132"><a href="#cb21-132" aria-hidden="true" tabindex="-1"></a>slot_report <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">names</span>(results), <span class="cf">function</span>(s) {</span>
+<span id="cb21-133"><a href="#cb21-133" aria-hidden="true" tabindex="-1"></a>  res <span class="ot">&lt;-</span> results[[s]]</span>
+<span id="cb21-134"><a href="#cb21-134" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.null</span>(res)) {</span>
+<span id="cb21-135"><a href="#cb21-135" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(<span class="fu">data.frame</span>(<span class="at">STAGE =</span> s, <span class="at">SLOT =</span> <span class="cn">NA_character_</span>, <span class="at">FILLED =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb21-136"><a href="#cb21-136" aria-hidden="true" tabindex="-1"></a>                      <span class="at">DETAIL =</span> <span class="st">&quot;Stage not built yet: no run function&quot;</span>))</span>
+<span id="cb21-137"><a href="#cb21-137" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-138"><a href="#cb21-138" aria-hidden="true" tabindex="-1"></a>  slots <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(<span class="fu">names</span>(res), <span class="st">&quot;meta&quot;</span>)</span>
+<span id="cb21-139"><a href="#cb21-139" aria-hidden="true" tabindex="-1"></a>  filled <span class="ot">&lt;-</span> <span class="sc">!</span><span class="fu">vapply</span>(res[slots], is.null, <span class="fu">logical</span>(<span class="dv">1</span>))</span>
+<span id="cb21-140"><a href="#cb21-140" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">STAGE =</span> s, <span class="at">SLOT =</span> slots, <span class="at">FILLED =</span> filled,</span>
+<span id="cb21-141"><a href="#cb21-141" aria-hidden="true" tabindex="-1"></a>             <span class="at">DETAIL =</span> <span class="fu">vapply</span>(slots, <span class="cf">function</span>(x) {</span>
+<span id="cb21-142"><a href="#cb21-142" aria-hidden="true" tabindex="-1"></a>               <span class="cf">if</span> (<span class="fu">is.null</span>(res[[x]])) <span class="fu">why_null</span>(x, res) <span class="cf">else</span> <span class="fu">describe</span>(res[[x]])</span>
+<span id="cb21-143"><a href="#cb21-143" aria-hidden="true" tabindex="-1"></a>             }, <span class="fu">character</span>(<span class="dv">1</span>)))</span>
+<span id="cb21-144"><a href="#cb21-144" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb21-145"><a href="#cb21-145" aria-hidden="true" tabindex="-1"></a><span class="fu">rownames</span>(slot_report) <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb21-146"><a href="#cb21-146" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-147"><a href="#cb21-147" aria-hidden="true" tabindex="-1"></a><span class="fu">message</span>(<span class="fu">sum</span>(slot_report<span class="sc">$</span>FILLED), <span class="st">&quot; of &quot;</span>, <span class="fu">nrow</span>(slot_report),</span>
+<span id="cb21-148"><a href="#cb21-148" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot; slots filled; results saved to &quot;</span>, results_dir,</span>
+<span id="cb21-149"><a href="#cb21-149" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;/. See `slot_report`.&quot;</span>)</span>
+<span id="cb21-150"><a href="#cb21-150" aria-hidden="true" tabindex="-1"></a>slot_report</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>stage_summary <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">names</span>(results), <span class="cf">function</span>(s) {</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>  rows <span class="ot">&lt;-</span> slot_report[slot_report<span class="sc">$</span>STAGE <span class="sc">==</span> s, ]</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  built <span class="ot">&lt;-</span> <span class="sc">!</span><span class="fu">is.null</span>(results[[s]])</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">STAGE  =</span> s,</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">BUILT  =</span> built,</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">SLOTS  =</span> <span class="cf">if</span> (built) <span class="fu">nrow</span>(rows) <span class="cf">else</span> <span class="cn">NA_integer_</span>,</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">FILLED =</span> <span class="cf">if</span> (built) <span class="fu">sum</span>(rows<span class="sc">$</span>FILLED) <span class="cf">else</span> <span class="cn">NA_integer_</span>)</span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(stage_summary)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th style="text-align: left;">STAGE</th>
+<th style="text-align: left;">BUILT</th>
+<th style="text-align: right;">SLOTS</th>
+<th style="text-align: right;">FILLED</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">prep1</td>
+<td style="text-align: left;">FALSE</td>
+<td style="text-align: right;">NA</td>
+<td style="text-align: right;">NA</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">prep2</td>
+<td style="text-align: left;">TRUE</td>
+<td style="text-align: right;">18</td>
+<td style="text-align: right;">15</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">prep3</td>
+<td style="text-align: left;">FALSE</td>
+<td style="text-align: right;">NA</td>
+<td style="text-align: right;">NA</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">check1</td>
+<td style="text-align: left;">TRUE</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">13</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">check2</td>
+<td style="text-align: left;">TRUE</td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">check3</td>
+<td style="text-align: left;">TRUE</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">7</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">check4</td>
+<td style="text-align: left;">TRUE</td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">decision</td>
+<td style="text-align: left;">FALSE</td>
+<td style="text-align: right;">NA</td>
+<td style="text-align: right;">NA</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>On the simulated data, 43 of the 52 slots of the built stages are filled. The rest are empty for a stated reason:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(slot_report[<span class="sc">!</span>slot_report<span class="sc">$</span>FILLED <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(slot_report<span class="sc">$</span>SLOT),</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>                         <span class="fu">c</span>(<span class="st">&quot;STAGE&quot;</span>, <span class="st">&quot;SLOT&quot;</span>, <span class="st">&quot;DETAIL&quot;</span>)],</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">row.names =</span> <span class="cn">FALSE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 7%">
+<col style="width: 25%">
+<col style="width: 67%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">STAGE</th>
+<th style="text-align: left;">SLOT</th>
+<th style="text-align: left;">DETAIL</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">prep2</td>
+<td style="text-align: left;">criteria_crosswalk</td>
+<td style="text-align: left;">Needs exit-rule Type 2-6; this spec declares Type 1</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">prep2</td>
+<td style="text-align: left;">blocked_groups</td>
+<td style="text-align: left;">Needs exit-rule Type 2-6; this spec declares Type 1</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">prep2</td>
+<td style="text-align: left;">contested_zone</td>
+<td style="text-align: left;">Needs exit-rule Type 2-6; this spec declares Type 1</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">check1</td>
+<td style="text-align: left;">type3_covariate</td>
+<td style="text-align: left;">Needs exit-rule Type 3; this spec declares Type 1</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">check2</td>
+<td style="text-align: left;">blocked_groups</td>
+<td style="text-align: left;">Needs exit-rule Type 2-6; this spec declares Type 1</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">check3</td>
+<td style="text-align: left;">contested_zone_models</td>
+<td style="text-align: left;">Needs exit-rule Type 2, 4, 5, 6; this spec declares Type 1</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">check4</td>
+<td style="text-align: left;">candidate_region</td>
+<td style="text-align: left;">Later pass: not built yet</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">check4</td>
+<td style="text-align: left;">dependence</td>
+<td style="text-align: left;">No package support yet (the copula analysis)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">check4</td>
+<td style="text-align: left;">policy_as_whole</td>
+<td style="text-align: left;">Needs exit-rule Type 2-6; this spec declares Type 1</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Every empty slot here is empty by design. Some are Additional checks for multi-criterion exit rules, which a Type 1 spec does not trigger. The others are later passes or analyses the package does not support yet. On your own delivery, read the report the same way. A slot you expected to be filled that comes back empty usually means a missing input, such as no academic table or no district on the roster, and its <code>DETAIL</code> names the stage’s own note where the stage keeps one. The full <code>slot_report</code> also lists the size of every filled slot.</p>
+<p>The saved files hold student-level rows in places: Check 2’s <code>$flags</code> and <code>$profile</code> have one row per student. Keep <code>results/</code> out of any folder you share. The <a href="decision.html">Decision</a> page reads the saved files back to build its evidence map, and any one of them can feed a stage document through <code>render_step(results_file = ...)</code>, as shown above.</p>
+</section>
 <section id="what-you-need-before-you-start" class="level2">
 <h2 class="anchored" data-anchor-id="what-you-need-before-you-start">What you need before you start</h2>
 <section id="people" class="level3">
@@ -3517,11 +3829,11 @@ Check 4’s Sample statement
 <h3 class="anchored" data-anchor-id="additional-checks-for-multi-criterion-rules">Additional checks for multi-criterion rules</h3>
 <p>Several stages carry <strong>Additional checks</strong> that apply only when the exit rule combines more than one criterion (Types 2 to 6, depending on the check). Examples are a crosswalk of which criteria students pass and fail, and the ELP range where criteria disagree. Their slots are <code>NULL</code> unless the spec declares a relevant Type. Check 4’s Additional check is not built yet, so its slot stays <code>NULL</code> even then. The simulated spec is Type 1, so all of them are <code>NULL</code> throughout this guide.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 1</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] FALSE</code></pre>
 </div>
