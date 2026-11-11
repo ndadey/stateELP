@@ -102,6 +102,55 @@ rs_guide <- function(pages = NULL, quiet = TRUE) {
   invisible(written)
 }
 
+# Render a briefing deck: decks/<deck>.qmd -> reports/<deck>.html (revealjs,
+# one self-contained file). Same copy-out dance as rs_guide(); the theme and
+# assets travel with the copy. `params_file` (YAML; keep a state's own outside
+# the repository) and `params` override the deck's defaults, later winning.
+# The output is scanned for student ids -- against the bundle in
+# `bundle_file` when one is given, else against the simulation -- and the run
+# stops on a hit.
+#
+#   rs_deck()                                    # the context deck on the sim
+#   rs_deck(params = list(districts = list(list(id = "D03", label = "D03",
+#                                               setting = "mid-size"))))
+rs_deck <- function(deck = "context", params_file = NULL, params = list(),
+                    out_dir = "reports", quiet = TRUE) {
+  devtools::load_all(".", quiet = TRUE)
+  src <- file.path("decks", paste0(deck, ".qmd"))
+  stopifnot(file.exists(src))
+  scratch <- file.path(tempdir(), "stateELP_deck")
+  unlink(scratch, recursive = TRUE, force = TRUE)
+  dir.create(file.path(scratch, "assets"), recursive = TRUE)
+  file.copy(src, scratch)
+  file.copy(file.path("decks", "deck.scss"), scratch)
+  file.copy(list.files(file.path("decks", "assets"), full.names = TRUE),
+            file.path(scratch, "assets"))
+
+  p <- list(pkg_path = normalizePath(".", winslash = "/"))
+  if (!is.null(params_file)) p <- utils::modifyList(p, yaml::read_yaml(params_file))
+  p <- utils::modifyList(p, params)
+  for (k in c("bundle_file", "spec_file")) {
+    if (!is.null(p[[k]]) && nzchar(p[[k]]) && file.exists(p[[k]])) {
+      p[[k]] <- normalizePath(p[[k]], winslash = "/")
+    }
+  }
+
+  quarto::quarto_render(file.path(scratch, basename(src)), execute_params = p,
+                        quiet = quiet)
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  dest <- file.path(out_dir, paste0(deck, ".html"))
+  file.copy(file.path(scratch, paste0(deck, ".html")), dest, overwrite = TRUE)
+
+  ids_from <- if (!is.null(p$bundle_file) && nzchar(p$bundle_file)) {
+    readRDS(p$bundle_file)
+  } else {
+    get("el_roster_sim", envir = asNamespace("stateELP"))
+  }
+  stateELP::check_output_disclosure(dest, ids_from, action = "error")
+  message("Rendered ", dest)
+  invisible(dest)
+}
+
 # Bootstrap note: renv's lockfile records the package's own dependencies, not
 # the dev toolchain. On a fresh clone, after renv::restore(), run
 #   renv::hydrate(c("devtools", "roxygen2"))

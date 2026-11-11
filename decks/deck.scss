@@ -1,0 +1,226 @@
+/*-- scss:defaults --*/
+// The Center for Assessment look: white, dark ink, green, light green cards.
+
+$ink: #262626;
+$muted: #595959;
+$green: #00A84F;
+$green-dark: #00733A;
+$green-tint: #E6F6ED;
+$grey-tint: #EFEFEF;
+$rule: #CFE8D9;
+$orange-text: #B84A0E;
+
+$font-family-sans-serif: Calibri, Carlito, "Segoe UI", Arial, sans-serif;
+$body-bg: #FFFFFF;
+$body-color: $ink;
+$link-color: $green-dark;
+$presentation-font-size-root: 30px;
+$presentation-heading-font: $font-family-sans-serif;
+$presentation-heading-color: $ink;
+$presentation-heading-font-weight: 700;
+$presentation-heading-text-transform: none;
+$presentation-h2-font-size: 2.15em;
+$presentation-h3-font-size: 1.15em;
+
+/*-- scss:rules --*/
+
+.reveal .slides section {
+  text-align: left;
+}
+
+// ---- Center for Assessment look -------------------------------------------
+
+.reveal .slides section > h2 {
+  margin: 30px 170px 22px 0;
+  padding-bottom: 14px;
+  border-bottom: 2px solid $green;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.reveal .slide-logo {
+  top: 22px !important;
+  right: 38px !important;
+  bottom: auto !important;
+  left: auto !important;
+  max-height: 64px !important;
+  height: 64px !important;
+}
+
+.reveal .footer {
+  font-size: 18px !important;
+  color: $muted;
+  bottom: 18px !important;
+}
+.reveal .footer img.footer-cc {
+  position: fixed;
+  left: 70px;
+  bottom: 14px;
+  height: 30px;
+  margin: 0;
+}
+.reveal .slide-number {
+  background: transparent !important;
+  color: $muted !important;
+  font-size: 18px !important;
+  top: auto !important;
+  height: auto !important;
+  right: 70px !important;
+  bottom: 18px !important;
+}
+.reveal .slide-number a { color: inherit !important; }
+
+.reveal .callout-box {
+  background: $green-tint;
+  border-radius: 14px;
+  padding: 16px 28px;
+  margin: 10px 0 0 0;
+  font-size: 0.98em;
+  line-height: 1.3;
+}
+.reveal .callout-box strong { color: $green-dark; }
+
+.reveal .side-card {
+  background: $green-tint;
+  border-radius: 16px;
+  padding: 22px 28px;
+  font-size: 0.95em;
+  line-height: 1.3;
+  margin-bottom: 18px;
+}
+.reveal .side-card.grey { background: $grey-tint; }
+// Card titles are paragraphs, not headings: pandoc moves a div's class onto
+// the section a heading opens, which painted whole slides green.
+.reveal .card-title {
+  display: block;
+  font-weight: 700;
+  font-size: 1.15em;
+  margin: 0 0 10px 0;
+}
+.reveal .side-card .card-title { color: $green-dark; }
+.reveal .side-card.grey .card-title { color: $ink; }
+.reveal .side-card p { margin: 0.35em 0; }
+.reveal .side-card ul { margin: 0.2em 0 0.2em 1em; }
+.reveal .side-card li { margin: 0.25em 0; }
+.reveal .side-card strong { color: $green-dark; }
+.reveal .side-card.grey strong { color: $ink; }
+
+.reveal .bracket {
+  border-left: 4px solid $ink;
+  padding: 6px 0 6px 22px;
+  margin: 0 0 22px 0;
+  font-size: 0.95em;
+  line-height: 1.3;
+}
+.reveal .bracket .card-title { margin: 0 0 6px 0; font-size: 1.05em; }
+.reveal .bracket p { margin: 0; }
+
+.reveal .source {
+  color: $muted;
+  font-size: 0.72em;
+  margin-top: 10px;
+  line-height: 1.25;
+}
+
+.reveal .absent {
+  color: $muted;
+  font-style: italic;
+  padding: 40px 0;
+}
+
+// Charts fill their column; Quarto's figure wrapper adds no margin.
+.reveal .slides section .cell-output-display img,
+.reveal .slides section img.chart {
+  max-height: none;
+  margin: 0;
+}
+.reveal div.cell-output-display { margin: 0; }
+
+// ---- title slide ------------------------------------------------------------
+
+.reveal .slides section.deck-title > h2 {
+  margin-top: 150px;
+  font-size: 2.6em;
+  border-bottom: none;
+}
+.reveal .sim-banner {
+  display: inline-block;
+  background: #FFF4E5;
+  color: $orange-text;
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-weight: 700;
+  margin: 6px 0 28px 0;
+}
+.reveal .sample {
+  max-width: 1250px;
+  font-size: 0.85em;
+  line-height: 1.35;
+  color: $ink;
+}
+.reveal .made-with {
+  color: $muted;
+  font-size: 0.7em;
+  margin-top: 24px;
+}
+
+// ---- district profile slides ------------------------------------------------
+// Same frame as every other slide (title rule, logo, footer); only the body
+// differs: three headline cards over a table of detail rows.
+
+.reveal .profile .cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin: 0 0 22px 0;
+}
+.reveal .profile .card {
+  background: $green-tint;
+  border-radius: 14px;
+  padding: 20px 24px 18px 24px;
+  min-height: 130px;
+}
+.reveal .profile .card .big {
+  color: $green-dark;
+  font-weight: 700;
+  font-size: 1.7em;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+.reveal .profile .card .small {
+  font-size: 0.78em;
+  line-height: 1.3;
+}
+
+.reveal .profile table.detail {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+  margin: 0;
+}
+.reveal .profile table.detail td {
+  border: none;
+  border-bottom: 1px solid $rule;
+  padding: 11px 10px;
+  vertical-align: middle;
+  line-height: 1.3;
+}
+.reveal .profile table.detail td.label {
+  color: $green-dark;
+  font-weight: 700;
+  width: 19%;
+  white-space: nowrap;
+}
+.reveal .profile .source {
+  margin-top: 18px;
+  max-width: 1150px;
+}
+.reveal .profile img.partner-logo {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  height: 78px;
+  max-height: 78px;
+  width: auto;
+  margin: 0;
+}

@@ -1,0 +1,335 @@
+---
+pagetitle: "EL context"
+params:
+  pkg_path: ""
+  spec_file: "00_SIM_EL_Spec"
+  bundle_file: ""
+  state_name: ""
+  instrument_label: ""
+  source_note: ""
+  partner_logo: ""
+  pooled_years: 5
+  population: "tested"
+  share_breaks: "0, 0.05, 0.20, 0.40"
+  size_breaks: "0, 1, 10, 100, 1000, 10000"
+  districts: ""
+format:
+  revealjs:
+    theme: [default, deck.scss]
+    width: 1600
+    height: 900
+    margin: 0.04
+    center: false
+    slide-number: c
+    logo: assets/nciea_logo.png
+    footer: '<img src="assets/cc_by.png" class="footer-cc" alt="CC BY"> www.nciea.org'
+    embed-resources: true
+    transition: none
+    controls: false
+    progress: false
+    menu: false
+    hash-type: number
+execute:
+  echo: false
+  warning: false
+  message: false
+fig-dpi: 150
+---
+
+```{r setup}
+#| include: false
+# A state EL context deck built on stateELP. Every number comes from
+# run_prep2_context() on an el_data bundle; this file holds the layout, the
+# authored wording around the numbers, and one call per figure. Render with
+# rs_deck() in dev/render_step.R (it renders outside Dropbox and scans the
+# output for student ids). With no `bundle_file` the deck runs on the shipped
+# simulation and says so on every slide. A state's own settings -- name,
+# source note, districts to profile -- are passed as params, typically from a
+# YAML file kept outside the repository (rs_deck(params_file = ...)).
+if (nzchar(params$pkg_path) && dir.exists(file.path(params$pkg_path, "R"))) {
+  devtools::load_all(params$pkg_path, quiet = TRUE)
+} else {
+  library(stateELP)
+}
+if (!exists("%||%")) `%||%` <- function(x, y) if (is.null(x)) y else x  # base R < 4.4
+
+spec <- read_el_spec(params$spec_file)
+bundle <- if (nzchar(params$bundle_file)) {
+  readRDS(params$bundle_file)
+} else {
+  as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
+}
+stopifnot(inherits(bundle, "el_data"))
+
+# Districts to profile: a list of {id, label, setting, notes}, passed by
+# rs_deck() from a params file. Empty lets the data pick four settings
+# (largest, highest share, median, smallest). knitr will not take a list as a
+# header default, hence "" there and the breaks as comma-separated text.
+# Quarto's parameter round-trip can hand a list of entries back as a data
+# frame (one column per field, `notes` a nested data frame), so both shapes
+# become one list of entries here.
+as_entries <- function(x) {
+  if (is.data.frame(x)) {
+    lapply(seq_len(nrow(x)), function(i) lapply(x, function(col) {
+      if (is.data.frame(col)) as.list(col[i, , drop = FALSE]) else col[[i]]
+    }))
+  } else if (is.list(x)) x else list()
+}
+dl <- as_entries(params$districts)
+entry_notes <- function(e) {
+  n <- unlist(e$notes)
+  n[!is.na(n) & nzchar(n)]
+}
+num <- function(x) as.numeric(trimws(strsplit(as.character(x), ",")[[1]]))
+ids <- NULL
+if (length(dl)) {
+  ids <- vapply(dl, function(z) as.character(z$id %||% ""), "")
+  if (!all(nzchar(ids))) {
+    stop("Every entry under `districts` needs its DISTRICT_ID in `id`.", call. = FALSE)
+  }
+  names(ids) <- vapply(dl, function(z) {
+    s <- as.character(z$setting %||% "")
+    if (is.na(s)) "" else s
+  }, "")
+}
+
+res <- run_prep2_context(
+  bundle, spec,
+  pooled_years = params$pooled_years,
+  population   = params$population,
+  share_breaks = num(params$share_breaks),
+  size_breaks  = num(params$size_breaks),
+  districts    = ids)
+
+is_sim <- !is.null(res$meta$sim_contract_version) &&
+  !is.na(res$meta$sim_contract_version)
+state <- if (nzchar(params$state_name)) {
+  params$state_name
+} else if (is_sim) "the simulated state" else spec$program$state
+state_students <- if (is_sim && !nzchar(params$state_name)) "the simulated state's" else state
+state_cap <- paste0(toupper(substr(state, 1, 1)), substring(state, 2))
+instrument <- if (nzchar(params$instrument_label)) {
+  params$instrument_label
+} else spec$elp$instrument
+notes <- prep2_context_notes(res, state = state_students)
+
+sy <- function(y) paste0(y - 1L, "–", sprintf("%02d", as.integer(y) %% 100L))
+years_label <- function(a, b) if (a == b) sy(a) else paste(sy(a), "to", sy(b))
+
+# The source line on every content slide. Simulated data says so in words.
+src <- function(years, extra = NULL) {
+  who <- if (is_sim) {
+    sprintf("simulated data, not a real state (stateELP sim v%s)",
+            res$meta$sim_contract_version)
+  } else if (nzchar(params$source_note)) {
+    params$source_note
+  } else {
+    paste(spec$program$department %||% state, "student-level data")
+  }
+  paste0("Source: ", who, ", ", years, ".", if (length(extra)) paste0(" ", extra) else "")
+}
+absent <- function(what) {
+  sprintf('<p class="absent">%s is not available for this delivery.</p>', what)
+}
+esc <- function(x) {
+  x <- gsub("&", "&amp;", x, fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  gsub(">", "&gt;", x, fixed = TRUE)
+}
+md_bold <- function(x) gsub("\\*\\*(.+?)\\*\\*", "<strong>\\1</strong>", esc(x), perl = TRUE)
+
+eg <- res$exit_by_grade
+ey <- res$exit_by_years
+latest <- res$meta$latest_year
+```
+
+## `r state_cap`: English Learner Context {.deck-title}
+
+`r if (is_sim) '<div class="sim-banner">Simulated data: every number on these slides describes the stateELP simulation, not a real state.</div>' else ""`
+
+::: {.sample}
+**Sample.** `r res$meta$sample`
+:::
+
+::: {.made-with}
+Computed by stateELP `r res$meta$package_version` (`run_prep2_context()`) under the `r res$meta$spec_id` spec, `r format(res$meta$run_date, "%B %d, %Y")`. Cells under `r res$meta$min_cell` students are suppressed.
+:::
+
+## `r instrument` Exit Rates by Grade
+
+```{r exit-grade}
+#| fig-width: 14
+#| fig-height: 4.5
+#| out-width: 100%
+#| results: asis
+if (is.null(eg)) cat(absent("An exit rate by grade")) else print(plot_context_exit_rates(eg))
+```
+
+::: {.callout-box}
+`r notes$exit_grade %||% "Too few grades have a reportable exit rate to compare."`
+:::
+
+::: {.source}
+`r if (is.null(eg)) "" else src(years_label(attr(eg, "pooled")[1], attr(eg, "pooled")[2]), "Exited = a former EL the next year. Who exits, not how long it takes.")`
+:::
+
+## `r instrument` Exit Rates by Year in Status
+
+```{r exit-years}
+#| fig-width: 14
+#| fig-height: 4.5
+#| out-width: 100%
+#| results: asis
+if (is.null(ey)) cat(absent("An exit rate by year in status")) else
+  print(plot_context_exit_rates(ey, series = "latest"))
+```
+
+::: {.callout-box}
+`r notes$exit_years %||% "Too few years in status have a reportable exit rate to compare."`
+:::
+
+::: {.source}
+`r if (is.null(ey)) "" else src(sy(attr(ey, "latest")), paste("Year 1 is the entry year; exited = a former EL the next year.", res$meta$notes$unknown_entry %||% ""))`
+:::
+
+## EL Share of Enrollment Varies Widely
+
+:::: {.columns}
+::: {.column width="64%"}
+```{r share}
+#| fig-width: 9.6
+#| fig-height: 5.9
+#| out-width: 100%
+#| results: asis
+if (is.null(res$district_share)) cat(absent("District EL share")) else
+  print(plot_context_district_share(res$district_share))
+```
+:::
+
+::: {.column width="36%"}
+::: {.side-card}
+[Statewide:]{.card-title}
+
+`r if (is.null(notes$share)) "District shares need district ids and never-EL rows." else paste0("- ", notes$share$state %||% "", "\n\nBUT\n\n- ", notes$share$high, "\n\nAND\n\n- ", notes$share$low)`
+:::
+:::
+::::
+
+::: {.source}
+`r if (is.null(res$district_share)) "" else src(sy(attr(res$district_share, "year")), sprintf("%s districts; enrollment weights never-EL rows by their sampling weight.", attr(res$district_share, "n_districts")))`
+:::
+
+## EL Students by Grade
+
+:::: {.columns}
+::: {.column width="64%"}
+```{r by-grade}
+#| fig-width: 9.6
+#| fig-height: 5.9
+#| out-width: 100%
+#| results: asis
+if (is.null(res$by_grade)) cat(absent("A count by grade")) else
+  print(plot_context_by_grade(res$by_grade, year = latest))
+```
+:::
+
+::: {.column width="36%"}
+::: {.side-card}
+[Notes and Highlights]{.card-title}
+
+`r if (is.null(notes$grade)) "" else paste0("- ", notes$grade, collapse = "\n")`
+:::
+:::
+::::
+
+::: {.source}
+`r src(sy(latest), "Current ELs, grades K–12.")`
+:::
+
+## Few Districts Enroll Most EL Students
+
+:::: {.columns}
+::: {.column width="66%"}
+```{r concentration}
+#| fig-width: 10
+#| fig-height: 6.1
+#| out-width: 100%
+#| results: asis
+if (is.null(res$concentration)) cat(absent("District EL enrollment")) else
+  print(plot_context_concentration(res$concentration))
+```
+:::
+
+::: {.column width="34%"}
+`r if (is.null(notes$small)) "" else sprintf('<div class="side-card grey"><p class="card-title">%s</p><p>%s</p></div>', esc(notes$small$lead), esc(notes$small$body))`
+
+`r if (is.null(notes$top)) "" else sprintf('<div class="side-card"><p class="card-title">%s</p><p>%s</p></div>', esc(notes$top$lead), esc(notes$top$body))`
+:::
+::::
+
+::: {.source}
+`r if (is.null(res$concentration)) "" else src(sy(attr(res$concentration, "year")), sprintf("%s districts with any enrolled student.", attr(res$concentration, "n_districts")))`
+:::
+
+## Resist the Urge to Average
+
+:::: {.columns}
+::: {.column width="66%"}
+```{r average}
+#| fig-width: 10
+#| fig-height: 4.9
+#| out-width: 100%
+#| results: asis
+if (is.null(res$concentration_by_mean)) cat(absent("District EL enrollment")) else
+  print(plot_context_concentration(res$concentration_by_mean))
+```
+:::
+
+::: {.column width="34%"}
+<div style="height: 70px"></div>
+
+`r if (is.null(notes$below)) "" else sprintf('<div class="bracket"><p class="card-title">%s</p><p>%s</p></div>', esc(notes$below$lead), esc(notes$below$body))`
+
+`r if (is.null(notes$above)) "" else sprintf('<div class="bracket"><p class="card-title">%s</p><p>%s</p></div>', esc(notes$above$lead), esc(notes$above$body))`
+:::
+::::
+
+::: {.callout-box}
+**Instead:** identify groups, settings, and scenarios that are common in `r state`, and look at each one, in addition to the state as a whole.
+:::
+
+```{r profiles}
+#| results: asis
+prof <- res$profiles
+if (is.null(prof)) {
+  cat("\n\n## District Profiles\n\n", absent("A district profile"), "\n")
+} else {
+  for (i in seq_len(nrow(prof$summary))) {
+    id <- prof$summary$DISTRICT_ID[[i]]
+    entry <- if (length(dl)) dl[[match(id, ids)]] else list()
+    lab <- entry$label %||% id
+    if (is.na(lab) || !nzchar(lab)) lab <- id
+    t <- prep2_profile_text(prof, id, label = lab,
+                            state = if (is_sim && !nzchar(params$state_name)) "statewide" else state,
+                            population = res$meta$population)
+    rows <- c(t$rows, entry_notes(entry))
+    cat("\n\n## ", esc(t$title), " {.profile}\n\n", sep = "")
+    cat('<div class="cards">\n')
+    for (cd in t$cards) {
+      cat(sprintf('<div class="card"><div class="big">%s</div><div class="small">%s</div></div>\n',
+                  esc(cd$big), esc(cd$small)))
+    }
+    cat('</div>\n<table class="detail">\n')
+    for (k in names(rows)) {
+      cat(sprintf('<tr><td class="label">%s</td><td>%s</td></tr>\n', esc(k), md_bold(rows[[k]])))
+    }
+    cat('</table>\n')
+    cat(sprintf('<div class="source">%s</div>\n',
+                esc(src(sy(prof$summary$YEAR[[i]]),
+                        "Former ELs are those within the monitoring window; school shares are shown only where a school's EL count is reportable."))))
+    if (nzchar(params$partner_logo)) {
+      cat(sprintf('<img class="partner-logo" src="%s" alt="">\n', params$partner_logo))
+    }
+  }
+}
+```

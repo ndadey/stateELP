@@ -5,6 +5,7 @@
 ^CLAUDE\.md$
 ^LICENSE\.md$
 ^data-raw$
+^decks$
 ^dev$
 ^docs$
 ^guide$
