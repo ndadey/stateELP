@@ -10,19 +10,26 @@
 #' performance sits relative to language proficiency *now*, not how one entry
 #' cohort moved through.
 #'
-#' This is the shell pass. `$box_data` and the panel it is drawn for are real;
-#' the summary table, the logistic and its landing statistics, the two
-#' fairness checks and the contested-zone models arrive in later passes and
-#' are `NULL` with a comment until then.
+#' Every tested grade x subject the spec declares is computed, each its own
+#' panel: the box statistics, the summary table, the logistic and its landing
+#' statistics, and the two fairness checks are long tables keyed by `SUBJECT`
+#' and `GRADE`. The Type-gated contested-zone models are computed for the
+#' focal panel.
 #'
-#' Grades are **never pooled**: every slot is keyed by one grade x subject x
-#' year panel, and the later pass that covers every tested grade loops this
-#' same derivation rather than widening it.
+#' Grades are **never pooled**, and each panel is read against **its own
+#' grade's proficiency cut** (`spec_proficient_cut()`), so a spec whose cuts
+#' differ by grade gets the right line in every grade. Where the spec gives
+#' no cut for a grade, proficiency is the academic table's delivered
+#' `ACHIEVEMENT_LEVEL` at or above the proficient level; `$landing` records
+#' the cut and the basis each panel used, and `$meta$proficiency_note` and
+#' `$meta$logistic_note` say where either fell back or was skipped.
 #'
 #' @param data An `el_data` bundle with an academic table.
 #' @param spec An `el_spec`.
-#' @param subject,grade,year Optional panel overrides; each defaults to
-#'   [compute_panel()]'s derivation.
+#' @param subject,grade,year Optional overrides. `subject` and `year`
+#'   restrict every panel; `grade` only chooses which grade the figure draws
+#'   (the focal panel) -- the tables still carry every tested grade, each
+#'   against its own cut. Each defaults to [compute_panel()]'s derivation.
 #' @return A named list of results slots plus `$meta`.
 #' @export
 #' @examples
@@ -83,8 +90,12 @@ run_check3 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
       grade                = if (is.null(panel)) NA_character_ else panel$grade,
       year                 = if (is.null(panel)) NA_integer_ else panel$year,
       cut                  = if (is.null(panel)) NA_real_ else
-                               .check3_cut(spec, panel$subject),
+                               .check3_cut(spec, panel$subject, panel$grade),
+      proficiency_basis    = .check3_focal_basis(landing, panel),
       proficient_level     = spec$policy$academic_benchmark$proficient_level,
+      proficiency_note     = .check3_proficiency_note(landing, panels, spec),
+      logistic_note        = .check3_logistic_note(logistic, landing, panels,
+                                                   spec),
       pairing_note         = .check3_pairing_note(spec, panel),
       band_axis_note       = .check3_band_axis_note(spec),
       note                 = if (has_academic) NA_character_ else
@@ -118,9 +129,79 @@ run_check3 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
     "and an English-only group beside them for reference. A student enters ",
     "on having sat the content test, so the universe is the ", panel$subject,
     " table joined to roster status, not the other way round. Each grade is ",
-    "a panel of its own and grades are never pooled; this pass renders ",
-    "grade ", panel$grade, ", the first grade the spec declares ",
-    panel$subject, " tested in.")
+    "a panel of its own, read against its own proficiency cut, and grades ",
+    "are never pooled: the figure draws grade ", panel$grade,
+    ", and the tables carry every tested grade.")
+}
+
+# The basis the figure's own panel used, from its landing row.
+.check3_focal_basis <- function(landing, panel) {
+  if (is.null(landing) || is.null(panel)) return(NA_character_)
+  hit <- landing$SUBJECT %in% panel$subject & landing$GRADE %in% panel$grade
+  if (!any(hit)) NA_character_ else landing$PROFICIENCY_BASIS[which(hit)[1]]
+}
+
+# Where proficiency was not read off a cut score. `NA` when every panel had
+# its grade's cut, which is the ordinary case and needs no note.
+.check3_proficiency_note <- function(landing, panels, spec) {
+  if (is.null(landing) || !nrow(landing)) return(NA_character_)
+  basis <- landing$PROFICIENCY_BASIS
+  n <- nrow(landing)
+  on_level <- basis %in% "level"
+  undefined <- is.na(basis)
+  if (!any(on_level) && !any(undefined)) return(NA_character_)
+
+  which_panels <- function(hit) {
+    if (all(hit)) return("every panel")
+    paste(paste(landing$SUBJECT[hit], "grade", landing$GRADE[hit]),
+          collapse = ", ")
+  }
+  lvl <- spec_proficient_level(spec)
+  parts <- character()
+  if (any(on_level)) {
+    parts <- c(parts, paste0(
+      "The spec gives no cut score for ", sum(on_level), " of ", n,
+      " panels (", which_panels(on_level), "). In those panels a student is ",
+      "proficient when the academic file's own performance level is at or ",
+      "above level ", lvl, ", so no cut line is drawn and the share in the ",
+      "tables is the share at that level. Enter the grade's cut scores in ",
+      "the spec (`academic$<subject>$cuts`, by grade) to draw the line."))
+  }
+  if (any(undefined)) {
+    parts <- c(parts, paste0(
+      "In ", sum(undefined), " of ", n, " panels (", which_panels(undefined),
+      ") proficiency is undefined: the spec gives no cut score for the grade",
+      if (is.na(lvl)) " and no proficient level" else
+        " and the academic file carries no performance level",
+      ", so the shares, the logistic and the landing statistics are empty ",
+      "there."))
+  }
+  paste(parts, collapse = " ")
+}
+
+# Why the logistic is missing, where it is: it needs a proficiency outcome
+# and a scale score on the ELP component. `NA` when every panel has one.
+.check3_logistic_note <- function(logistic, landing, panels, spec) {
+  if (!length(panels)) return(NA_character_)
+  have <- if (is.null(logistic)) character()
+          else paste(logistic$SUBJECT, logistic$GRADE)
+  all_p <- vapply(panels, function(p) paste(p$subject, p$grade), "")
+  miss <- setdiff(all_p, have)
+  if (!length(miss)) return(NA_character_)
+  basis <- if (is.null(landing)) rep(NA_character_, length(miss)) else
+    landing$PROFICIENCY_BASIS[match(miss, paste(landing$SUBJECT,
+                                                 landing$GRADE))]
+  no_prof <- is.na(basis)
+  parts <- paste0("The logistic model is not fitted in ", length(miss),
+                  " of ", length(all_p), " panels")
+  reasons <- c(
+    if (any(no_prof)) paste0(sum(no_prof), " because proficiency is undefined ",
+                             "there (no cut score and no delivered ",
+                             "performance level to read)"),
+    if (any(!no_prof)) paste0(sum(!no_prof), " because no current EL in the ",
+                              "panel has both a ", spec_headline_label(spec),
+                              " scale score and a content result"))
+  paste0(parts, ": ", paste(reasons, collapse = "; "), ".")
 }
 
 # The two assessments are paired within a year, and the windows do not

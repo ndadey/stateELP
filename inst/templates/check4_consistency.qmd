@@ -49,6 +49,9 @@ h <- vapply(slots, function(s) !is.null(res[[s]]), TRUE)
 n <- !h
 
 have_resolution <- !is.na(res$meta$resolution_note)
+# Older saved results predate this note.
+have_basis_note <- !is.null(res$meta$proficiency_note) &&
+  !is.na(res$meta$proficiency_note)
 have_axis <- h[["youden_j"]] && !is.na(res$meta$axis_note)
 have_threshold_note <- h[["j_optimal"]] && !is.na(res$meta$threshold_note)
 
@@ -187,6 +190,12 @@ cat(res$meta$threshold_note, "\n")
 #| output: asis
 #| eval: !expr h[["youden_j"]]
 cat(res$meta$pairing_note, "\n")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_basis_note
+cat("> **How proficiency is read.** ", res$meta$proficiency_note, "\n", sep = "")
 ```
 
 ```{r}
@@ -333,7 +342,7 @@ against a real delivery, the same figure is the stage's substantive output.
 ```{r}
 #| output: asis
 cat("*Spec: ", res$meta$spec_id, ". ",
-    if (identical(res$meta$spec_id, "SIM")) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
+    if (!is.null(res$meta$sim_contract_version) && !is.na(res$meta$sim_contract_version)) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
     "stateELP ", res$meta$package_version, ", run ", format(res$meta$run_date), ".*\n", sep = "")
 ```
 

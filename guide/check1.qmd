@@ -79,11 +79,13 @@ extra year is needed because an exit at the end of one year is only seen in
 the next year's data. Students already in EL status when the data begin are
 excluded, because their time in status cannot be measured.
 
-Check 1 analyzes **one** cohort: the candidate with the longest follow-up that
-clears the **minimum cell size**, the smallest count the spec allows in a
-reported cell (`policy$suppression$min_cell`). Follow-up shrinks with each
-later entry year, so this is always the earliest candidate that clears it:
-the one with the least of its path cut off by the end of the data.
+Check 1 analyzes **one** cohort. By default it is the candidate with the
+longest follow-up that clears the **minimum cell size**, the smallest count
+the spec allows in a reported cell (`policy$suppression$min_cell`). Follow-up
+shrinks with each later entry year, so this is always the earliest candidate
+that clears it: the one with the least of its path cut off by the end of the
+data. You can choose another with `entry_year` (see
+[Choosing the cohort](#choosing-the-cohort)).
 
 Students who leave the data before exiting, or are still classified when the
 data end, are **censored**: what happened to them afterward is unknown.
@@ -179,11 +181,49 @@ your own data, swap in your spec and tables:
 
 ```{r}
 #| eval: false
-spec   <- read_el_spec("specs/XX_EL_Spec.R")
-bundle <- as_el_data(my_base, roster = my_roster, academic = my_academic,
-                     spec = spec)
-res    <- run_check1(bundle, spec)
+my_spec   <- read_el_spec("specs/XX_EL_Spec.R")
+my_bundle <- as_el_data(my_base, roster = my_roster, academic = my_academic,
+                        spec = my_spec)
+res       <- run_check1(my_bundle, my_spec)
 ```
+
+### Choosing the cohort
+
+The default cohort, the longest follow-up, is not always the one that answers
+the question. Data Check 2 compares exit groups on achievement at the same
+year in status, and it can only do so in years where the cohort's students
+have academic scores. A state whose academic data cover only recent years
+may find that its earliest cohort reaches a tested grade once, or never. For
+example, if a state tests grades 3 to 8 and its academic data begin when a
+kindergarten cohort has reached grade 8, that cohort is tested in one year
+only; a cohort that entered kindergarten three years later is tested in
+grades 5 to 8.
+
+The candidate table shows this in `ACADEMIC_YEARS`: for each cohort, the
+years in status in which at least `min_cell` of its students have an
+academic score.
+
+```{r}
+compute_cohorts(bundle, spec)
+```
+
+Pick the cohort with `entry_year`, weighing the length of follow-up (more
+years observed before the data end) against the overlap with the academic
+test years, and pass the **same** value to `run_check2()`, so the two stages
+follow the same students:
+
+```{r}
+#| eval: false
+res  <- run_check1(my_bundle, my_spec, entry_year = 2017)
+res2 <- run_check2(my_bundle, my_spec, entry_year = 2017)
+```
+
+A year that is not a usable candidate (too little follow-up, too few
+students, or left-truncated) stops with a message listing the years that
+are. The report's Sample statement and the candidate table say the cohort
+was chosen by the analyst, and name the default it replaced.
+
+### One slot at a time
 
 `run_check1()` only assembles. Each slot comes from an exported function you
 can call on its own:
@@ -521,7 +561,12 @@ own.
 - **Keep the exit dating.** A student who is an EL for six years and is
   reclassified in the seventh did *not* exit within a six-year timeline. The
   package recomputes this from `EL_STATUS` every run; do not substitute a
-  delivered `YEAR_IN_STATUS`.
+  delivered `YEAR_IN_STATUS`. The package dates an exit to the first year a
+  student is `former`, which is one year after the year of the score that met
+  the rule. A state report that dates exits to the qualifying score's year
+  shows the same exits a year earlier: its share within five years matches
+  this package's share within six. The report says so under the life table
+  (`res$meta$exit_dating_note`).
 - **Column D is not a duration.** It is a rate among students still at risk
   that year.
 - **One entry cohort is not every EL.** Later entrants, including newcomers
@@ -606,24 +651,22 @@ The example report on the simulated data is
 [on the project site](../check1_survival.html).
 
 By default the report runs on the simulated data. For your own delivery, save
-your results outside the folder you share, render from them, and run the
-disclosure scan against your own bundle. Give the spec as a full path: the
-report renders in a temporary folder, where a relative path does not resolve.
+your results outside the folder you share, render from them, and pass your
+bundle so the disclosure scan checks the report against your own students:
 
 ```{r}
 #| eval: false
 dir.create("results", showWarnings = FALSE)
 saveRDS(res, "results/check1_results.rds")
 
-files <- render_step("check1",
-                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
-                     results_file     = "results/check1_results.rds",
-                     check_disclosure = FALSE)
-check_output_disclosure(files, bundle)
+render_step("check1",
+            spec_file    = "specs/XX_EL_Spec.R",
+            results_file = "results/check1_results.rds",
+            bundle       = my_bundle)
 ```
 
-One known issue: the report's closing line says "Simulated data" whatever
-the source. Correct or remove it before sharing a report built from a real
-delivery.
+If you chose the cohort with `entry_year`, the report says so in its Sample
+statement and in the candidate-cohort table. Its closing line reads
+"Simulated data" only for results computed from the simulated data.
 
 [Guide home](index.html) | Previous: [Prep 3: Program implementation](prep3.html) | Next: [Check 2: On-time vs. prolonged exiters](check2.html)

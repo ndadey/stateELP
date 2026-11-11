@@ -172,10 +172,15 @@ With your own data the calls are the same:
 
 ```{r}
 #| eval: false
-spec   <- read_el_spec("specs/XX_EL_Spec.R")
-bundle <- as_el_data(elp_base, roster = roster, spec = spec)
-res    <- run_prep2(bundle, spec)
+my_spec   <- read_el_spec("specs/XX_EL_Spec.R")
+my_bundle <- as_el_data(my_base, roster = my_roster, academic = my_academic,
+                        spec = my_spec)
+res       <- run_prep2(my_bundle, my_spec)
 ```
+
+Every guide page uses the same names for your own objects: `my_spec`,
+`my_bundle`, and the three tables `my_base`, `my_roster` and `my_academic`
+(see [Setup](setup.html)). The academic table is optional for Prep 2.
 
 Then check what came back:
 
@@ -461,6 +466,18 @@ that follow.
   predates the data), the shared cohort function behind `$entry_cohorts` and
   Check 1 drops every first-year entrant, so the entry views can count K
   entrants that `$entry_cohorts` leaves out.
+- **Prep 2's own left-truncation rule.** Prep 2 marks a student
+  left-truncated when no entry year can be dated, or when the dated entry
+  year (from `LEP_PROGRAM_START_DATE`, `COHORT_START_YEAR`, `YEAR_IN_STATUS`
+  or `ENTRY_GRADE`, else the first current year) is before the first year of
+  the data. A student current in kindergarten in that first year is dated as
+  entering then. A delivered flag set for *every* student first current in
+  the first year therefore disagrees with Prep 2 on exactly those
+  kindergartners, plus any student whose delivered entry fields say
+  otherwise; the note in `$meta$notes` counts both. Checks 1 and 2 use the
+  delivered flag as given, so the disagreement changes nothing there. To make
+  the two agree, set `LEFT_TRUNCATED = TRUE` for students first current in
+  the first year **except** those in kindergarten that year.
 - **Keep the excluded groups visible.** Prep 2 never bands alternate-form
   takers; they are always their own group. "Former" means former within the
   monitoring window when formers leave the data.
@@ -590,22 +607,22 @@ render_step("prep2")
 
 On its own, the report computes results only from the simulated data. For
 your state, compute the results, save them outside the folder you share, and
-render from the saved file. Then scan the output against your own roster:
+render from the saved file, passing your bundle so the disclosure scan checks
+the report against your own students:
 
 ```{r}
 #| eval: false
-res <- run_prep2(bundle, spec)
+res <- run_prep2(my_bundle, my_spec)
 dir.create("results", showWarnings = FALSE)
 saveRDS(res, "results/prep2_results.rds")
 
-files <- render_step("prep2",
-                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
-                     results_file     = "results/prep2_results.rds",
-                     check_disclosure = FALSE)
-check_output_disclosure(files, bundle)   # stops if any STUDENT_ID appears
+render_step("prep2",
+            spec_file    = "specs/XX_EL_Spec.R",
+            results_file = "results/prep2_results.rds",
+            bundle       = my_bundle)   # stops if any STUDENT_ID appears
 ```
 
-`check_disclosure = FALSE` turns off the built-in scan, which knows only the
-simulated students; `check_output_disclosure()` replaces it.
+Without `bundle`, a report rendered from your saved results cannot be
+scanned, and `render_step()` warns that it was not.
 
 [Guide home](index.html) | Previous: [Prep 1: Policy documentation](prep1.html) | Next: [Prep 3: Program implementation](prep3.html)

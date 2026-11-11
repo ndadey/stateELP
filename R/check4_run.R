@@ -111,7 +111,10 @@ run_check4 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
                                panel$grade,
       year                 = if (is.null(panel)) NA_integer_ else panel$year,
       cut                  = if (is.null(panel)) NA_real_ else
-                               .check4_cut(spec, panel$subject),
+                               .check4_cut(spec, panel$subject, panel$grade),
+      proficiency_basis    = if (is.null(curve)) NA_character_ else
+                               attr(curve, "basis"),
+      proficiency_note     = .check4_basis_note(curve, panel, spec),
       proficient_level     = spec$policy$academic_benchmark$proficient_level,
       threshold            = thr$value,
       threshold_op         = thr$op,
@@ -255,11 +258,37 @@ run_check4 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
       "to report."))
   }
   if (is.null(curve)) {
+    no_cut <- is.na(.check4_cut(spec, panel$subject, panel$grade))
+    no_level <- is.na(spec_proficient_level(spec))
+    if (no_cut && no_level) {
+      return(paste0(
+        "The spec gives no proficiency cut for grade ", panel$grade, " ",
+        panel$subject, " and no proficient level ",
+        "(`policy$academic_benchmark$proficient_level`) to read the ",
+        "academic file's own performance level against, so no student can be ",
+        "classified proficient and there is no curve to draw."))
+    }
     return(paste0(
       "No current EL in grade ", panel$grade, " ", panel$subject, " has both ",
-      "scores", if (is.na(panel$year)) "" else paste0(" in ", panel$year),
-      ", or the spec gives no proficiency cut for the subject, so there is ",
-      "no curve to draw."))
+      "a ", spec_headline_label(spec), " level and a content result",
+      if (is.na(panel$year)) "" else paste0(" in ", panel$year),
+      if (no_cut) paste0(
+        " (with no cut score for the grade in the spec, a content result ",
+        "means a delivered performance level)") else "",
+      ", so there is no curve to draw."))
   }
   NA_character_
+}
+
+# Where the content classification came from, when it was not a cut score.
+.check4_basis_note <- function(curve, panel, spec) {
+  if (is.null(curve) || !identical(attr(curve, "basis"), "level")) {
+    return(NA_character_)
+  }
+  paste0(
+    "The spec gives no cut score for grade ", panel$grade, " ", panel$subject,
+    ", so a student counts as proficient when the academic file's own ",
+    "performance level is at or above level ", spec_proficient_level(spec),
+    ". Enter the grade's cut scores in the spec (`academic$", panel$subject,
+    "$cuts`, by grade) to classify on the scale score instead.")
 }

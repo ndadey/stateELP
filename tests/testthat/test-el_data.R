@@ -412,3 +412,154 @@ test_that("every built derivation runs against the ELPA21 headline", {
   expect_s3_class(cv, "data.frame")
   expect_identical(sum(cv$N_CURRENT_ELP), 5L)
 })
+
+# ---- intake: values outside the format, the academic translation, the check --
+# (2026-11, the state test run's items 1 and 2.)
+
+test_that("as_el_data() translates academic codes and labels itself", {
+  # Item 2: the academic table went in with READING / MATHEMATICS and lettered levels
+  # and every academic result came back NULL. as_el_data() now applies the
+  # spec's value map and level labels on intake, after the crosswalk.
+  spec <- make_el_data_sim_spec()
+  spec$academic$ELA$level_labels <- c("BB", "B", "P", "A", "AD")
+  roster <- tiny_roster()
+  ac <- tibble::tibble(ID = "A", YEAR = 2015L, GRADE = "3",
+                       CONTENT_AREA = "READING", SCALE_SCORE = 700,
+                       ACHIEVEMENT_LEVEL = "P")
+  spec$data$columns$value_maps$CONTENT_AREA$academic <- c(READING = "ELA")
+  b <- as_el_data(tiny_base(spec), roster = roster, academic = ac, spec = spec)
+  expect_identical(el_academic(b)$SUBJECT, "ELA")
+  expect_identical(el_academic(b)$ACHIEVEMENT_LEVEL, 3L)
+
+  # A table already through as_academic_long() is unchanged by the second pass.
+  pre <- as_academic_long(ac, spec)
+  b2 <- as_el_data(tiny_base(spec), roster = roster, academic = pre, spec = spec)
+  expect_identical(el_academic(b2), el_academic(b))
+})
+
+test_that("an academic subject the spec does not know is said out loud", {
+  spec <- make_el_data_sim_spec()
+  spec$data$columns$value_maps$CONTENT_AREA$academic <- NULL
+  ac <- tibble::tibble(STUDENT_ID = "A", YEAR = 2015L, GRADE = "3",
+                       SUBJECT = "READING", SCALE_SCORE = 700,
+                       ACHIEVEMENT_LEVEL = 3L)
+  expect_warning(as_el_data(tiny_base(spec), roster = tiny_roster(),
+                            academic = ac, spec = spec),
+                 "No academic row matches a subject")
+})
+
+test_that("ELP_FORM outside annual / alternate stops the build", {
+  # Item 1: "general" passed intake and left elp_headline() with 0 rows.
+  spec <- make_el_data_sim_spec()
+  expect_error(as_el_data(tiny_base(spec, ELP_FORM = "general"),
+                          roster = dplyr::select(tiny_roster(), -"ELP_FORM"),
+                          spec = spec),
+               "\"general\"")
+  expect_error(as_el_data(tiny_base(spec),
+                          roster = dplyr::mutate(tiny_roster(),
+                                                 ELP_FORM = "Annual"),
+                          spec = spec),
+               "must be \"annual\" or \"alternate\"")
+})
+
+test_that("a kindergarten coded 0 and a grade 13 are warned about", {
+  spec <- make_el_data_sim_spec()
+  spec$data$columns$value_maps$GRADE <- NULL
+  r0 <- dplyr::mutate(tiny_roster(), GRADE = "0")
+  expect_warning(as_el_data(tiny_base(spec), roster = r0, spec = spec),
+                 "value_maps\\$GRADE")
+  r13 <- dplyr::mutate(tiny_roster(), GRADE = "13")
+  expect_warning(as_el_data(tiny_base(spec), roster = r13, spec = spec),
+                 "outside K and 1-12")
+  # Mapped, it is K and nothing is said.
+  spec$data$columns$value_maps$GRADE <- c("0" = "K")
+  expect_silent(b <- as_el_data(tiny_base(spec), roster = r0, spec = spec))
+  expect_identical(el_roster(b)$GRADE, "K")
+})
+
+test_that("el_data_format() names every required column the intake requires", {
+  f <- el_data_format()
+  expect_setequal(unique(f$TABLE), c("roster", "base", "academic"))
+  req <- function(t) f$COLUMN[f$TABLE == t & f$NEED == "required"]
+  expect_true(all(ROSTER_REQUIRED %in% req("roster")))
+  expect_true(all(ACADEMIC_REQUIRED %in% req("academic")))
+  expect_true(all(c(KEY, "COMPONENT") %in% req("base")))
+  # The base table's allowed columns are exactly the documented ones.
+  expect_setequal(f$COLUMN[f$TABLE == "base"], BASE_COLUMNS)
+  expect_identical(nrow(el_data_format("roster")), sum(f$TABLE == "roster"))
+})
+
+test_that("check_el_delivery() passes the shipped simulation", {
+  chk <- check_el_delivery(el_long_sim, roster = el_roster_sim,
+                           academic = academic_long_sim,
+                           spec = make_el_data_sim_spec())
+  expect_s3_class(chk, "el_delivery_check")
+  expect_true(attr(chk, "ok"))
+  expect_identical(sum(chk$SEVERITY == "error"), 0L)
+  expect_output(print(chk), "0 error")
+})
+
+test_that("check_el_delivery() lists every test-run problem at once", {
+  spec <- make_el_data_sim_spec()
+  spec$data$columns$value_maps$GRADE <- NULL
+  spec$data$columns$value_maps$CONTENT_AREA$academic <- NULL
+  head <- spec_headline(spec)
+  roster <- tibble::tibble(
+    STUDENT_ID = c("A", "A", "A", "B", "C"),
+    YEAR = c(2014L, 2015L, 2016L, 2015L, 2015L),
+    GRADE = c("0", "1", "2", "13", "3"),
+    EL_STATUS = c("current", NA, "current", "never", "current"),
+    ELP_FORM = c("general", NA, "general", NA, "general"),
+    IEP = c("1", "0", "1", "0", "SPED"),
+    LEFT_TRUNCATED = c("Y", "Y", "Y", "N", "N"))
+  base <- tibble::tibble(
+    STUDENT_ID = c("A", "A", "C"), YEAR = c(2014L, 2016L, 2015L),
+    COMPONENT = head, ELP_FORM = "general", SCALE_SCORE = c(300, 340, NA),
+    ACHIEVEMENT_LEVEL = c("2.1", "3.4", "P2"))
+  ac <- tibble::tibble(
+    STUDENT_ID = c("C", "C", "Z"), YEAR = 2015L, GRADE = "3",
+    SUBJECT = c("READING", "MATHEMATICS", "READING"),
+    SCALE_SCORE = c(700, 710, 650), ACHIEVEMENT_LEVEL = c("P", "BB", "B"))
+
+  chk <- check_el_delivery(base, roster = roster, academic = ac, spec = spec)
+  expect_false(attr(chk, "ok"))
+  hit <- function(table, column, severity) {
+    any(chk$TABLE == table & grepl(column, chk$COLUMN, fixed = TRUE) &
+          chk$SEVERITY == severity)
+  }
+  expect_true(hit("roster", "GRADE", "error"))          # "0" for K
+  expect_true(hit("roster", "GRADE", "warning"))        # "13"
+  expect_true(hit("roster", "ELP_FORM", "error"))       # "general"
+  expect_true(hit("roster", "EL_STATUS", "warning"))    # NA inside a run
+  expect_true(hit("roster", "EL_STATUS", "note"))       # NA at all
+  expect_true(hit("roster", "IEP", "warning"))          # "SPED"
+  expect_true(hit("roster", "LEFT_TRUNCATED", "error")) # not logical
+  expect_true(hit("base", "ACHIEVEMENT_LEVEL", "error"))# "P2"
+  expect_true(hit("base", "ELP_FORM", "error"))
+  expect_true(hit("base", "COMPONENT / ELP_FORM", "error"))  # no annual rows
+  expect_true(hit("academic", "SUBJECT", "error"))      # READING unmapped
+  expect_true(hit("academic", "ACHIEVEMENT_LEVEL", "error"))  # N/A/P unlabelled
+  expect_true(hit("academic", "STUDENT_ID x YEAR", "error"))  # Z: no roster row
+  expect_output(print(chk), "fix:")
+  # The check changes nothing and never stops.
+  expect_identical(roster$GRADE[[1]], "0")
+})
+
+test_that("mark_alternate_elp() makes a delivery with alternate codes build", {
+  spec <- make_el_data_sim_spec()
+  head <- spec_headline(spec)
+  base <- tibble::tibble(
+    STUDENT_ID = c("A", "B", "B"), YEAR = 2015L,
+    COMPONENT = c(head, head, spec_components(spec)[[1]]),
+    ELP_FORM = "general", SCALE_SCORE = c(340, NA, NA),
+    ACHIEVEMENT_LEVEL = c("4.5", "P2", "3.1"))
+  out <- mark_alternate_elp(base, annual = "general")
+  expect_identical(out$ELP_FORM, c("annual", "alternate", "alternate"))
+  expect_identical(out$ACHIEVEMENT_LEVEL, c(4.5, NA, NA))
+  expect_identical(attr(out, "n_alternate"), 1L)
+
+  roster <- tibble::tibble(STUDENT_ID = c("A", "B"), YEAR = 2015L,
+                           GRADE = "3", EL_STATUS = "current")
+  b <- as_el_data(out, roster = roster, spec = spec)
+  expect_identical(nrow(elp_headline(b)), 1L)    # only A's annual score
+})

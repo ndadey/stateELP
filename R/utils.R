@@ -91,6 +91,60 @@ assign_elp_band <- function(level, spec) {
                    right = FALSE, include.lowest = TRUE))
 }
 
+# ---- academic proficiency ----------------------------------------------------
+
+# Who reached proficiency on the content test, for one subject and grade. One
+# definition, shared by Checks 3 and 4 so they cannot classify the same
+# student differently.
+#
+# The basis, in order:
+#   "cut"   -- the spec gives a cut score for this subject and grade: the
+#              scale score at or above the lowest score of the proficient
+#              level (spec_proficient_cut()).
+#   "level" -- no cut for this grade, but the spec names the proficient level
+#              and the academic table carries ACHIEVEMENT_LEVEL: the delivered
+#              level at or above it. This is how a state whose cuts differ by
+#              grade, and who has not entered them, still gets every check.
+#   NA      -- neither: proficiency is undefined and the slots that need it
+#              are NULL with a note.
+# `proficient` is NA where the deciding score is missing.
+.academic_proficiency <- function(scale_score, level, spec, subject, grade) {
+  cut <- spec_proficient_cut(spec, subject, grade)
+  lvl <- spec_proficient_level(spec)
+  n <- length(scale_score)
+  if (!is.na(cut)) {
+    return(list(proficient = ifelse(is.na(scale_score), NA,
+                                    scale_score >= cut),
+                basis = "cut", cut = cut, level = lvl))
+  }
+  if (!is.na(lvl) && !is.null(level) && is.numeric(level) &&
+      any(!is.na(level))) {
+    return(list(proficient = ifelse(is.na(level), NA, level >= lvl),
+                basis = "level", cut = NA_real_, level = lvl))
+  }
+  list(proficient = rep(NA, n), basis = NA_character_, cut = NA_real_,
+       level = lvl)
+}
+
+# The basis in words, for a results note or a caption.
+.proficiency_basis_text <- function(basis, cut, level, spec, subject) {
+  labels <- spec$academic[[subject]]$level_labels
+  lname <- if (!is.na(level) && length(labels) >= level) {
+    paste0("level ", level, " (", labels[[level]], ")")
+  } else if (!is.na(level)) paste("level", level) else "the proficient level"
+  if (identical(basis, "cut")) {
+    return(paste0("a scale score of ", format(cut, big.mark = ","),
+                  " or more, the lowest score of ", lname,
+                  " in the spec's cut scores"))
+  }
+  if (identical(basis, "level")) {
+    return(paste0("the delivered performance level at or above ", lname,
+                  ": the spec gives no cut score for this grade"))
+  }
+  paste0("undefined: the spec gives no cut score for this grade and no ",
+         "proficient level to read the delivered performance level against")
+}
+
 # ---- weighting ---------------------------------------------------------------
 
 #' Weighted counts and shares
@@ -317,6 +371,21 @@ build_student_spans <- function(roster, last_year = NULL) {
           "EXIT_YEAR_IN_STATUS", "LAST_OBSERVED_YEAR", "LAST_YEAR_IN_STATUS",
           "CENSOR_TYPE", "CENSOR_YEAR", "CENSORED", "EXITED",
           intersect(c("LEFT_TRUNCATED", "INITIAL_ELP"), names(spans)))]
+}
+
+# The exit-dating convention, said once in words for every timeline result
+# (Checks 1 and 2). A state comparing this package's numbers with its own
+# reports will usually date an exit to the year of the qualifying score, one
+# year earlier than here, and needs to be told so before the numbers disagree.
+.exit_dating_note <- function(spec) {
+  k <- spec_max_years(spec)
+  paste0(
+    "Exits are dated to the first year a student is recorded as a former EL ",
+    "-- the school year after the score that met the exit rule -- and that ",
+    "year counts as a year in status. An analysis that dates an exit to the ",
+    "year of the qualifying score counts the same exits one year earlier: ",
+    "the share exited within ", k, " years here corresponds to that ",
+    "analysis's share within ", k - 1L, ".")
 }
 
 # The on-time timeline per student. `on_time_rule$default_years`, falling back

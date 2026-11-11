@@ -60,6 +60,18 @@ no_band_curve <- !have_band_curve
 no_model1 <- !have_model1
 no_model1_baseline <- !have_model1_baseline
 no_model2 <- !have_model2
+# Older saved results predate the dating note and the analyst's choice.
+have_dating <- !is.null(res$meta$exit_dating_note) &&
+  !is.na(res$meta$exit_dating_note)
+selection_text <- if (identical(res$meta$cohort_choice, "entry_year")) {
+  paste0("The selected cohort was chosen by the analyst (entry year ",
+         res$meta$entry_year, "), not by the default rule, which takes the ",
+         "longest observed follow-up that clears the minimum cell size of ",
+         spec_min_cell(spec), ".")
+} else {
+  paste0("The selected cohort is the one with the longest observed follow-up ",
+         "that clears the minimum cell size of ", spec_min_cell(spec), ".")
+}
 ```
 
 ::: {.callout-note appearance="default" icon=false}
@@ -83,9 +95,10 @@ ft_check1_data_fields(res)
 
 Confirm the selected cohort is large and stable enough to support a
 trustworthy survival curve, and not distorted by an enrollment anomaly such
-as a pandemic-era dip. The candidates are below: the selected cohort is the
-one with the longest observed follow-up that clears the minimum cell size of
-`r spec_min_cell(spec)`.
+as a pandemic-era dip. The candidates are below. `r selection_text` Where the
+table shows years with academic scores, they are the years in status in which
+at least `r spec_min_cell(spec)` of a cohort's students have a content score:
+the years Data Check 2 can compare exit groups on achievement.
 
 ```{r}
 #| label: tbl-cohorts
@@ -118,6 +131,12 @@ ft_check1_life_table(res)
 #| output: asis
 #| eval: !expr no_life_table
 cat("> **No life table.** ", res$meta$note, "\n", sep = "")
+```
+
+```{r}
+#| output: asis
+#| eval: !expr have_dating
+cat("> ", res$meta$exit_dating_note, "\n", sep = "")
 ```
 
 ## Exit curves
@@ -498,8 +517,11 @@ nothing in this package uses it mechanically.
 
 ```{r}
 #| output: asis
-cat("*Spec: ", res$meta$spec_id, ". Simulated data, contract ",
-    res$meta$sim_contract_version, ". stateELP ", res$meta$package_version,
+# "Simulated data" only when the results came from the shipped simulation:
+# a state's own delivery carries no simulation contract version.
+cat("*Spec: ", res$meta$spec_id, ". ",
+    if (!is.null(res$meta$sim_contract_version) && !is.na(res$meta$sim_contract_version)) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
+    "stateELP ", res$meta$package_version,
     ", run ", format(res$meta$run_date), ".*\n", sep = "")
 ```
 

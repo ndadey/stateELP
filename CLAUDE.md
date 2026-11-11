@@ -293,6 +293,27 @@ prefixes"). Each belongs to the session that owns its prefix (§14); a
 session that fixes one strikes it through (`~~…~~`) with the fixing
 commit's hash and date, as §13 does for built items — never deletes it.
 
+- *Fixed 2026-11-11 by the state-test-run revision (committed with this
+  file — see "A state test run" below).* In the bullets
+  that follow, these are now fixed and should be read as struck through:
+  render path **(a)** (`pkg_path` is passed only when the working directory
+  is the stateELP source, `.is_stateelp_source()`), **(b)** (`spec_file` is
+  normalized when it is a path), **(d)** (roxygen and file header now
+  describe the tempdir render), **(g)** (a skipped disclosure scan always
+  warns; `bundle =` gives it the state's ids); `check3_`: the `NULL`
+  `$logistic` guard in `ft_check3_fairness()`, the `TOP_BAND_PCT` label
+  ("Best band's share"), `run_check3()`'s "shell pass" roxygen, the duplicate
+  `.check3_share_at()` (both removed, replaced by `.check3_share()`), the
+  "headline" in `check3_contested.R`'s note, `.check3_exit_band()` taking the
+  first level term whatever its component (now the term on the headline,
+  wherever it sits), the `NA` `proficient_level` error (cuts now come from
+  `spec_proficient_cut()`, NA-safe, and the validator rejects an `NA` once a
+  subject is declared), and the template's stale "What is not here" /
+  Sample / Decide text (`compute_panel()`'s roxygen is **not** fixed);
+  `check1_`: the footer's unconditional "Simulated data" (all five templates
+  now gate it on `sim_contract_version`, not `spec_id`); specs: the
+  TEMPLATE's pointer `academic` block (now inline, cuts by grade). The
+  ELPA21 Check 3 failure, the MA pointer and render-path (c), (e), (f) stand.
 - *Render path* (`R/render_step.R` + every stage template's setup chunk).
   (a) `render_step()` passes `pkg_path = getwd()` (`:82`, `:125`), and every
   template `load_all()`s any `pkg_path` that has an `R/` subfolder, so
@@ -614,6 +635,89 @@ ships here, but `guide/setup.qmd`'s new MA section and `guide/index.qmd`'s
 `docs/guide/`, so those two pages lag the sources by one spec until
 `rs_guide(c("index", "setup"))` runs from a clean export of this commit.
 
+**A state test run (2026-11-11, committed with this file).** A colleague ran the
+package (at `6342c2c`) on one state's EL data and reported 18 items plus three
+requests (a spec builder, a data-format guide with a checker, a way to choose
+the cohort). The user asked for the package to be revised in light of it; a
+single session made these changes across prefixes, which §14's
+one-prefix-per-session rule does not anticipate — recorded here rather than
+split. What changed:
+
+- *Cut scores by grade.* `academic$<subject>$cuts` may be a list named by
+  grade as well as one vector; the validator checks both shapes and that
+  `length(cuts) == length(level_labels) - 1`. New exported accessors
+  `spec_academic_cuts()`, `spec_proficient_level()`, `spec_proficient_cut()`
+  (subject **and grade**). Checks 3 and 4 read each panel against its own
+  grade's cut (Check 3's all-grade tables previously used the one vector for
+  every grade). One shared `.academic_proficiency()` in `utils.R` decides
+  proficiency for both: the grade's cut, else the delivered academic
+  `ACHIEVEMENT_LEVEL >= proficient_level`, else undefined (slots `NULL` with
+  notes). `$landing` gains `CUT` and `PROFICIENCY_BASIS`; `$meta` gains
+  `proficiency_basis`, `proficiency_note` (both checks) and Check 3's
+  `logistic_note`. `[PROPOSED — CONFIRM]` the delivered-level fallback.
+- *Validator.* Numeric `level_scale$labels` must name every whole level in
+  the range; `proficient_level` must be a whole number ≥ 2 (and within
+  `level_labels`) once a subject is declared.
+- *Intake.* `as_el_data()` passes the academic table through
+  `as_academic_long()` after the crosswalk (idempotent), stops on `ELP_FORM`
+  outside `annual`/`alternate`/`NA`, and warns on grades outside K/1–12 and
+  on academic subjects the spec does not declare. New
+  `R/el_data_check.R`: `el_data_format()` (the one column reference the guide
+  prints and the checker reads), `check_el_delivery()` (every problem at
+  once, severity error / warning / note, nothing changed) and
+  `mark_alternate_elp()`.
+- *Spec builder.* `R/spec_builder.R`: `build_el_spec()` and
+  `spec_intake_form()` (form at `inst/spec_builder/spec_intake_form.md`),
+  ported from the colleague's draft, with cut scores asked grade by grade and
+  scripted `input` for tests. Presets index `el_component_vocabulary()` so the
+  no-literals grep still passes. Attribution of the draft's author is **not**
+  in the files — the user's call (§12 #23 is the same question).
+- *Template.* `00_TEMPLATE_EL_Spec` is now complete: inline ELA/Math blocks
+  with by-grade placeholder cuts, `proficient_level = 3L`, `lt_el_years`,
+  `value_maps` (`GRADE` and `CONTENT_AREA$academic`), and a comment that
+  `elp$alternate` is read by no stage. It is no longer pointer-form; only
+  ELPA21 and MA are.
+- *Checks 1–2.* `compute_cohorts()`, `run_check1()`, `run_check2()` take
+  `entry_year` (an explicit, non-usable year stops with the usable ones
+  listed); `$cohorts` gains `ACADEMIC_YEARS` and a `"selected_by"` attribute;
+  Sample statements say when the analyst chose. Both stages carry
+  `$meta$exit_dating_note` (first-former-year dating vs. the state's own
+  qualifying-score-year convention). Check 2 gains `$outcome_shares`
+  (`compute_outcome_shares()`, `ft_check2_outcome_shares()`): the crosstab
+  read across, four outcomes summing to 100% per group; the deck's
+  column-percent crosstab is unchanged. `[PROPOSED — CONFIRM]` its
+  suppression (primary only, plus groups under `min_cell` blanked whole).
+  This builds §13's "cohort override for Checks 1–2".
+- *Render.* `render_step(bundle =)`; a skipped scan warns whatever `quiet`
+  is; renders from saved state results scan against `bundle` or warn.
+- *Reports.* Prep 2's EL-share table explains the weight in words; the Prep 2
+  left-truncation note says where the delivered flag and Prep 2's rule
+  disagree (kindergartners in the panel's first year).
+- *Not done, by decision left to the user:* item 10 (`min_cell` blanking
+  Prep 2's entry counts and late life-table rows) — changing it would lower
+  suppression, against §4; recorded, not built.
+
+Guide pages (setup, prep2, prep3, check1–4, decision, index) were edited to
+match, including Quarto install steps and one naming convention for the
+analyst's own objects (`my_spec`, `my_bundle`, `my_base`, `my_roster`,
+`my_academic`). **The site refresh is deferred**: `docs/index.md` is
+regenerated from the README, but the example reports and `docs/guide/` are
+not re-rendered from these changes, and the edited guide pages have not been
+rendered at all (their new chunks are unexecuted).
+
+*Verified 2026-11-11:* the whole suite **1,790 passing, 22 skipped (the same
+22), 0 failing, 0 warnings** — check1 279, check2 164 (outcome shares,
+`entry_year`), check3 194, check4 382, data 44, disclosure 26, el_data 128,
+prep2 284, render 24, spec 200, utils 65 — from one full run plus a rerun of
+the three files fixed after it. Prep 2 and Checks 1–4 render to docx + html
+on the sim; Checks 3–4 also render from results computed with **no cut
+scores** (the failure the test run hit), Checks 1–2 from a chosen `entry_year`, and
+a render from state-flagged results with no `bundle` warns that the scan did
+not run. `tools::checkDocFiles()` silent; `devtools::check()` on a staging
+copy of the working tree (tracked + new files, `renv` dropped): **0 errors,
+0 warnings, 3 NOTEs** (the known three: `openxlsx` absent, the 6.5 MB
+`data/`, "unable to verify current time"), 24m 20s, tests 13 min.
+
 **Concurrent-session note (2026-09-21).** Check 1's Model 1 pass and Check 2's
 completion were built in two sessions running at the same time, which is worth
 recording because two *generated* files are shared. `NAMESPACE` is regenerated
@@ -717,7 +821,12 @@ way** (1–3 first recorded 2026-09-15, still true; 4–7 added 2026-10-10;
    wants the Edit tool or `sed`, not a Python one-liner. **Quoted heredocs
    into `cat >` also fail here** for large R blocks (bash reports
    `unexpected EOF while looking for matching "'"`, as a 2026-10-09 session
-   also found), so write a new source file with the Write tool.
+   also found), so write a new source file with the Write tool. *Added
+   2026-11-11:* a quoted heredoc that does run (`cat >> f <<'EOF'`) still
+   **halves backslashes** (`"\\."` lands as `"\."`, an R parse error);
+   append R code with the Edit tool. And `Rscript -e '...'` re-enters
+   `cmd`, so a `|` inside the R string (`filter = "a|b"`) is read as a
+   shell pipe — put such code in a script file.
 
 ## 4. Data contract — three long tables
 
@@ -1055,9 +1164,16 @@ delivered, only Check 4 guards it (its slots go `NULL` with a note); Check 1
 Model 2 (when the headline carries a scale — the `tryCatch` catches only
 `check1_unfittable`), Check 2's academic summary and Check 3 take
 `subjects[[1]]` and **error** with "subscript out of bounds" (§3 Known
-issues). TEMPLATE and ELPA21 are pointer-form. **A real
-state spec copied from TEMPLATE must inline its subjects** (`instrument`,
+issues). ELPA21 and MA are pointer-form; TEMPLATE is inline since
+2026-11-11. **A real state spec must inline its subjects** (`instrument`,
 `grades`, `cuts`, `op`, `level_labels`, `source` per subject).
+*Since 2026-11-11:* `cuts` is either one vector of level
+minimums for every grade or a **list named by grade** (the usual state case;
+a vector applied to every grade was the test run's main failure), read
+only through `spec_academic_cuts(spec, subject, grade)` /
+`spec_proficient_cut()`. A grade with no cut falls back, in Checks 3 and 4,
+to the delivered academic `ACHIEVEMENT_LEVEL >= proficient_level`
+(`.academic_proficiency()` in `utils.R`) `[PROPOSED — CONFIRM]`.
 
 **Spec diff table (old `assessment_spec` → `el_spec`)** — migration depends
 on it:
@@ -1958,8 +2074,10 @@ Prolonged column in Check 2's crosstab (one entry in
 `.CHECK2_FLAG_COLUMNS`); mobility (no roster field carries it); a Type 3
 circularity gate on Check 2's academic summary (`NOTES-check2.md`); a
 shared home for the `Display_Labels.R` reader (only `check2_` reads it); a
-cohort override for Checks 1–2 (a selected cohort that fails the Checkpoint
-cannot be swapped, and any override must reach Check 2); the "Data fields
+~~cohort override for Checks 1–2 (a selected cohort that fails the Checkpoint
+cannot be swapped, and any override must reach Check 2)~~ — **built**
+2026-11-11 as `entry_year` on both stages (§3 "A state test
+run"); the "Data fields
 used" box for every stage (Check 1 only today, its helper moved to
 `utils.R` if extended); a spec-gated "screened but not classified" column in
 Check 3's summary table (§6); Check 4's tied-run rule and the less

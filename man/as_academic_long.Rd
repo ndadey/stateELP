@@ -28,4 +28,8 @@ spec, \code{CONTENT_AREA} values recode to subject keys through
 \details{
 \code{stateELP} does not import \code{stateSummative} or ReportR; a handoff between
 them is a rename at the boundary -- data crosses, code does not.
+
+\code{\link[=as_el_data]{as_el_data()}} calls this on the academic table itself, after applying the
+spec's column crosswalk, so there is no need to call it first. It is
+idempotent: a table already in the package's shape comes back unchanged.
 }

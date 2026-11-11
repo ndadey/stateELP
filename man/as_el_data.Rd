@@ -47,11 +47,27 @@ into the merged form.
 \section{Validation}{
 
 Roster unique on \verb{STUDENT_ID x YEAR}, with \code{EL_STATUS} in
-\code{current / former / never}. Base table unique on \verb{STUDENT_ID x YEAR x COMPONENT}, \code{COMPONENT} character and (with a spec) inside the spec's
-component model, every row with a roster row, and \code{ELP_FORM} equal to the
-roster's. Academic table keyed on \code{SUBJECT}, \code{GRADE} present -- no
-fill-from-roster fallback -- and equal to the roster's, every row with a
-roster row. The two key names are never swapped.
+\code{current / former / never} (or \code{NA}: a year with no status is on the roster
+but in no status group). \code{ELP_FORM}, on either table, is \code{annual},
+\code{alternate} or \code{NA}. Base table unique on \verb{STUDENT_ID x YEAR x COMPONENT},
+\code{COMPONENT} character and (with a spec) inside the spec's component model,
+every row with a roster row, and \code{ELP_FORM} equal to the roster's.
+Academic table keyed on \code{SUBJECT}, \code{GRADE} present -- no fill-from-roster
+fallback -- and equal to the roster's, every row with a roster row. The two
+key names are never swapped. With a spec, a \code{GRADE} outside \code{K} and \code{1}
+to \code{12} and an academic \code{SUBJECT} that is not a spec subject each raise a
+warning.
+
+Run \code{\link[=check_el_delivery]{check_el_delivery()}} first: it makes every one of these checks, and
+more, and lists every problem at once instead of stopping at the first.
+}
+
+\section{The academic table}{
+
+The academic table is passed through \code{\link[=as_academic_long]{as_academic_long()}} on intake, after
+the crosswalk: subject codes become the spec's subject keys through
+\code{data$columns$value_maps$CONTENT_AREA$academic}, and performance-level
+labels become numbers through each subject's \code{level_labels}.
 }
 
 \examples{

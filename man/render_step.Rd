@@ -13,6 +13,7 @@ render_step(
   save_results = FALSE,
   results_dir = "results",
   results_file = NULL,
+  bundle = NULL,
   check_disclosure = NULL,
   open = interactive(),
   quiet = TRUE,
@@ -23,7 +24,9 @@ render_step(
 \item{stage}{A stage id: \code{"prep1"}, \code{"prep2"}, \code{"prep3"}, \code{"check1"},
 \code{"check2"}, \code{"check3"}, \code{"check4"} or \code{"decision"}.}
 
-\item{spec_file}{Spec id passed to the document as a parameter.}
+\item{spec_file}{Spec id, or a path to a spec file, passed to the document
+as a parameter. A path is made absolute first, because the document runs
+in another folder.}
 
 \item{out_dir}{Directory to render into. Created if absent.}
 
@@ -49,11 +52,18 @@ instead of recomputing. Every stage \code{.qmd} already accepts this and
 branches on it; this is the way to pass one. The Decision stage is the
 consumer that needs it.}
 
+\item{bundle}{The \code{el_data} bundle the rendered results were computed
+from, for the disclosure scan. Pass it whenever \code{results_file} holds a
+state's own results. \code{NULL} scans against the shipped simulation, which
+is right only for the simulation's own results.}
+
 \item{check_disclosure}{Scan the produced files for student identifiers and
 \strong{stop} if any appear (see \code{R/disclosure.R}). Defaults to \code{TRUE}
-whenever something was rendered. Set \code{FALSE} on a real delivery, where
-the package cannot assemble the bundle itself, and call
-\code{\link[=check_output_disclosure]{check_output_disclosure()}} against your own bundle instead.}
+whenever something was rendered. The ids come from \code{bundle}, or from the
+shipped simulation when the document was rendered from it. When neither
+applies -- saved results from a state delivery and no \code{bundle} -- the
+scan cannot run, and a warning says so; pass \code{bundle}, or set this to
+\code{FALSE} and call \code{\link[=check_output_disclosure]{check_output_disclosure()}} yourself.}
 
 \item{open}{Whether to open the rendered document. Defaults to interactive
 use only.}
@@ -68,11 +78,18 @@ Used by the smoke test.}
 Invisibly, a character vector of the files written.
 }
 \description{
-Resolves a stage id to its \code{.qmd}, copies it to the output directory,
-renders it there in each requested format, optionally saves the stage's
-results object beside the output, and removes the copy.
+Resolves a stage id to its \code{.qmd}, copies it to a scratch folder, renders
+it there in each requested format, copies the finished documents into
+\code{out_dir}, and optionally saves the stage's results object into
+\code{results_dir} (never beside the documents).
 }
 \details{
+\strong{Rendering a state's own data.} Compute the results with your bundle,
+save them, and pass the file as \code{results_file} together with that same
+\code{bundle}: the disclosure scan then checks the documents against your
+students' ids. Without \code{bundle}, a render from saved state results cannot
+be scanned, and \code{render_step()} says so with a warning whatever \code{quiet} is.
+
 Stage ids carry no run-order numbers: the numbers live on the prompt and
 instruction files only, so \code{render_step("check1")} finds
 \code{inst/templates/check1_survival.qmd}.
@@ -80,6 +97,12 @@ instruction files only, so \code{render_step("check1")} finds
 \examples{
 \dontrun{
 render_step("check1")
-render_step("decision", save_results = TRUE)
+
+# A state's own data: compute, save, render from the file, scan against
+# the same bundle.
+saveRDS(run_check1(my_bundle, my_spec), "results/check1_results.rds")
+render_step("check1", spec_file = "specs/XX_EL_Spec.R",
+            results_file = "results/check1_results.rds",
+            bundle = my_bundle)
 }
 }

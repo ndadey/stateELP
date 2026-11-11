@@ -4,7 +4,7 @@
 \alias{run_check2}
 \title{Run Check 2 -- on-time vs. prolonged exiters}
 \usage{
-run_check2(data, spec, start_grade = "K", subject = NULL)
+run_check2(data, spec, start_grade = "K", subject = NULL, entry_year = NULL)
 }
 \arguments{
 \item{data}{An \code{el_data} bundle.}
@@ -15,6 +15,9 @@ run_check2(data, spec, start_grade = "K", subject = NULL)
 
 \item{subject}{Academic subject for \verb{$academic_summary}. Defaults to the
 spec's first.}
+
+\item{entry_year}{Optional entry year of the cohort, as in \code{\link[=run_check1]{run_check1()}}.
+Pass the same value to both so they follow the same students.}
 }
 \value{
 A named list of results slots plus \verb{$meta}.
@@ -38,6 +41,10 @@ table and is \code{NULL} without it.
 Type 1 spec. \verb{$meta$type_gate_applies} says whether the spec declares a
 Type it would apply to, so the document can tell "does not apply" from
 "applies, but this delivery yields no groups".
+
+\verb{$outcome_shares} reads the crosstab the other way: for each characteristic
+group, how its students split across four outcomes that sum to 100\% --
+exited on time, exited later, not observed exiting, and disappeared.
 }
 \examples{
 spec <- read_el_spec("00_SIM_EL_Spec")

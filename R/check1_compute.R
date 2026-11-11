@@ -25,20 +25,40 @@
 #' candidate nothing is selected, and [run_check1()] degrades every analysis
 #' slot to `NULL` rather than analyzing a cohort too small to report.
 #'
+#' **Choosing the cohort yourself.** The longest follow-up is not always the
+#' cohort that answers the question. A state whose academic test data cover
+#' only recent years may find that the earliest cohort reaches a tested grade
+#' once, or never, so Check 2's academic comparison has nothing to show.
+#' `entry_year` overrides the selection with any qualifying candidate; it
+#' stops, listing the candidates, when the year is not one. `ACADEMIC_YEARS`
+#' is there to make that choice: for each candidate, how many of its years in
+#' status have at least `min_cell` cohort members with an academic score.
+#' Pass the same `entry_year` to [run_check1()] and [run_check2()] so the two
+#' stages follow the same students.
+#'
 #' @param data An `el_data` bundle.
 #' @param spec An `el_spec`.
 #' @param start_grade Entry grade defining the cohorts, e.g. `"K"`.
+#' @param entry_year Optional entry year of the cohort to analyze, e.g.
+#'   `2017`. `NULL` (the default) selects the candidate with the longest
+#'   follow-up.
 #' @return A tibble: `COHORT_LABEL`, `COHORT_START_YEAR`, `N_ENTRY`,
-#'   `FOLLOWUP_YEARS`, `SELECTED`, `SUPPRESSED`. Zero rows when the panel
-#'   supports no cohort at all.
+#'   `FOLLOWUP_YEARS`, `ACADEMIC_YEARS` (`NA` without an academic table),
+#'   `SELECTED`, `SUPPRESSED`. Zero rows when the panel supports no cohort at
+#'   all. The `"selected_by"` attribute is `"longest follow-up"` or
+#'   `"entry_year"`.
 #' @export
 #' @examples
 #' spec <- read_el_spec("00_SIM_EL_Spec")
 #' bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
 #' compute_cohorts(bundle, spec)
-compute_cohorts <- function(data, spec, start_grade = "K") {
+#' compute_cohorts(bundle, spec, entry_year = 2017)
+compute_cohorts <- function(data, spec, start_grade = "K", entry_year = NULL) {
   stopifnot(inherits(data, "el_data"), inherits(spec, "el_spec"),
-            is.character(start_grade), length(start_grade) == 1L)
+            is.character(start_grade), length(start_grade) == 1L,
+            is.null(entry_year) ||
+              (is.numeric(entry_year) && length(entry_year) == 1L &&
+                 !is.na(entry_year)))
   roster <- el_roster(data)
   .check1_require_fields(roster, "cohorts")
 
@@ -50,6 +70,7 @@ compute_cohorts <- function(data, spec, start_grade = "K") {
     dplyr::mutate(FOLLOWUP_YEARS =
                     as.integer(.env$panel_last - .data$COHORT_START_YEAR + 1L)) |>
     dplyr::arrange(.data$COHORT_START_YEAR)
+  out$ACADEMIC_YEARS <- .check1_academic_years(data, spec, members, out)
 
   # cols = character(0): the default would blank COHORT_START_YEAR and
   # FOLLOWUP_YEARS, which are not disclosive and are what the row is for.
@@ -58,12 +79,50 @@ compute_cohorts <- function(data, spec, start_grade = "K") {
 
   out$SELECTED <- FALSE
   qualifies <- !out$SUPPRESSED
-  if (any(qualifies)) {
+  if (!is.null(entry_year)) {
+    pick <- which(out$COHORT_START_YEAR == entry_year & qualifies)
+    if (!length(pick)) {
+      usable <- out$COHORT_START_YEAR[qualifies]
+      stop("No usable ", start_grade, " cohort entered in ", entry_year, ". ",
+           if (length(usable)) paste0(
+             "Usable entry years: ", paste(usable, collapse = ", "), ". ")
+           else "This panel supports no usable cohort. ",
+           "A cohort needs the ", spec_max_years(spec), "-year maximum ",
+           "timeline plus one year of follow-up inside the data, at least ",
+           spec_min_cell(spec), " students, and no left truncation.",
+           call. = FALSE)
+    }
+    out$SELECTED[pick[[1]]] <- TRUE
+  } else if (any(qualifies)) {
     pick <- which(qualifies)[which.max(out$FOLLOWUP_YEARS[qualifies])]
     out$SELECTED[pick] <- TRUE
   }
-  out[c("COHORT_LABEL", "COHORT_START_YEAR", "N_ENTRY", "FOLLOWUP_YEARS",
-        "SELECTED", "SUPPRESSED")]
+  out <- out[c("COHORT_LABEL", "COHORT_START_YEAR", "N_ENTRY",
+               "FOLLOWUP_YEARS", "ACADEMIC_YEARS", "SELECTED", "SUPPRESSED")]
+  attr(out, "selected_by") <- if (is.null(entry_year)) "longest follow-up"
+                              else "entry_year"
+  out
+}
+
+# For each candidate cohort, the number of its years in status (within its
+# follow-up) in which at least min_cell of its members have an academic scale
+# score -- the years Check 2's academic summary can compare exit groups in.
+# Counted the way the summary counts: every cohort member, exited or not.
+# NA without an academic table.
+.check1_academic_years <- function(data, spec, members, cohorts) {
+  ac <- el_academic(data)
+  if (is.null(ac) || !nrow(cohorts)) return(rep(NA_integer_, nrow(cohorts)))
+  scored <- ac[!is.na(ac$SCALE_SCORE) &
+                 ac$STUDENT_ID %in% members$STUDENT_ID, c("STUDENT_ID", "YEAR")]
+  scored <- scored[!duplicated(scored), , drop = FALSE]
+  at <- match(scored$STUDENT_ID, members$STUDENT_ID)
+  scored$COHORT_LABEL <- members$COHORT_LABEL[at]
+  scored <- scored[scored$YEAR >= members$COHORT_START_YEAR[at], , drop = FALSE]
+  per_year <- dplyr::count(scored, .data$COHORT_LABEL, .data$YEAR, name = "N")
+  min_cell <- spec_min_cell(spec)
+  vapply(cohorts$COHORT_LABEL, function(lb) {
+    as.integer(sum(per_year$COHORT_LABEL == lb & per_year$N >= min_cell))
+  }, integer(1), USE.NAMES = FALSE)
 }
 
 # The deck's slide-52 arithmetic, split out so the worked example can be

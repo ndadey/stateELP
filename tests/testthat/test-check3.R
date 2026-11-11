@@ -724,3 +724,110 @@ test_that("a zone too thin to report returns NULL, not a fitted curve", {
   spec$policy$suppression$min_cell <- 1e6L
   expect_null(compute_contested_models(make_check3_sim_bundle(), spec))
 })
+
+# ---- cut scores by grade, and proficiency without them (2026-11) ------------
+# The state test run's items 6-8: one cut vector applied to every grade, a
+# render that stopped on NULL cuts, and checks that went empty although the
+# academic file carried each student's performance level.
+
+check3_by_grade_spec <- function() {
+  spec <- check3_spec()
+  sb <- spec_academic_subjects(spec)[[1]]
+  g <- spec_academic_grades(spec, sb)
+  base <- spec$academic[[sb]]$cuts
+  # Grade 3 gets its own, lower cuts; every other grade keeps the shipped ones.
+  spec$academic[[sb]]$cuts <- stats::setNames(
+    lapply(g, function(x) if (x == g[[1]]) base - 20 else base), g)
+  validate_el_spec(spec)
+  spec
+}
+
+test_that("each grade's panel is read against its own grade's cut", {
+  spec <- check3_by_grade_spec()
+  b <- make_check3_sim_bundle()
+  sb <- spec_academic_subjects(spec)[[1]]
+  g <- spec_academic_grades(spec, sb)
+  # The figure's grade is not grade 3, so the old behaviour -- one cut for
+  # every row -- would read grade 3 against the wrong one.
+  res <- run_check3(b, spec, subject = sb, grade = g[[3]])
+  l <- res$landing
+  expect_identical(l$CUT[l$GRADE == g[[1]]], spec_proficient_cut(spec, sb, g[[1]]))
+  expect_identical(l$CUT[l$GRADE == g[[3]]], spec_proficient_cut(spec, sb, g[[3]]))
+  expect_false(identical(l$CUT[l$GRADE == g[[1]]], l$CUT[l$GRADE == g[[3]]]))
+  expect_true(all(l$PROFICIENCY_BASIS == "cut"))
+
+  # The grade-3 share is the share at grade 3's own cut, not the focal one's.
+  p3 <- compute_panel(b, spec, subject = sb, grade = g[[1]])
+  rows <- .check3_panel_rows(b, spec, p3)
+  cut3 <- spec_proficient_cut(spec, sb, g[[1]])
+  band <- spec_bands(spec)$labels[[3]]
+  x <- rows$SCALE_SCORE[rows$GROUP == band & !rows$ALTERNATE]
+  bd <- res$box_data
+  got <- bd$PCT_AT_CUT[bd$GRADE == g[[1]] & bd$GROUP == band]
+  expect_equal(got, mean(x[!is.na(x)] >= cut3))
+  expect_identical(res$logistic$THRESHOLD[res$logistic$GRADE == g[[1]]], cut3)
+  expect_true(is.na(res$meta$proficiency_note))
+})
+
+test_that("without cut scores, proficiency is the delivered level", {
+  spec <- check3_spec()
+  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$cuts <- NULL
+  b <- make_check3_sim_bundle()
+  res <- run_check3(b, spec)
+
+  expect_true(all(res$landing$PROFICIENCY_BASIS == "level"))
+  expect_true(all(is.na(res$landing$CUT)))
+  expect_false(is.null(res$logistic))
+  expect_true(all(res$logistic$THRESHOLD_KIND == "delivered performance level"))
+  expect_match(res$meta$proficiency_note, "performance level is at or above")
+
+  # The share is the share at or above the proficient level, read off the file.
+  p <- res$meta$panel
+  rows <- .check3_panel_rows(b, spec, p)
+  lvl <- spec_proficient_level(spec)
+  band <- spec_bands(spec)$labels[[3]]
+  x <- rows$ACHIEVEMENT_LEVEL[rows$GROUP == band & !rows$ALTERNATE]
+  bd <- check3_focal(res$box_data)
+  expect_equal(bd$PCT_AT_CUT[bd$GROUP == band], mean(x[!is.na(x)] >= lvl))
+
+  # The documents' tables render; the fairness table no longer stops.
+  expect_s3_class(ft_check3_fairness(res), "flextable")
+  expect_s3_class(ft_check3_landing(res), "flextable")
+  expect_s3_class(ft_check3_summary(res), "flextable")
+  expect_match(check3_fairness_note(res), "no cut score")
+})
+
+test_that("with no cut and no proficient level, the logistic is NULL and says why", {
+  spec <- check3_spec()
+  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$cuts <- NULL
+  spec$policy$academic_benchmark$proficient_level <- NULL
+  res <- run_check3(make_check3_sim_bundle(), spec)
+  expect_null(res$logistic)
+  expect_match(res$meta$logistic_note, "proficiency is undefined")
+  expect_match(res$meta$proficiency_note, "undefined")
+  # Box plots still draw: they need no cut.
+  expect_false(is.null(res$box_data))
+  # And the fairness table renders with the state column dashed.
+  expect_s3_class(ft_check3_fairness(res), "flextable")
+})
+
+test_that("ft_check3_fairness() renders when $logistic is NULL", {
+  res <- check3_sim()
+  res$logistic <- NULL
+  expect_s3_class(ft_check3_fairness(res), "flextable")
+  expect_type(check3_fairness_note(res), "character")
+})
+
+test_that("the exit band comes from the term on the banded component", {
+  # Term order used to decide it: a Literacy floor listed first was read as
+  # the exit threshold. Now the term on the headline wins wherever it sits.
+  spec <- make_check3_type2_spec(floor = 3.5)
+  terms <- spec$policy$exit$pathways[[1]]$terms
+  hl <- vapply(terms, function(t) identical(t$component, spec_headline(spec)), TRUE)
+  expect_true(any(hl) && !all(hl))
+  forward <- .check3_exit_band(spec)
+  spec$policy$exit$pathways[[1]]$terms <- rev(terms)
+  expect_identical(.check3_exit_band(spec), forward)
+  expect_identical(forward,
+                   as.character(assign_elp_band(terms[hl][[1]]$value, spec)))
+})

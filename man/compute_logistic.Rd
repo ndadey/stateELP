@@ -17,19 +17,27 @@ compute_logistic(
 
 \item{spec}{An \code{el_spec}.}
 
-\item{panel}{Output of \code{\link[=compute_panel]{compute_panel()}}, or \code{NULL} to derive it.}
+\item{panel}{Output of \code{\link[=compute_panel]{compute_panel()}}, or \code{NULL} to derive it.
+\strong{Proficiency without cut scores.} Left at its default, the outcome is
+the panel grade's proficiency cut from the spec. When the spec gives no cut
+for that grade -- a state whose cuts differ by grade and has not entered
+them -- the outcome is the academic table's own \code{ACHIEVEMENT_LEVEL} at or
+above \code{policy$academic_benchmark$proficient_level}, and \code{THRESHOLD_KIND}
+says so. Only with neither is the result \code{NULL}.}
 
 \item{threshold}{Academic score defining the outcome. Defaults to the
-spec's proficiency cut.}
+spec's proficiency cut for the panel's grade, falling back to the
+delivered performance level.}
 
 \item{threshold_kind}{Label for what the threshold is, carried into the
-result so a reader of the slot knows which bar was used.}
+result so a reader of the slot knows which bar was used. Ignored when
+the default falls back to the delivered level.}
 }
 \value{
 A one-row tibble: the fitted coefficients, \code{CROSSING} (the 50\%
 scale score, \code{NA} when the slope is not positive), \code{N}, \code{N_ABOVE},
-\code{THRESHOLD}, \code{THRESHOLD_KIND}, \code{SUPPRESSED}; \code{NULL} when the panel
-cannot support a fit at all.
+\code{THRESHOLD} (\code{NA} on the delivered-level basis), \code{THRESHOLD_KIND},
+\code{SUPPRESSED}; \code{NULL} when the panel cannot support a fit at all.
 }
 \description{
 A logistic regression of "did this student reach the academic proficiency

@@ -65,7 +65,10 @@ plot_box_panel <- function(x, spec = NULL, subject = NULL, grade = NULL) {
     panel <- attr(x, "panel")
     subj <- if (!is.null(panel)) panel$subject else
       if ("SUBJECT" %in% names(x)) x$SUBJECT[[1]] else NULL
-    if (!is.null(subj)) cut <- .check3_cut(spec, subj)
+    grd <- if (!is.null(panel)) panel$grade else
+      if ("GRADE" %in% names(x)) x$GRADE[[1]] else NULL
+    # The panel's own grade's cut: cut scores can differ by grade.
+    if (!is.null(subj)) cut <- .check3_cut(spec, subj, grd)
   }
 
   d <- x[!is.na(x$Y_MEDIAN), , drop = FALSE]

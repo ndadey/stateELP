@@ -33,8 +33,12 @@ passes 50\%.
 \strong{\code{NA} is an answer here, not a failure.} A grade where no band reaches
 half is a grade where language proficiency at every observed level is not
 sufficient for the content bar, which is exactly the kind of finding this
-stage exists to surface. \code{TOP_BAND_PCT} says how far the highest band did
-get, so the empty answer is readable.
+stage exists to surface. \code{TOP_BAND_PCT} is the best share any band
+reached (not necessarily the top band's), so the empty answer is readable.
+
+\code{CUT} and \code{PROFICIENCY_BASIS} record what "proficient" meant in the panel:
+the grade's cut score (\code{"cut"}), or the delivered performance level when
+the spec gives no cut for the grade (\code{"level"}, \code{CUT} then \code{NA}).
 
 \code{LANDING_AT_OR_ABOVE_EXIT} flags a landing band at or above the band the
 state's own exit threshold falls in. Those bands are thin and peculiar --

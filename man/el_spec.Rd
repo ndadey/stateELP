@@ -25,14 +25,18 @@ inventory of what EL status gates is \code{policy$program}.}
 
 \item{elp}{Measurement block: \code{instrument}, \code{administration_window},
 \code{components}, \code{headline}, \code{level_scale}, \code{bands}, \code{grade_clusters},
-\code{cuts}, \code{alternate}.}
+\code{cuts}, \code{alternate}. \code{alternate} records the state's alternate ELP test
+for Prep 1 and is read by no stage: alternate-test students are handled
+through \code{ELP_FORM = "alternate"} in the data.}
 
 \item{policy}{Policy block, restricted to \code{\link[=el_policy_fields]{el_policy_fields()}}. Every field
 carries a \code{source}.}
 
 \item{academic}{Academic-assessment block, one entry per subject (plus an
 optional \code{spec_id} pointer). Check 3 drives its grade loop from
-\verb{spec$academic$<subject>$grades}.}
+\verb{spec$academic$<subject>$grades}. Each subject's \code{cuts} is either one
+vector of level minimums for every grade or a list of them named by
+grade (see \code{\link[=spec_academic_cuts]{spec_academic_cuts()}}).}
 
 \item{data}{Delivery block. \code{columns} holds one crosswalk per table --
 \code{roster}, \code{base}, \code{academic}, each a named character vector of

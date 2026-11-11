@@ -35,8 +35,10 @@
 #' excluded (their scores are on another scale), and former and never-EL
 #' students are not in it, because the classifications compared here exist
 #' only for students still classified. Proficiency is the academic scale score
-#' at or above the minimum of the level the spec calls proficient -- exactly
-#' Check 3's definition.
+#' at or above the minimum of the level the spec calls proficient, from the
+#' panel grade's own cuts -- exactly Check 3's definition. When the spec gives
+#' no cut for the grade, it is the delivered `ACHIEVEMENT_LEVEL` at or above
+#' the proficient level instead (the `"basis"` attribute says which).
 #'
 #' **Candidate cuts are the levels the delivery actually carries**, within the
 #' spec's declared level scale -- never a hardcoded grid. A numeric scale gives
@@ -76,8 +78,9 @@
 #'   `GRADE`, `YEAR`, `CUT`, `CUT_LABEL`, `N`, `N_PROFICIENT`, `TP`
 #'   (proficient, at/above the cut), `FP` (not proficient, at/above), `FN`
 #'   (proficient, below), `TN` (not proficient, below), `AGREE`
-#'   (`(TP + TN) / N`), `SUPPRESSED`. `NULL` when the panel has no year, the
-#'   spec no proficiency cut for the subject, or the panel no paired student.
+#'   (`(TP + TN) / N`), `SUPPRESSED`. `NULL` when the panel has no year, no
+#'   proficiency definition (no cut for the grade and no proficient level to
+#'   read the delivered level against), or no paired student.
 #' @export
 #' @examples
 #' spec <- read_el_spec("00_SIM_EL_Spec")
@@ -91,13 +94,14 @@ compute_consistency_curve <- function(data, spec, panel = NULL) {
             length(panel$grade) == 1L, length(panel$subject) == 1L)
   if (is.na(panel$year)) return(NULL)      # [no academic year for this panel]
 
-  cut_ac <- .check4_cut(spec, panel$subject)
-  if (is.na(cut_ac)) return(NULL)          # [no proficiency cut in the spec]
-
   rows <- .check4_panel_rows(data, spec, panel)
+  # [no proficiency definition: no cut for this grade, and no proficient
+  #  level to read the delivered performance level against]
+  if (is.na(attr(rows, "basis"))) return(NULL)
   if (!nrow(rows)) return(NULL)            # [a missing year, not an empty one]
+  cut_ac <- .check4_cut(spec, panel$subject, panel$grade)
 
-  prof <- rows$SCALE_SCORE >= cut_ac
+  prof <- rows$PROFICIENT
   cuts <- sort(unique(rows$LEVEL))
   .check4_warn_coarse(cuts, spec)
 
@@ -139,6 +143,7 @@ compute_consistency_curve <- function(data, spec, panel = NULL) {
 
   attr(out, "panel") <- panel
   attr(out, "cut") <- cut_ac
+  attr(out, "basis") <- attr(rows, "basis")
   attr(out, "n_out_of_scale") <- attr(rows, "n_out_of_scale")
   out
 }
@@ -470,8 +475,14 @@ compute_j_optimal <- function(youden_j, spec) {
   } else {
     rep(FALSE, nrow(ac))
   }
+  # The content classification: the grade's cut score, else the delivered
+  # performance level (R/utils.R, shared with Check 3).
+  content_level <- if ("ACHIEVEMENT_LEVEL" %in% names(ac)) ac$ACHIEVEMENT_LEVEL
+                   else NULL
+  p <- .academic_proficiency(ac$SCALE_SCORE, content_level, spec,
+                             panel$subject, panel$grade)
 
-  paired <- status %in% "current" & !alternate & !is.na(ac$SCALE_SCORE) &
+  paired <- status %in% "current" & !alternate & !is.na(p$proficient) &
     !is.na(level)
   in_scale <- .check4_in_scale(level, spec)
   keep <- paired & in_scale
@@ -479,8 +490,10 @@ compute_j_optimal <- function(youden_j, spec) {
   out <- tibble::tibble(STUDENT_ID = ac$STUDENT_ID[keep],
                         YEAR = ac$YEAR[keep],
                         LEVEL = as.numeric(level[keep]),
-                        SCALE_SCORE = ac$SCALE_SCORE[keep])
+                        SCALE_SCORE = ac$SCALE_SCORE[keep],
+                        PROFICIENT = as.logical(p$proficient[keep]))
   attr(out, "n_out_of_scale") <- sum(paired & !in_scale)
+  attr(out, "basis") <- p$basis
   out
 }
 
@@ -558,18 +571,12 @@ compute_j_optimal <- function(youden_j, spec) {
   sort(unique(idx[!is.na(idx) & idx > 1L]))
 }
 
-# The academic proficiency cut: the minimum score of the level the spec calls
-# proficient (`cuts` are the minima of levels 2..n). Check 3's definition,
-# restated because its helper is internal to its prefix; a test asserts they
-# agree.
-.check4_cut <- function(spec, subject) {
-  lvl <- spec$policy$academic_benchmark$proficient_level
-  cuts <- spec$academic[[subject]]$cuts
-  if (is.null(lvl) || length(lvl) != 1L || is.na(lvl) || is.null(cuts) ||
-      lvl < 2L || lvl - 1L > length(cuts)) {
-    return(NA_real_)
-  }
-  as.numeric(cuts[[lvl - 1L]])
+# The academic proficiency cut for one subject and grade: the minimum score of
+# the level the spec calls proficient, from that grade's cuts. Both Check 3
+# and Check 4 now read it through the exported spec_proficient_cut(), so the
+# two cannot disagree; a test still asserts they do not.
+.check4_cut <- function(spec, subject, grade = NULL) {
+  spec_proficient_cut(spec, subject, grade)
 }
 
 # The declared level scale, in one shape for both kinds. A categorical scale is

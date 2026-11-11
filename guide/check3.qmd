@@ -118,7 +118,7 @@ table. Check 3 reads these parts of the spec:
 | Spec field | What Check 3 uses it for |
 |---|---|
 | `academic$<subject>$grades` | Which grades get a panel. A subject with `grades = NULL` (an end-of-course test) takes its grades from the data. |
-| `academic$<subject>$cuts` and `policy$academic_benchmark$proficient_level` | The proficiency cut: the red line, the share at or above it, and the logistic outcome. |
+| `academic$<subject>$cuts` and `policy$academic_benchmark$proficient_level` | The proficiency cut for each grade: the red line, the share at or above it, and the logistic outcome. Without a cut for a grade, the delivered `ACHIEVEMENT_LEVEL` at or above the proficient level stands in. |
 | `elp$bands` | The band columns and their order. |
 | `elp$administration_window` | The note on how the two tests are paired in time. |
 | `policy$exit` | The band the exit threshold falls in, and the rule's Type. |
@@ -136,10 +136,37 @@ spec$elp$administration_window
 spec_min_cell(spec)
 ```
 
-Here the cut is level 4's minimum,
-`r spec$academic$ELA$cuts[[spec$policy$academic_benchmark$proficient_level - 1]]`.
-The simulated cuts carry `source = "provisional"`, the spec's form of
-`[DERIVED — VERIFY]`. For a real state, take them from an official table.
+Here the cut is level 4's minimum, `r spec_proficient_cut(spec, "ELA", "3")`,
+the same in every grade: the simulated test is on a vertical scale, so its
+cuts are one vector. The simulated cuts carry `source = "provisional"`, the
+spec's form of `[DERIVED — VERIFY]`. For a real state, take them from an
+official table.
+
+### Cut scores that differ by grade
+
+Most state tests set cut scores grade by grade. Give `cuts` as a list named
+by grade, and each grade's panel is read against its own cut:
+
+```{r}
+by_grade <- spec
+by_grade$academic$ELA$cuts <- list(
+  "3" = c(690, 725, 740, 780),
+  "4" = c(700, 735, 750, 790))          # ... one entry per tested grade
+spec_proficient_cut(by_grade, "ELA", "3")
+spec_proficient_cut(by_grade, "ELA", "4")
+spec_proficient_cut(by_grade, "ELA", "5")   # no entry for grade 5
+```
+
+A grade with no entry has no cut. For that grade, and for every grade when
+`cuts` is `NULL`, Checks 3 and 4 read proficiency from the academic file's
+own `ACHIEVEMENT_LEVEL`, at or above `proficient_level`. The share, the
+logistic and Check 4's classification are then on the delivered level, no
+cut line is drawn, and `res$meta$proficiency_note` and the report say which
+panels fell back. The landing table's `CUT` and `PROFICIENCY_BASIS` columns
+record what each panel used.
+
+`grade` in `run_check3()` chooses the panel the figure draws. The tables
+always carry every tested grade, each against its own cut.
 
 Build the bundle once and reuse it:
 
@@ -676,9 +703,8 @@ The example report on the simulated data is
 [on the project site](../check3_academics.html).
 
 On its own, `render_step()` builds the stage from the simulated data. For
-your delivery, save your results, render from them, and run the disclosure
-scan against your own bundle. The report renders in a temporary folder, so
-give the spec file as a full path:
+your delivery, save your results, render from them, and pass your bundle so
+the disclosure scan checks the report against your own students:
 
 ```{r}
 #| eval: false
@@ -686,11 +712,10 @@ res <- run_check3(my_bundle, my_spec)
 dir.create("results", showWarnings = FALSE)
 saveRDS(res, "results/check3_results.rds")   # keep out of the shared folder
 
-files <- render_step("check3",
-                     spec_file        = normalizePath("specs/XX_EL_Spec.R"),
-                     results_file     = "results/check3_results.rds",
-                     check_disclosure = FALSE)
-check_output_disclosure(files, my_bundle)
+render_step("check3",
+            spec_file    = "specs/XX_EL_Spec.R",
+            results_file = "results/check3_results.rds",
+            bundle       = my_bundle)
 ```
 
 [Guide home](index.html) | Previous: [Check 2: On-time vs. prolonged exiters](check2.html) | Next: [Check 4: Decision consistency](check4.html)

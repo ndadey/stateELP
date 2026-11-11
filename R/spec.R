@@ -81,12 +81,16 @@ el_exit_typology <- function() {
 #'   inventory of what EL status gates is `policy$program`.
 #' @param elp Measurement block: `instrument`, `administration_window`,
 #'   `components`, `headline`, `level_scale`, `bands`, `grade_clusters`,
-#'   `cuts`, `alternate`.
+#'   `cuts`, `alternate`. `alternate` records the state's alternate ELP test
+#'   for Prep 1 and is read by no stage: alternate-test students are handled
+#'   through `ELP_FORM = "alternate"` in the data.
 #' @param policy Policy block, restricted to [el_policy_fields()]. Every field
 #'   carries a `source`.
 #' @param academic Academic-assessment block, one entry per subject (plus an
 #'   optional `spec_id` pointer). Check 3 drives its grade loop from
-#'   `spec$academic$<subject>$grades`.
+#'   `spec$academic$<subject>$grades`. Each subject's `cuts` is either one
+#'   vector of level minimums for every grade or a list of them named by
+#'   grade (see [spec_academic_cuts()]).
 #' @param data Delivery block. `columns` holds one crosswalk per table --
 #'   `roster`, `base`, `academic`, each a named character vector of
 #'   ALL-CAPS canonical name = delivered name -- plus optional per-component
@@ -212,6 +216,16 @@ validate_el_spec <- function(spec) {
   } else if (identical(ls$type, "numeric")) {
     if (!is.numeric(ls$range) || length(ls$range) != 2L || ls$range[1] >= ls$range[2]) {
       add("`elp$level_scale$range` must be an increasing numeric pair.")
+    } else if (!is.null(ls$labels)) {
+      # One label per whole level in the range: a WIDA-shaped 1-6 scale names
+      # six levels. A short list would leave some levels unnamed, and a
+      # labeled delivery parsed against it would map onto the wrong level.
+      n_whole <- floor(ls$range[2]) - ceiling(ls$range[1]) + 1
+      if (!is.character(ls$labels) || length(ls$labels) != n_whole) {
+        add("`elp$level_scale$labels` must name every whole level in the ",
+            "range ", ls$range[1], "-", ls$range[2], ": expected ", n_whole,
+            " label(s), got ", length(ls$labels), ".")
+      }
     }
   } else if (!is.character(ls$levels) || !length(ls$levels)) {
     add("`elp$level_scale$levels` must be a non-empty character vector.")
@@ -377,19 +391,40 @@ validate_el_spec <- function(spec) {
   }
 
   # --- academic ---------------------------------------------------------------
-  for (sub in .academic_subjects(spec)) {
+  subjects_declared <- .academic_subjects(spec)
+  for (sub in subjects_declared) {
     a <- spec$academic[[sub]]
     if (!is.null(a$grades) && !is.character(a$grades)) {
       add("`academic$", sub, "$grades` must be character (\"3\", \"4\", ...) ",
           "or NULL for an end-of-course subject.")
     }
-    if (!is.null(a$cuts) && (!is.numeric(a$cuts) ||
-                             is.unsorted(a$cuts, strictly = TRUE))) {
-      add("`academic$", sub, "$cuts` must be strictly increasing level minimums.")
-    }
+    e <- c(e, .validate_academic_cuts(a, sub))
     if (.has(a, "op") && !identical(a$op, ">=")) {
       add("`academic$", sub, "$op` must be \">=\": cuts are level minimums, ",
           "so a score exactly at a cut belongs to the upper level.")
+    }
+  }
+
+  # The proficient level only matters once a subject is declared: it is what
+  # turns a cut table, or a delivered performance level, into "proficient".
+  # An NA there used to surface as an `if (NA)` error deep inside Check 3.
+  lvl <- pol$academic_benchmark$proficient_level
+  if (length(subjects_declared) && !is.null(lvl)) {
+    if (!.is_count(lvl) || lvl < 2) {
+      add("`policy$academic_benchmark$proficient_level` must be a whole ",
+          "number of 2 or more (the position of the lowest proficient level, ",
+          "lowest level = 1) once `academic` declares a subject; got ",
+          if (length(lvl) == 1L && is.na(lvl)) "NA" else
+            paste(format(lvl), collapse = ", "), ".")
+    } else {
+      for (sub in subjects_declared) {
+        n_lv <- length(spec$academic[[sub]]$level_labels)
+        if (n_lv > 0L && lvl > n_lv) {
+          add("`policy$academic_benchmark$proficient_level` (", lvl, ") is ",
+              "above the ", n_lv, " levels `academic$", sub,
+              "$level_labels` declares.")
+        }
+      }
     }
   }
 
@@ -451,6 +486,51 @@ validate_el_spec <- function(spec) {
 
 .academic_subjects <- function(spec) {
   setdiff(names(spec$academic), c("spec_id", "source"))
+}
+
+# A subject's `cuts` take one of two shapes:
+#   * a numeric vector -- the minimum scale score of levels 2..n, the same in
+#     every tested grade;
+#   * a named list, one such vector per grade, names the grades ("3", "4", ...).
+# Most state tests set their cuts grade by grade, so the
+# second shape is the common one; the first is kept for a vertical scale or an
+# end-of-course test.
+.validate_academic_cuts <- function(a, sub) {
+  e <- character()
+  cuts <- a$cuts
+  if (is.null(cuts)) return(e)
+  tag <- paste0("`academic$", sub, "$cuts`")
+  one <- function(v, where) {
+    if (!is.numeric(v) || !length(v) || anyNA(v) ||
+        is.unsorted(v, strictly = TRUE)) {
+      return(paste0(where, " must be strictly increasing level minimums ",
+                    "(the lowest scale score of each level above the first)."))
+    }
+    n_lv <- length(a$level_labels)
+    if (n_lv > 0L && length(v) != n_lv - 1L) {
+      return(paste0(where, " has ", length(v), " cut(s), but `level_labels` ",
+                    "names ", n_lv, " levels: expected ", n_lv - 1L,
+                    " (one per level above the lowest)."))
+    }
+    character()
+  }
+  if (is.list(cuts)) {
+    g <- names(cuts)
+    if (is.null(g) || any(!nzchar(g)) || anyDuplicated(g)) {
+      return(paste0(tag, " given by grade must be a list named by grade, ",
+                    "e.g. list(\"3\" = c(...), \"4\" = c(...))."))
+    }
+    if (!is.null(a$grades)) {
+      extra <- setdiff(g, a$grades)
+      if (length(extra)) {
+        e <- c(e, paste0(tag, " names grade(s) not in `academic$", sub,
+                         "$grades`: ", paste(extra, collapse = ", "), "."))
+      }
+    }
+    for (gr in g) e <- c(e, one(cuts[[gr]], paste0(tag, "[[\"", gr, "\"]]")))
+    return(e)
+  }
+  c(e, one(cuts, tag))
 }
 
 # Cross-check the declared Type(s) against the shape of the pathways.
@@ -603,6 +683,65 @@ spec_academic_subjects <- function(spec) .academic_subjects(spec)
 #' @rdname el_spec_accessors
 #' @export
 spec_academic_grades <- function(spec, subject) spec$academic[[subject]]$grades
+
+#' Academic cut scores and the proficiency cut
+#'
+#' `spec$academic[[subject]]$cuts` is either one vector of level minimums for
+#' every grade or a list of them named by grade. These accessors hide which:
+#' every stage asks for a subject *and a grade* and gets that grade's cuts.
+#'
+#' * `spec_academic_cuts()` returns the minimum scale score of each level
+#'   above the lowest, for one subject and grade -- `NULL` when the spec
+#'   declares none for that grade.
+#' * `spec_proficient_level()` returns
+#'   `policy$academic_benchmark$proficient_level`, the position of the lowest
+#'   proficient level (`NA` when the spec does not set it).
+#' * `spec_proficient_cut()` returns the lowest scale score of that level for
+#'   one subject and grade (`NA` when either piece is missing). It is the red
+#'   line in Check 3's box plots and the content classification in Check 4.
+#'
+#' When the spec has no cut for a grade, Checks 3 and 4 fall back to the
+#' academic table's own `ACHIEVEMENT_LEVEL`, compared with the proficient
+#' level.
+#'
+#' @param spec An `el_spec`.
+#' @param subject An academic subject name.
+#' @param grade A tested grade, as character. Ignored when the subject's cuts
+#'   are the same in every grade; required to pick one when they differ.
+#' @return See above.
+#' @export
+#' @examples
+#' spec <- read_el_spec("00_SIM_EL_Spec")
+#' spec_academic_cuts(spec, "ELA", "5")
+#' spec_proficient_cut(spec, "ELA", "5")
+spec_academic_cuts <- function(spec, subject, grade = NULL) {
+  cuts <- spec$academic[[subject]]$cuts
+  if (is.null(cuts)) return(NULL)
+  if (!is.list(cuts)) return(as.numeric(cuts))
+  if (is.null(grade) || length(grade) != 1L || is.na(grade)) return(NULL)
+  v <- cuts[[as.character(grade)]]
+  if (is.null(v)) NULL else as.numeric(v)
+}
+
+#' @rdname spec_academic_cuts
+#' @export
+spec_proficient_level <- function(spec) {
+  lvl <- spec$policy$academic_benchmark$proficient_level
+  if (is.null(lvl) || length(lvl) != 1L || is.na(lvl)) NA_integer_
+  else as.integer(lvl)
+}
+
+#' @rdname spec_academic_cuts
+#' @export
+spec_proficient_cut <- function(spec, subject, grade = NULL) {
+  lvl <- spec_proficient_level(spec)
+  cuts <- spec_academic_cuts(spec, subject, grade)
+  # `cuts` are the minima of levels 2..n, so level k is cuts[k - 1].
+  if (is.na(lvl) || is.null(cuts) || lvl < 2L || lvl - 1L > length(cuts)) {
+    return(NA_real_)
+  }
+  as.numeric(cuts[[lvl - 1L]])
+}
 
 # ---- loading -----------------------------------------------------------------
 

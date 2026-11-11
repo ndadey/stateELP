@@ -133,13 +133,24 @@ ft_check1_life_table <- function(results) {
 ft_check1_cohorts <- function(results) {
   stopifnot(is.list(results), !is.null(results$cohorts))
   co <- results$cohorts
+  chosen <- identical(results$meta$cohort_choice, "entry_year")
   out <- data.frame(
     COHORT_LABEL = co$COHORT_LABEL,
     N_ENTRY = co$N_ENTRY,
     FOLLOWUP_YEARS = co$FOLLOWUP_YEARS,
-    SELECTED = ifelse(co$SELECTED, "Selected",
+    SELECTED = ifelse(co$SELECTED,
+                      if (chosen) "Selected (chosen by the analyst)"
+                      else "Selected",
                       ifelse(co$SUPPRESSED, "Below minimum cell size", "")),
     check.names = FALSE)
+  # Years with academic scores: what a reader needs to choose a cohort whose
+  # follow-up overlaps the state's academic test years. Absent in older
+  # results, and all NA without an academic table -- left out then.
+  has_ac <- "ACADEMIC_YEARS" %in% names(co) && any(!is.na(co$ACADEMIC_YEARS))
+  if (has_ac) {
+    out <- data.frame(out[1:3], ACADEMIC_YEARS = co$ACADEMIC_YEARS,
+                      SELECTED = out$SELECTED, check.names = FALSE)
+  }
 
   ft <- flextable::flextable(out)
   ft <- flextable::set_header_labels(ft,
@@ -147,6 +158,10 @@ ft_check1_cohorts <- function(results) {
                                      N_ENTRY = "Students at entry",
                                      FOLLOWUP_YEARS = "Years of follow-up",
                                      SELECTED = "")
+  if (has_ac) {
+    ft <- flextable::set_header_labels(
+      ft, ACADEMIC_YEARS = "Years with academic scores")
+  }
   ft <- flextable::colformat_num(ft, j = "N_ENTRY", big.mark = ",",
                                  na_str = .EM_DASH)
   ft <- flextable::bold(ft, part = "header")

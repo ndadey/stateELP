@@ -340,45 +340,151 @@ compute_crosstab <- function(flags, spec, profile = NULL) {
   if (!is.null(profile)) {
     profile <- profile[match(flags$STUDENT_ID, profile$STUDENT_ID), ,
                        drop = FALSE]
-    decl <- .check2_block_declaration()
-    for (b in unique(decl$BLOCK)) {
-      part <- decl[decl$BLOCK == b, , drop = FALSE]
-      part <- part[part$FIELD %in% names(profile), , drop = FALSE]
-      if (!nrow(part)) next                # [field not delivered: block omitted]
-      type <- part$TYPE[[1]]
-
-      if (identical(type, "distribution")) {
-        x <- profile[[part$FIELD[[1]]]]
-        x <- ifelse(is.na(x), .CHECK2_MISSING, as.character(x))
-        rows <- .check2_row_order(x, part$FIELD[[1]], spec)
-        hit <- vapply(rows, function(r) x == r, logical(length(x)))
-        # Every student counts toward a distribution's denominator, which is
-        # what makes the shares sum to one.
-        base <- matrix(TRUE, nrow = length(x), ncol = length(rows))
-      } else {
-        rows <- part$ROW
-        hit <- vapply(seq_len(nrow(part)), function(i) {
-          v <- profile[[part$FIELD[[i]]]]
-          vals <- part$VALUES[[i]]
-          if (is.na(vals)) .check2_is_yes(v)
-          else .check2_is_value(v, strsplit(vals, ",", fixed = TRUE)[[1]])
-        }, logical(nrow(profile)))
-        # A student whose value is not reported is not counted as a "no": they
-        # leave that row's denominator instead.
-        base <- vapply(seq_len(nrow(part)), function(i) {
-          !is.na(profile[[part$FIELD[[i]]]])
-        }, logical(nrow(profile)))
-      }
-      if (!is.matrix(hit)) hit <- matrix(hit, nrow = nrow(profile))
-      if (!is.matrix(base)) base <- matrix(base, nrow = nrow(profile))
-      hit[is.na(hit)] <- FALSE
-
+    for (bh in .check2_block_hits(profile, spec)) {
       blocks[[length(blocks) + 1L]] <- .check2_suppress(
-        .check2_block_rows(b, type, rows, hit, base, flags, spec,
-                           fields = part$FIELD), spec)
+        .check2_block_rows(bh$block, bh$type, bh$rows, bh$hit, bh$base, flags,
+                           spec, fields = bh$fields), spec)
     }
   }
   dplyr::bind_rows(blocks)
+}
+
+# Which students sit in each row of each characteristic block: one entry per
+# block present in the profile, with `hit` (students x rows: in the row) and
+# `base` (students x rows: counted in the row's denominator). Shared by the
+# crosstab and the outcome shares, so the two tables cannot put a student in
+# different rows. `profile` must already be aligned to the flags.
+.check2_block_hits <- function(profile, spec) {
+  decl <- .check2_block_declaration()
+  out <- list()
+  for (b in unique(decl$BLOCK)) {
+    part <- decl[decl$BLOCK == b, , drop = FALSE]
+    part <- part[part$FIELD %in% names(profile), , drop = FALSE]
+    if (!nrow(part)) next                # [field not delivered: block omitted]
+    type <- part$TYPE[[1]]
+
+    if (identical(type, "distribution")) {
+      x <- profile[[part$FIELD[[1]]]]
+      x <- ifelse(is.na(x), .CHECK2_MISSING, as.character(x))
+      rows <- .check2_row_order(x, part$FIELD[[1]], spec)
+      hit <- vapply(rows, function(r) x == r, logical(length(x)))
+      # Every student counts toward a distribution's denominator, which is
+      # what makes the shares sum to one.
+      base <- matrix(TRUE, nrow = length(x), ncol = length(rows))
+    } else {
+      rows <- part$ROW
+      hit <- vapply(seq_len(nrow(part)), function(i) {
+        v <- profile[[part$FIELD[[i]]]]
+        vals <- part$VALUES[[i]]
+        if (is.na(vals)) .check2_is_yes(v)
+        else .check2_is_value(v, strsplit(vals, ",", fixed = TRUE)[[1]])
+      }, logical(nrow(profile)))
+      # A student whose value is not reported is not counted as a "no": they
+      # leave that row's denominator instead.
+      base <- vapply(seq_len(nrow(part)), function(i) {
+        !is.na(profile[[part$FIELD[[i]]]])
+      }, logical(nrow(profile)))
+    }
+    if (!is.matrix(hit)) hit <- matrix(hit, nrow = nrow(profile))
+    if (!is.matrix(base)) base <- matrix(base, nrow = nrow(profile))
+    hit[is.na(hit)] <- FALSE
+    out[[length(out) + 1L]] <- list(block = b, type = type, rows = rows,
+                                    hit = hit, base = base,
+                                    fields = part$FIELD)
+  }
+  out
+}
+
+# ---- the crosstab read across: outcome shares within each group --------------
+
+# Four outcomes that partition the cohort, in display order. EXIT_EVER +
+# NO_EXIT + DISAPPEARED is everyone, and EXIT_ONTIME is inside EXIT_EVER, so
+# on time + later + no exit + disappeared = 100% of any group.
+.CHECK2_OUTCOMES <- c("ON_TIME", "LATE", "NO_EXIT", "DISAPPEARED")
+
+#' Exit outcomes within each group: the crosstab read across
+#'
+#' The slide-63/64 crosstab reads **down**: of the students who exited on
+#' time, what share entered at each ELP band. A state usually asks the
+#' reverse -- of the students who entered at an ELP level of 1.0-1.9, what
+#' share exited on time? -- and this table answers it. Each row is one group
+#' (the same rows as the crosstab's characteristic blocks), split across four
+#' outcomes that **sum to 100%**:
+#'
+#' * `ON_TIME` -- exited within the student's on-time timeline (`EXIT_ONTIME`);
+#' * `LATE` -- exited, but after it (`EXIT_EVER` and not `EXIT_ONTIME`);
+#' * `NO_EXIT` -- still classified when the window closed;
+#' * `DISAPPEARED` -- left the data before the window closed.
+#'
+#' The crosstab stays as the deck specifies it; this is its companion, not a
+#' replacement. `N_ROW` is the group's size, the denominator of every `PCT`
+#' in the row. Suppression follows the crosstab's: a non-zero count below
+#' `min_cell` is `NA`, a zero is shown, and a group smaller than `min_cell`
+#' has every cell blanked. `[PROPOSED - CONFIRM]`
+#'
+#' @param flags Output of [compute_exit_flags()].
+#' @param spec An `el_spec`.
+#' @param profile Output of [compute_cohort_profile()], or `NULL` for the
+#'   `"Total"` row alone.
+#' @return A tibble: `BLOCK`, `BLOCK_TYPE`, `FIELD`, `ROW`, `OUTCOME` (one of
+#'   `ON_TIME`, `LATE`, `NO_EXIT`, `DISAPPEARED`), `N`, `N_ROW`, `PCT`,
+#'   `SUPPRESSED`.
+#' @export
+#' @examples
+#' spec <- read_el_spec("00_SIM_EL_Spec")
+#' bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
+#' co <- compute_cohorts(bundle, spec)
+#' flags <- compute_exit_flags(bundle, spec, co$COHORT_LABEL[co$SELECTED])
+#' compute_outcome_shares(flags, spec, compute_cohort_profile(bundle, spec, flags))
+compute_outcome_shares <- function(flags, spec, profile = NULL) {
+  stopifnot(is.data.frame(flags), inherits(spec, "el_spec"),
+            all(c("EXIT_EVER", "EXIT_ONTIME", "NO_EXIT", "DISAPPEARED") %in%
+                  names(flags)),
+            is.null(profile) || is.data.frame(profile))
+  outcome <- cbind(
+    ON_TIME     = flags$EXIT_ONTIME %in% TRUE,
+    LATE        = flags$EXIT_EVER %in% TRUE & !flags$EXIT_ONTIME %in% TRUE,
+    NO_EXIT     = flags$NO_EXIT %in% TRUE,
+    DISAPPEARED = flags$DISAPPEARED %in% TRUE)
+
+  one_block <- function(block, type, rows, members, fields) {
+    parts <- lapply(seq_along(rows), function(j) {
+      m <- members[, j]
+      n <- colSums(outcome & m)
+      tibble::tibble(BLOCK = block, BLOCK_TYPE = type,
+                     FIELD = rep_len(fields, length(rows))[[j]],
+                     ROW = rows[[j]], OUTCOME = .CHECK2_OUTCOMES,
+                     N = as.integer(n[.CHECK2_OUTCOMES]),
+                     N_ROW = as.integer(sum(m)))
+    })
+    dplyr::bind_rows(parts)
+  }
+
+  out <- list(one_block("Total", "total", "Total students",
+                        matrix(TRUE, nrow(flags), 1L), NA_character_))
+  if (!is.null(profile)) {
+    profile <- profile[match(flags$STUDENT_ID, profile$STUDENT_ID), ,
+                       drop = FALSE]
+    for (bh in .check2_block_hits(profile, spec)) {
+      out[[length(out) + 1L]] <- one_block(bh$block, bh$type, bh$rows,
+                                           bh$hit & bh$base, bh$fields)
+    }
+  }
+  out <- dplyr::bind_rows(out)
+  out$PCT <- ifelse(out$N_ROW > 0L, out$N / out$N_ROW, NA_real_)
+
+  # The crosstab's cell rule, and the group's own size: a group below min_cell
+  # is not reported at all, since every share in it is a fraction of a small
+  # count.
+  out <- .check2_suppress_zero_ok(out, spec, n_col = "N", cols = "PCT")
+  min_cell <- spec_min_cell(spec)
+  thin <- out$N_ROW > 0L & out$N_ROW < min_cell
+  out$N[thin] <- NA
+  out$N_ROW[thin] <- NA
+  out$PCT[thin] <- NA
+  out$SUPPRESSED[thin] <- TRUE
+  out[c("BLOCK", "BLOCK_TYPE", "FIELD", "ROW", "OUTCOME", "N", "N_ROW", "PCT",
+        "SUPPRESSED")]
 }
 
 # Display order within a distribution block: the spec's own band order where

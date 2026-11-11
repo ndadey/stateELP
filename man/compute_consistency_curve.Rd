@@ -18,8 +18,9 @@ A tibble, one row per candidate cut in ascending order: \code{SUBJECT},
 \code{GRADE}, \code{YEAR}, \code{CUT}, \code{CUT_LABEL}, \code{N}, \code{N_PROFICIENT}, \code{TP}
 (proficient, at/above the cut), \code{FP} (not proficient, at/above), \code{FN}
 (proficient, below), \code{TN} (not proficient, below), \code{AGREE}
-(\code{(TP + TN) / N}), \code{SUPPRESSED}. \code{NULL} when the panel has no year, the
-spec no proficiency cut for the subject, or the panel no paired student.
+(\code{(TP + TN) / N}), \code{SUPPRESSED}. \code{NULL} when the panel has no year, no
+proficiency definition (no cut for the grade and no proficient level to
+read the delivered level against), or no paired student.
 }
 \description{
 At every candidate cut on the ELP level, each current EL in the panel is
@@ -37,8 +38,10 @@ academic table leads the join to the roster, alternate academic takers are
 excluded (their scores are on another scale), and former and never-EL
 students are not in it, because the classifications compared here exist
 only for students still classified. Proficiency is the academic scale score
-at or above the minimum of the level the spec calls proficient -- exactly
-Check 3's definition.
+at or above the minimum of the level the spec calls proficient, from the
+panel grade's own cuts -- exactly Check 3's definition. When the spec gives
+no cut for the grade, it is the delivered \code{ACHIEVEMENT_LEVEL} at or above
+the proficient level instead (the \code{"basis"} attribute says which).
 
 \strong{Candidate cuts are the levels the delivery actually carries}, within the
 spec's declared level scale -- never a hardcoded grid. A numeric scale gives

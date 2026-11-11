@@ -3,6 +3,7 @@
 \name{check2_tables}
 \alias{check2_tables}
 \alias{ft_check2_crosstab}
+\alias{ft_check2_outcome_shares}
 \alias{ft_check2_academic}
 \alias{ft_check2_composition}
 \alias{ft_check2_blocked_groups}
@@ -10,6 +11,8 @@
 \title{Check 2 tables}
 \usage{
 ft_check2_crosstab(results)
+
+ft_check2_outcome_shares(results)
 
 ft_check2_academic(results)
 

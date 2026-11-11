@@ -475,3 +475,151 @@ test_that("no component name is hardcoded outside the spec file", {
                    info = paste("component literals found:",
                                 paste(hits, collapse = "; ")))
 })
+
+# ---- academic cut scores by grade, and the validator's added checks ---------
+# (2026-11, from a state test run: its test's cuts differ by grade, and one
+# vector per subject applied a single grade's cut to every grade.)
+
+test_that("cut scores given by grade are read grade by grade", {
+  spec <- make_spec_base(
+    academic = list(ELA = list(
+      grades = c("3", "4"), level_labels = c("1", "2", "3", "4", "5"),
+      cuts = list("3" = c(690, 725, 740, 780), "4" = c(700, 735, 750, 790)))),
+    policy = list(academic_benchmark = list(proficient_level = 4L,
+                                            source = "provisional")))
+  expect_identical(spec_academic_cuts(spec, "ELA", "3"), c(690, 725, 740, 780))
+  expect_identical(spec_proficient_cut(spec, "ELA", "3"), 740)
+  expect_identical(spec_proficient_cut(spec, "ELA", "4"), 750)
+  # No grade, or a grade without an entry: no cut -- never another grade's.
+  expect_null(spec_academic_cuts(spec, "ELA"))
+  expect_true(is.na(spec_proficient_cut(spec, "ELA", "5")))
+  expect_identical(spec_proficient_level(spec), 4L)
+
+  # One vector is one cut for every grade, whatever grade is asked for.
+  sim <- read_el_spec("00_SIM_EL_Spec")
+  expect_identical(spec_proficient_cut(sim, "ELA", "3"),
+                   spec_proficient_cut(sim, "ELA", "11"))
+  expect_identical(spec_proficient_cut(sim, "ELA"), 750)
+})
+
+test_that("the validator checks cut scores given by grade", {
+  expect_error(make_spec_base(academic = list(ELA = list(
+    cuts = list("3" = c(790, 700))))), "strictly increasing")
+  expect_error(make_spec_base(academic = list(ELA = list(
+    cuts = list("12" = c(700, 735, 750, 790))))),
+    "not in `academic\\$ELA\\$grades`")
+  expect_error(make_spec_base(academic = list(ELA = list(
+    cuts = list(c(700, 735))))), "named by grade")
+  expect_error(make_spec_base(academic = list(ELA = list(
+    level_labels = c("1", "2", "3"), cuts = c(700, 735, 750, 790)))),
+    "expected 2")
+})
+
+test_that("a numeric level scale's labels must name every whole level", {
+  expect_error(
+    make_spec_base(elp = list(level_scale = list(
+      type = "numeric", range = c(1, 6), labels = "Entering"))),
+    "expected 6 label")
+  expect_s3_class(
+    make_spec_base(elp = list(level_scale = list(
+      type = "numeric", range = c(1, 6),
+      labels = c("a", "b", "c", "d", "e", "f")))),
+    "el_spec")
+})
+
+test_that("an NA proficient level is an error once a subject is declared", {
+  expect_error(
+    make_spec_base(policy = list(academic_benchmark = list(
+      proficient_level = NA_integer_, source = "provisional"))),
+    "proficient_level")
+  expect_error(
+    make_spec_base(
+      academic = list(ELA = list(level_labels = c("1", "2", "3", "4", "5"),
+                                 cuts = c(700, 735, 750, 790))),
+      policy = list(academic_benchmark = list(proficient_level = 6L,
+                                              source = "provisional"))),
+    "above the 5 levels")
+  # A pointer-form spec declares no subject, so it may leave it NA (MA does).
+  ma <- read_el_spec("00_MA_EL_Spec")
+  expect_true(is.na(spec_proficient_level(ma)))
+})
+
+test_that("the template is a complete spec on its own", {
+  # Item 3 of the test-run feedback: an analyst filling in the template alone
+  # had nowhere to enter cut scores, the long-term EL year or a grade map.
+  tmpl <- read_el_spec("00_TEMPLATE_EL_Spec")
+  subjects <- spec_academic_subjects(tmpl)
+  expect_true(length(subjects) >= 2L)
+  for (sb in subjects) {
+    a <- tmpl$academic[[sb]]
+    expect_true(is.list(a$cuts))                   # the by-grade layout
+    expect_setequal(names(a$cuts), a$grades)
+    for (g in a$grades) {
+      expect_false(is.na(spec_proficient_cut(tmpl, sb, g)))
+    }
+  }
+  expect_true(!is.null(tmpl$policy$timelines$lt_el_years))
+  expect_identical(unname(tmpl$data$columns$value_maps$GRADE), "K")
+  expect_true(all(unname(tmpl$data$columns$value_maps$CONTENT_AREA$academic)
+                  %in% subjects))
+  # Still a placeholder, and labelled so.
+  expect_identical(tmpl$verification$status, "unverified")
+  expect_identical(tmpl$academic[[subjects[[1]]]]$source, "provisional")
+})
+
+# ---- the spec builder ---------------------------------------------------------
+
+test_that("build_el_spec() writes a spec that validates, cuts by grade", {
+  cuts <- function(g) paste(400 + 5 * (g - 3) + c(0, 50, 100), collapse = ", ")
+  ans <- c(
+    "XX", "Example Department of Education", "XX_ACCESS", "", "2025", "",
+    "8", "", "", "",
+    "An Overall Composite proficiency level of 4.5 or higher", "", "", "", "",
+    "4.5", "", "", "", "", "", "",
+    "6", "5", "", "6", "", "",
+    "", "", "",
+    "", "", "",
+    "", "", "State Reading", "3-8", "BB, B, P, A", "", vapply(3:8, cuts, ""),
+    "", "State Math", "3-8", "BB, B, P, A", "", vapply(3:8, cuts, ""),
+    "3", "",
+    rep("", 9),
+    "ID", rep("", 9), "0", rep("", 4), "ID", "", "", "CONTENT_AREA", "", "",
+    "READING", "MATHEMATICS",
+    "", "", "")
+  out <- file.path(withr::local_tempdir(), "XX_EL_Spec.R")
+  capture.output(spec <- build_el_spec(out, input = ans))
+
+  expect_s3_class(spec, "el_spec")
+  expect_identical(spec_headline(spec), spec_headline(read_el_spec("00_SIM_EL_Spec")))
+  expect_identical(spec_exit_types(spec), 1L)
+  expect_identical(spec_proficient_cut(spec, "ELA", "5"), 460)
+  expect_identical(spec_proficient_cut(spec, "Math", "8"), 475)
+  expect_identical(spec$academic$ELA$level_labels, c("BB", "B", "P", "A"))
+  expect_identical(spec$data$columns$value_maps$GRADE, c("0" = "K"))
+  expect_identical(spec$data$columns$value_maps$CONTENT_AREA$academic,
+                   c(READING = "ELA", MATHEMATICS = "Math"))
+  expect_identical(spec$policy$timelines$lt_el_years, 6L)
+  expect_true(file.exists(sub("\\.R$", "_answers.rds", out)))
+
+  # A rerun keeps every saved answer: all-Enter reproduces the same spec.
+  n_prompts <- length(ans)
+  capture.output(again <- build_el_spec(out, input = rep("", n_prompts)))
+  expect_identical(again$academic, spec$academic)
+  expect_identical(again$policy$exit, spec$policy$exit)
+
+  # A wrong number of cut scores for a grade is refused, not written.
+  short <- ans
+  short[which(ans == cuts(3))[1]] <- "400, 450"
+  expect_error(capture.output(build_el_spec(
+    file.path(withr::local_tempdir(), "YY_EL_Spec.R"), input = short)),
+    "needs 3 increasing cut scores")
+})
+
+test_that("the builder's presets use vocabulary keys", {
+  vocab <- el_component_vocabulary()
+  for (p in .sb_presets()) {
+    expect_true(all(names(p$components) %in% vocab))
+    expect_true(p$headline %in% names(p$components))
+  }
+  expect_true(file.exists(spec_intake_form()))
+})

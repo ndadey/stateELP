@@ -113,7 +113,7 @@ ft_prep2_el_share <- function(results) {
                     ENROLLMENT = .p2_fmt_n(d$N_ENROLLMENT_WEIGHTED),
                     EL = .p2_fmt_n(d$N_EL_WEIGHTED),
                     SHARE = .p2_fmt_pct(d$PCT_EL), check.names = FALSE)
-  .p2_flex(out, c(YEAR = "Year", ENROLLMENT = "Enrollment (weighted)",
+  .p2_flex(out, c(YEAR = "Year", ENROLLMENT = "Total enrollment",
                   EL = "Current ELs", SHARE = "EL share"))
 }
 

@@ -209,7 +209,8 @@ test_that("grade span is K-5 against 6-12", {
 test_that("student-years outside K-12 are noted, not silently dropped", {
   roster <- make_prep2_roster()
   roster$GRADE[roster$STUDENT_ID == "B01" & roster$YEAR == 2015L] <- "PK"
-  bundle <- make_prep2_bundle(roster)
+  # The intake says so too (2026-11): the row is kept, with a warning.
+  expect_warning(bundle <- make_prep2_bundle(roster), "outside K and 1-12")
   bg <- compute_by_grade(bundle, prep2_spec())
   expect_identical(attr(bg, "off_grid"), 1L)
   expect_match(run_prep2(bundle, prep2_spec())$meta$notes$grade, "outside K-12")

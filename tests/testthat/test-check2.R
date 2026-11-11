@@ -549,3 +549,74 @@ test_that("the band-clock rule really does move the on-time line", {
   expect_identical(flat$EXIT_MAX, varied$EXIT_MAX)
   expect_false(identical(flat$EXIT_ONTIME, varied$EXIT_ONTIME))
 })
+
+# ---- choosing the cohort, and the crosstab read across (2026-11) -------------
+
+test_that("run_check2(entry_year =) follows the same cohort as Check 1", {
+  b <- make_check1_sim_bundle()
+  spec <- make_check2_spec()
+  co <- compute_cohorts(b, spec)
+  later <- co$COHORT_START_YEAR[!co$SUPPRESSED][[2]]
+  r1 <- run_check1(b, spec, entry_year = later)
+  r2 <- run_check2(b, spec, entry_year = later)
+  expect_identical(r2$meta$cohort, r1$meta$cohort)
+  expect_identical(nrow(r2$flags), r2$meta$cohort_n)
+  expect_match(r2$meta$sample, "chosen by the analyst")
+  expect_identical(r2$meta$exit_dating_note, r1$meta$exit_dating_note)
+})
+
+test_that("outcome shares partition every group and sum to 100%", {
+  # Item 13: of the students in a group, what share exited on time, later,
+  # not at all, or left -- the crosstab read across instead of down.
+  b <- make_check1_sim_bundle()
+  spec <- make_check2_spec()
+  res <- run_check2(b, spec)
+  os <- res$outcome_shares
+  expect_identical(unique(os$OUTCOME), c("ON_TIME", "LATE", "NO_EXIT",
+                                         "DISAPPEARED"))
+  # The Total row partitions the cohort exactly.
+  tot <- os[os$BLOCK == "Total", ]
+  expect_identical(sum(tot$N), nrow(res$flags))
+  expect_identical(tot$N[tot$OUTCOME == "ON_TIME"], sum(res$flags$EXIT_ONTIME))
+  expect_identical(tot$N[tot$OUTCOME == "LATE"],
+                   sum(res$flags$EXIT_EVER & !res$flags$EXIT_ONTIME))
+  # Every fully shown row sums to one.
+  shown <- os[!is.na(os$PCT), ]
+  full <- tapply(shown$PCT, paste(shown$BLOCK, shown$ROW), length) == 4L
+  sums <- tapply(shown$PCT, paste(shown$BLOCK, shown$ROW), sum)[full]
+  expect_true(all(abs(sums - 1) < 1e-9))
+  # The groups are the crosstab's rows, so the two tables cannot disagree.
+  ct_rows <- unique(res$crosstab[c("BLOCK", "ROW")])
+  os_rows <- unique(os[c("BLOCK", "ROW")])
+  expect_identical(nrow(dplyr::anti_join(ct_rows, os_rows,
+                                         by = c("BLOCK", "ROW"))), 0L)
+  # And the ON_TIME count in a row is the crosstab's Exit_OnTime cell.
+  ct <- res$crosstab
+  r <- os[os$BLOCK != "Total" & os$OUTCOME == "ON_TIME" & !is.na(os$N), ][1, ]
+  cell <- ct[ct$BLOCK == r$BLOCK & ct$ROW == r$ROW & ct$COLUMN == "EXIT_ONTIME", ]
+  expect_identical(r$N, cell$N)
+  expect_s3_class(ft_check2_outcome_shares(res), "flextable")
+})
+
+test_that("outcome shares suppress small cells and small groups", {
+  spec <- make_check2_spec()
+  flags <- tibble::tibble(
+    STUDENT_ID = sprintf("S%02d", 1:30),
+    EXIT_EVER = c(rep(TRUE, 22), rep(FALSE, 8)),
+    EXIT_MAX = c(rep(TRUE, 22), rep(FALSE, 8)),
+    EXIT_ONTIME = c(rep(TRUE, 20), rep(FALSE, 10)),
+    NO_EXIT = c(rep(FALSE, 22), rep(TRUE, 8)),
+    DISAPPEARED = FALSE)
+  profile <- tibble::tibble(STUDENT_ID = flags$STUDENT_ID,
+                            HOME_LANGUAGE = c(rep("spa", 25), rep("por", 5)))
+  os <- compute_outcome_shares(flags, spec, profile)
+  tot <- os[os$BLOCK == "Total", ]
+  # 2 late exiters and 8 no-exit are below min_cell (10): blanked, not dropped.
+  expect_true(is.na(tot$PCT[tot$OUTCOME == "LATE"]))
+  expect_true(is.na(tot$PCT[tot$OUTCOME == "NO_EXIT"]))
+  # A zero is shown.
+  expect_identical(tot$N[tot$OUTCOME == "DISAPPEARED"], 0L)
+  # A group of 5 is not reported at all, its size included.
+  por <- os[os$ROW == "por", ]
+  expect_true(all(is.na(por$PCT)) && all(is.na(por$N_ROW)))
+})

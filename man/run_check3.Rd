@@ -11,8 +11,10 @@ run_check3(data, spec, subject = NULL, grade = NULL, year = NULL)
 
 \item{spec}{An \code{el_spec}.}
 
-\item{subject, grade, year}{Optional panel overrides; each defaults to
-\code{\link[=compute_panel]{compute_panel()}}'s derivation.}
+\item{subject, grade, year}{Optional overrides. \code{subject} and \code{year}
+restrict every panel; \code{grade} only chooses which grade the figure draws
+(the focal panel) -- the tables still carry every tested grade, each
+against its own cut. Each defaults to \code{\link[=compute_panel]{compute_panel()}}'s derivation.}
 }
 \value{
 A named list of results slots plus \verb{$meta}.
@@ -25,14 +27,19 @@ performance sits relative to language proficiency \emph{now}, not how one entry
 cohort moved through.
 }
 \details{
-This is the shell pass. \verb{$box_data} and the panel it is drawn for are real;
-the summary table, the logistic and its landing statistics, the two
-fairness checks and the contested-zone models arrive in later passes and
-are \code{NULL} with a comment until then.
+Every tested grade x subject the spec declares is computed, each its own
+panel: the box statistics, the summary table, the logistic and its landing
+statistics, and the two fairness checks are long tables keyed by \code{SUBJECT}
+and \code{GRADE}. The Type-gated contested-zone models are computed for the
+focal panel.
 
-Grades are \strong{never pooled}: every slot is keyed by one grade x subject x
-year panel, and the later pass that covers every tested grade loops this
-same derivation rather than widening it.
+Grades are \strong{never pooled}, and each panel is read against \strong{its own
+grade's proficiency cut} (\code{spec_proficient_cut()}), so a spec whose cuts
+differ by grade gets the right line in every grade. Where the spec gives
+no cut for a grade, proficiency is the academic table's delivered
+\code{ACHIEVEMENT_LEVEL} at or above the proficient level; \verb{$landing} records
+the cut and the basis each panel used, and \verb{$meta$proficiency_note} and
+\verb{$meta$logistic_note} say where either fell back or was skipped.
 }
 \examples{
 spec <- read_el_spec("00_SIM_EL_Spec")

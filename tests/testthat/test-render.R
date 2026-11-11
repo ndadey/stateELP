@@ -83,3 +83,39 @@ test_that("render_step renders, collects output, and leaves no litter", {
   expect_false(any(grepl("\\.qmd$", left)))
   expect_false(any(grepl("_files$", left)))
 })
+
+# ---- the disclosure scan's bundle, and where the document loads from --------
+# (2026-11, state test run item 16: a state render skipped the scan with
+# no message at the default quiet = TRUE.)
+
+test_that("a render from a state's saved results is never scanned silently", {
+  f <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(list(meta = list(sim_contract_version = NA_character_)), f)
+  got <- .render_scan_bundle(NULL, f, "00_SIM_EL_Spec")
+  expect_null(got$bundle)
+  expect_match(got$why, "state delivery")
+
+  # Passing the bundle scans against it.
+  b <- as_el_data(el_long_sim[1:10, ],
+                  roster = el_roster_sim[el_roster_sim$STUDENT_ID %in%
+                                           el_long_sim$STUDENT_ID[1:10], ],
+                  spec = read_el_spec("00_SIM_EL_Spec"))
+  expect_identical(.render_scan_bundle(b, f, "00_SIM_EL_Spec")$bundle, b)
+
+  # A spec the simulation cannot be built under is a reason, not a crash.
+  bad <- .render_scan_bundle(NULL, NULL, "no_such_spec")
+  expect_null(bad$bundle)
+  expect_match(bad$why, "could not be built")
+})
+
+test_that("documents load_all() only the stateELP source", {
+  pkg_root <- test_path("..", "..")
+  skip_if_not(file.exists(file.path(pkg_root, "DESCRIPTION")),
+              "package source not reachable from the test dir")
+  expect_true(.is_stateelp_source(pkg_root))
+  other <- withr::local_tempdir()
+  dir.create(file.path(other, "R"))
+  writeLines("Package: myproject", file.path(other, "DESCRIPTION"))
+  expect_false(.is_stateelp_source(other))
+  expect_false(.is_stateelp_source(withr::local_tempdir()))
+})

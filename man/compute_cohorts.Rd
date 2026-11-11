@@ -4,7 +4,7 @@
 \alias{compute_cohorts}
 \title{Candidate entry cohorts, and the one Check 1 analyzes}
 \usage{
-compute_cohorts(data, spec, start_grade = "K")
+compute_cohorts(data, spec, start_grade = "K", entry_year = NULL)
 }
 \arguments{
 \item{data}{An \code{el_data} bundle.}
@@ -12,11 +12,17 @@ compute_cohorts(data, spec, start_grade = "K")
 \item{spec}{An \code{el_spec}.}
 
 \item{start_grade}{Entry grade defining the cohorts, e.g. \code{"K"}.}
+
+\item{entry_year}{Optional entry year of the cohort to analyze, e.g.
+\code{2017}. \code{NULL} (the default) selects the candidate with the longest
+follow-up.}
 }
 \value{
 A tibble: \code{COHORT_LABEL}, \code{COHORT_START_YEAR}, \code{N_ENTRY},
-\code{FOLLOWUP_YEARS}, \code{SELECTED}, \code{SUPPRESSED}. Zero rows when the panel
-supports no cohort at all.
+\code{FOLLOWUP_YEARS}, \code{ACADEMIC_YEARS} (\code{NA} without an academic table),
+\code{SELECTED}, \code{SUPPRESSED}. Zero rows when the panel supports no cohort at
+all. The \code{"selected_by"} attribute is \code{"longest follow-up"} or
+\code{"entry_year"}.
 }
 \description{
 One row per usable entry cohort, and which one the stage selects. The table
@@ -37,9 +43,21 @@ A candidate below the spec's \code{min_cell} is suppressed -- its \code{N_ENTRY}
 blanked, the row stays -- and can never be selected. With no qualifying
 candidate nothing is selected, and \code{\link[=run_check1]{run_check1()}} degrades every analysis
 slot to \code{NULL} rather than analyzing a cohort too small to report.
+
+\strong{Choosing the cohort yourself.} The longest follow-up is not always the
+cohort that answers the question. A state whose academic test data cover
+only recent years may find that the earliest cohort reaches a tested grade
+once, or never, so Check 2's academic comparison has nothing to show.
+\code{entry_year} overrides the selection with any qualifying candidate; it
+stops, listing the candidates, when the year is not one. \code{ACADEMIC_YEARS}
+is there to make that choice: for each candidate, how many of its years in
+status have at least \code{min_cell} cohort members with an academic score.
+Pass the same \code{entry_year} to \code{\link[=run_check1]{run_check1()}} and \code{\link[=run_check2]{run_check2()}} so the two
+stages follow the same students.
 }
 \examples{
 spec <- read_el_spec("00_SIM_EL_Spec")
 bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
 compute_cohorts(bundle, spec)
+compute_cohorts(bundle, spec, entry_year = 2017)
 }

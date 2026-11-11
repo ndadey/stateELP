@@ -113,16 +113,28 @@ plot_counts_by_year(res$counts_by_year)
 
 ```{r}
 #| label: fig-el-share
-#| fig-cap: "Current ELs as a share of total enrollment (weighted by SAMPLE_WEIGHT)."
+#| fig-cap: "Current ELs as a share of total enrollment, with never-EL students weighted to represent the full population."
 #| eval: !expr h[["el_share"]]
 plot_el_share(res$el_share)
 ```
 
 ```{r}
 #| label: tbl-el-share
-#| tbl-cap: "Total enrollment and the EL share, weighted by SAMPLE_WEIGHT."
+#| tbl-cap: "Total enrollment and the EL share, with never-EL students weighted to represent the full population."
 #| eval: !expr h[["el_share"]]
 ft_prep2_el_share(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h[["el_share"]]
+cat("Total enrollment counts every student, not only English learners. A ",
+    "state may deliver only a sample of its never-EL students; each of their ",
+    "rows then carries a weight equal to the number of students it stands ",
+    "for (10 for a 10% sample), so that total enrollment, and with it the EL ",
+    "share, is not overstated. Every EL and former-EL row counts once. When a ",
+    "state delivers all of its never-EL students, every weight is 1 and the ",
+    "total is a plain count.\n", sep = "")
 ```
 
 ```{r}
@@ -456,7 +468,7 @@ cat(paste0("- ", res$analytic_sample_memo, collapse = "\n"), "\n")
 ```{r}
 #| output: asis
 cat("*Spec: ", res$meta$spec_id, ". ",
-    if (identical(res$meta$spec_id, "SIM")) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
+    if (!is.null(res$meta$sim_contract_version) && !is.na(res$meta$sim_contract_version)) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
     "stateELP ", res$meta$package_version, ", run ", format(res$meta$run_date), ".*\n", sep = "")
 ```
 

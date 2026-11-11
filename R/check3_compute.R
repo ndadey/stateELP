@@ -136,16 +136,21 @@ compute_box_data <- function(data, spec, panel = NULL) {
 
   out <- .check3_box_from_rows(rows, spec, panel)
   attr(out, "panel") <- panel
-  attr(out, "cut") <- .check3_cut(spec, panel$subject)
+  attr(out, "cut") <- .check3_cut(spec, panel$subject, panel$grade)
+  attr(out, "basis") <- attr(rows, "basis")
   out
 }
 
 # The group summary itself, split out because the fairness check builds the
 # same table from a restricted set of rows: one arithmetic, so the two cannot
 # drift into disagreeing about what a median is.
+#
+# PCT_AT_CUT is the share proficient: at or above the grade's cut score when
+# the spec gives one, otherwise at or above the proficient level on the
+# delivered ACHIEVEMENT_LEVEL (.academic_proficiency(), shared with Check 4).
 .check3_box_from_rows <- function(rows, spec, panel) {
   if (!nrow(rows)) return(NULL)
-  cut <- .check3_cut(spec, panel$subject)
+  if (!"PROFICIENT" %in% names(rows)) rows <- .check3_add_proficient(rows, spec, panel)
   rows$GROUP <- factor(rows$GROUP, levels = .check3_group_levels(spec))
 
   out <- rows |>
@@ -161,8 +166,7 @@ compute_box_data <- function(data, spec, panel = NULL) {
       Y_MEAN      = .check3_mean(.data$SCALE_SCORE[!.data$ALTERNATE]),
       Y_P75       = .check3_q(.data$SCALE_SCORE[!.data$ALTERNATE], 0.75),
       Y_MAX       = .check3_q(.data$SCALE_SCORE[!.data$ALTERNATE], 1),
-      PCT_AT_CUT  = .check3_share_at(.data$SCALE_SCORE[!.data$ALTERNATE],
-                                     .env$cut),
+      PCT_AT_CUT  = .check3_share(.data$PROFICIENT[!.data$ALTERNATE]),
       .groups = "drop")
   out$GROUP <- as.character(out$GROUP)
 
@@ -180,14 +184,26 @@ compute_box_data <- function(data, spec, panel = NULL) {
   out
 }
 
-# The share of a group's scores at or above the proficiency cut. `NA` rather
-# than 0 when the cut is unknown: "nobody cleared it" and "we do not know
-# where it is" must not render the same.
-.check3_share_at <- function(x, cut) {
-  if (is.null(cut) || is.na(cut)) return(NA_real_)
-  x <- x[!is.na(x)]
-  if (!length(x)) return(NA_real_)
-  mean(x >= cut)
+# The share proficient among students whose proficiency is known. `NA` rather
+# than 0 when it is unknown for everyone -- no cut and no level to read --
+# because "nobody cleared it" and "we do not know where it is" must not render
+# the same.
+.check3_share <- function(prof) {
+  prof <- prof[!is.na(prof)]
+  if (!length(prof)) return(NA_real_)
+  mean(prof)
+}
+
+# Who in the panel is proficient, and on which basis: the grade's cut score,
+# else the delivered performance level (R/utils.R, shared with Check 4).
+.check3_add_proficient <- function(rows, spec, panel) {
+  level <- if ("ACHIEVEMENT_LEVEL" %in% names(rows)) rows$ACHIEVEMENT_LEVEL
+           else NULL
+  p <- .academic_proficiency(rows$SCALE_SCORE, level, spec, panel$subject,
+                             panel$grade)
+  rows$PROFICIENT <- p$proficient
+  attr(rows, "basis") <- p$basis
+  rows
 }
 
 # One row per student in the panel, with the group they sit in. The academic
@@ -227,7 +243,7 @@ compute_box_data <- function(data, spec, panel = NULL) {
   # What remains unassigned is a student with an academic score and no roster
   # row for that year, which is a delivery integrity problem rather than a
   # group. The coverage table is where that shows up.
-  ac[!is.na(ac$EL_STATUS), , drop = FALSE]
+  .check3_add_proficient(ac[!is.na(ac$EL_STATUS), , drop = FALSE], spec, panel)
 }
 
 # Display order: the spec's own band labels, the no-band column, then the two
@@ -237,15 +253,12 @@ compute_box_data <- function(data, spec, panel = NULL) {
   c(spec_bands(spec)$labels, .CHECK3_NO_BAND, .CHECK3_FORMER, .CHECK3_NEVER)
 }
 
-# The proficiency cut: the minimum score of the level the spec calls
-# proficient. `cuts` are the minima of levels 2..n, so level k is cuts[k - 1].
-.check3_cut <- function(spec, subject) {
-  lvl <- spec$policy$academic_benchmark$proficient_level
-  cuts <- spec$academic[[subject]]$cuts
-  if (is.null(lvl) || is.null(cuts) || lvl < 2L || lvl - 1L > length(cuts)) {
-    return(NA_real_)
-  }
-  as.numeric(cuts[[lvl - 1L]])
+# The proficiency cut for one subject and grade: the minimum score of the
+# level the spec calls proficient, from that grade's cuts when they differ by
+# grade. `NA` when the spec gives no cut for the grade -- the panel then reads
+# proficiency off the delivered level instead (.check3_add_proficient()).
+.check3_cut <- function(spec, subject, grade = NULL) {
+  spec_proficient_cut(spec, subject, grade)
 }
 
 .check3_q <- function(x, p) {
@@ -258,14 +271,4 @@ compute_box_data <- function(data, spec, panel = NULL) {
   x <- x[!is.na(x)]
   if (!length(x)) return(NA_real_)
   mean(x)
-}
-
-# The share of a group's scores at or above the proficiency cut. `NA` rather
-# than 0 when the cut is unknown: "nobody cleared it" and "we do not know
-# where it is" must not render the same.
-.check3_share_at <- function(x, cut) {
-  if (is.null(cut) || is.na(cut)) return(NA_real_)
-  x <- x[!is.na(x)]
-  if (!length(x)) return(NA_real_)
-  mean(x >= cut)
 }

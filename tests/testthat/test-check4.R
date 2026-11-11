@@ -848,3 +848,42 @@ test_that("check4 sources type no year, band label or threshold", {
     expect_false(any(grepl("\\b4\\.5\\b", code)), info = f)
   }
 })
+
+# ---- cut scores by grade, and proficiency without them (2026-11) ------------
+
+test_that("Check 4 classifies against the panel grade's own cut", {
+  spec <- make_check4_spec()
+  sb <- spec_academic_subjects(spec)[[1]]
+  g <- spec_academic_grades(spec, sb)
+  base <- spec$academic[[sb]]$cuts
+  spec$academic[[sb]]$cuts <- stats::setNames(
+    lapply(g, function(x) if (x == g[[1]]) base - 20 else base), g)
+  b <- make_check4_sim_bundle()
+  res <- run_check4(b, spec, grade = g[[1]])
+  expect_identical(res$meta$cut, spec_proficient_cut(spec, sb, g[[1]]))
+  expect_identical(attr(res$consistency_curve, "cut"), res$meta$cut)
+  expect_identical(res$meta$proficiency_basis, "cut")
+  p <- compute_panel(b, spec, subject = sb, grade = g[[1]])
+  rows <- .check4_panel_rows(b, spec, p)
+  expect_identical(rows$PROFICIENT, rows$SCALE_SCORE >= res$meta$cut)
+  # Check 3 reads the same grade's cut for the same panel.
+  expect_identical(.check3_cut(spec, sb, g[[1]]), .check4_cut(spec, sb, g[[1]]))
+})
+
+test_that("without cut scores Check 4 reads the delivered level, and says so", {
+  spec <- make_check4_spec()
+  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$cuts <- NULL
+  b <- make_check4_sim_bundle()
+  res <- run_check4(b, spec)
+  expect_false(is.null(res$consistency_curve))
+  expect_false(is.null(res$j_optimal))
+  expect_identical(res$meta$proficiency_basis, "level")
+  expect_true(is.na(res$meta$cut))
+  expect_match(res$meta$proficiency_note, "performance level is at or above")
+
+  # With neither a cut nor a proficient level, the note says which is missing.
+  spec$policy$academic_benchmark$proficient_level <- NULL
+  res0 <- run_check4(b, spec)
+  expect_null(res0$consistency_curve)
+  expect_match(res0$meta$note, "no proficient level")
+})

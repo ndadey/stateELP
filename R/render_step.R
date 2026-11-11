@@ -1,15 +1,24 @@
 # The fifty-times-a-day loop.
 #
-# Renders one stage document. The copy-in / render / remove-copy dance exists
-# so that Quarto's `<name>_files/` directory and its intermediates land in the
-# output directory and never in the source tree -- rendering in place leaves
-# build litter inside inst/templates/ that then ships in the package.
+# Renders one stage document. The copy-in / render / copy-out dance exists so
+# that Quarto's `<name>_files/` directory and its intermediates never land in
+# the source tree -- rendering in place leaves build litter inside
+# inst/templates/ that then ships in the package. The copy is rendered in a
+# scratch folder under tempdir() and only the finished documents reach
+# `out_dir` (see the Dropbox note below).
 
 #' Render one stage document
 #'
-#' Resolves a stage id to its `.qmd`, copies it to the output directory,
-#' renders it there in each requested format, optionally saves the stage's
-#' results object beside the output, and removes the copy.
+#' Resolves a stage id to its `.qmd`, copies it to a scratch folder, renders
+#' it there in each requested format, copies the finished documents into
+#' `out_dir`, and optionally saves the stage's results object into
+#' `results_dir` (never beside the documents).
+#'
+#' **Rendering a state's own data.** Compute the results with your bundle,
+#' save them, and pass the file as `results_file` together with that same
+#' `bundle`: the disclosure scan then checks the documents against your
+#' students' ids. Without `bundle`, a render from saved state results cannot
+#' be scanned, and `render_step()` says so with a warning whatever `quiet` is.
 #'
 #' Stage ids carry no run-order numbers: the numbers live on the prompt and
 #' instruction files only, so `render_step("check1")` finds
@@ -17,7 +26,9 @@
 #'
 #' @param stage A stage id: `"prep1"`, `"prep2"`, `"prep3"`, `"check1"`,
 #'   `"check2"`, `"check3"`, `"check4"` or `"decision"`.
-#' @param spec_file Spec id passed to the document as a parameter.
+#' @param spec_file Spec id, or a path to a spec file, passed to the document
+#'   as a parameter. A path is made absolute first, because the document runs
+#'   in another folder.
 #' @param out_dir Directory to render into. Created if absent.
 #' @param formats Quarto output formats. Word is primary, HTML secondary.
 #' @param min_n Suppression minimum passed to the document. `NULL` lets the
@@ -36,11 +47,17 @@
 #'   instead of recomputing. Every stage `.qmd` already accepts this and
 #'   branches on it; this is the way to pass one. The Decision stage is the
 #'   consumer that needs it.
+#' @param bundle The `el_data` bundle the rendered results were computed
+#'   from, for the disclosure scan. Pass it whenever `results_file` holds a
+#'   state's own results. `NULL` scans against the shipped simulation, which
+#'   is right only for the simulation's own results.
 #' @param check_disclosure Scan the produced files for student identifiers and
 #'   **stop** if any appear (see `R/disclosure.R`). Defaults to `TRUE`
-#'   whenever something was rendered. Set `FALSE` on a real delivery, where
-#'   the package cannot assemble the bundle itself, and call
-#'   [check_output_disclosure()] against your own bundle instead.
+#'   whenever something was rendered. The ids come from `bundle`, or from the
+#'   shipped simulation when the document was rendered from it. When neither
+#'   applies -- saved results from a state delivery and no `bundle` -- the
+#'   scan cannot run, and a warning says so; pass `bundle`, or set this to
+#'   `FALSE` and call [check_output_disclosure()] yourself.
 #' @param open Whether to open the rendered document. Defaults to interactive
 #'   use only.
 #' @param quiet Passed to Quarto. `FALSE` shows the CLI's own output, which is
@@ -53,7 +70,13 @@
 #' @examples
 #' \dontrun{
 #' render_step("check1")
-#' render_step("decision", save_results = TRUE)
+#'
+#' # A state's own data: compute, save, render from the file, scan against
+#' # the same bundle.
+#' saveRDS(run_check1(my_bundle, my_spec), "results/check1_results.rds")
+#' render_step("check1", spec_file = "specs/XX_EL_Spec.R",
+#'             results_file = "results/check1_results.rds",
+#'             bundle = my_bundle)
 #' }
 render_step <- function(stage,
                         spec_file = "00_SIM_EL_Spec",
@@ -63,11 +86,17 @@ render_step <- function(stage,
                         save_results = FALSE,
                         results_dir = "results",
                         results_file = NULL,
+                        bundle = NULL,
                         check_disclosure = NULL,
                         open = interactive(),
                         quiet = TRUE,
                         qmd = NULL) {
-  stopifnot(is.character(stage), length(stage) == 1L)
+  stopifnot(is.character(stage), length(stage) == 1L,
+            is.null(bundle) || inherits(bundle, "el_data"))
+  # A spec given as a file path must survive the move to the scratch folder.
+  if (file.exists(spec_file)) {
+    spec_file <- normalizePath(spec_file, winslash = "/", mustWork = TRUE)
+  }
 
   if (!requireNamespace("quarto", quietly = TRUE)) {
     stop("Package 'quarto' is required to render. install.packages(\"quarto\")",
@@ -79,7 +108,11 @@ render_step <- function(stage,
          paste(stage_ids(), collapse = ", "), call. = FALSE)
   }
 
-  pkg <- getwd()          # captured before the render setwd()
+  # The document load_all()s `pkg_path` when it has an R/ folder, which is
+  # right for the package source and wrong for an analyst's own project that
+  # happens to have one. Pass the working directory only when it IS the
+  # stateELP source; otherwise the document uses the installed package.
+  pkg <- if (.is_stateelp_source(getwd())) getwd() else ""
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   out_dir <- normalizePath(out_dir, winslash = "/", mustWork = TRUE)
 
@@ -152,11 +185,17 @@ render_step <- function(stage,
   # rows should not survive the render that made it.
   if (is.null(check_disclosure)) check_disclosure <- length(written) > 0L
   if (isTRUE(check_disclosure) && length(written)) {
-    bundle <- tryCatch(.render_bundle(spec_file), error = function(e) NULL)
-    if (!is.null(bundle)) {
-      check_output_disclosure(written, bundle, action = "error")
-    } else if (!quiet) {
-      message("  (disclosure scan skipped: no bundle for '", spec_file, "')")
+    scan_with <- .render_scan_bundle(bundle, results_file, spec_file)
+    if (!is.null(scan_with$bundle)) {
+      check_output_disclosure(written, scan_with$bundle, action = "error")
+    } else {
+      # A skipped scan is never silent: the documents may be about to leave
+      # the machine, and nothing has checked them.
+      warning("Disclosure scan NOT run on ", paste(basename(written),
+              collapse = ", "), ": ", scan_with$why, " Pass the bundle the ",
+              "results came from (`bundle = my_bundle`), or call ",
+              "check_output_disclosure(files, my_bundle) before sharing.",
+              call. = FALSE)
     }
   }
 
@@ -174,13 +213,47 @@ render_step <- function(stage,
 
 # The bundle a render was built from, for the disclosure scan. The shipped
 # simulation is the only delivery the package knows how to assemble on its
-# own; a real delivery is assembled by the analyst, who should pass
-# `check_disclosure = FALSE` and run `check_output_disclosure()` against their
-# own bundle instead.
+# own; a real delivery is assembled by the analyst, who passes it as `bundle`.
 .render_bundle <- function(spec_file) {
   spec <- read_el_spec(spec_file)
   as_el_data(get("el_long_sim"), roster = get("el_roster_sim"),
              academic = get("academic_long_sim"), spec = spec)
+}
+
+# Which ids to scan against, or why there are none. In order: the caller's
+# bundle; for a render from saved results, the simulation only when those
+# results say they came from it (a state's results carry no simulation
+# contract version, and scanning a state's report for simulated ids proves
+# nothing); otherwise -- the document built its own results from the
+# simulation -- the simulation.
+.render_scan_bundle <- function(bundle, results_file, spec_file) {
+  if (!is.null(bundle)) return(list(bundle = bundle, why = NA_character_))
+  if (!is.null(results_file)) {
+    res <- tryCatch(readRDS(results_file), error = function(e) NULL)
+    v <- res$meta$sim_contract_version
+    if (is.null(v) || all(is.na(v))) {
+      return(list(bundle = NULL, why = paste0(
+        "the results in '", basename(results_file), "' come from a state ",
+        "delivery, and no `bundle` was passed to take its student ids from.")))
+    }
+  }
+  b <- tryCatch(.render_bundle(spec_file), error = function(e) e)
+  if (inherits(b, "error")) {
+    return(list(bundle = NULL, why = paste0(
+      "the simulated bundle could not be built under spec '",
+      basename(spec_file), "' (", conditionMessage(b), ").")))
+  }
+  list(bundle = b, why = NA_character_)
+}
+
+# Whether a folder is the stateELP package source, which is the only folder
+# the stage documents should load_all().
+.is_stateelp_source <- function(dir) {
+  desc <- file.path(dir, "DESCRIPTION")
+  if (!file.exists(desc) || !dir.exists(file.path(dir, "R"))) return(FALSE)
+  pkg <- tryCatch(read.dcf(desc, fields = "Package")[1, 1],
+                  error = function(e) NA_character_)
+  identical(unname(pkg), "stateELP")
 }
 
 #' Stage ids and their documents

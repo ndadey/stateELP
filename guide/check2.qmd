@@ -122,9 +122,12 @@ In plain terms:
 
 - **One entry cohort, the same one Check 1 analyzes.** Check 2 does not pick
   its own. `run_check2()` takes the row that Check 1's `compute_cohorts()`
-  marks as selected: the qualifying kindergarten cohort with the longest
-  follow-up. In the simulated data that is `r res$meta$cohort`, with
-  `r num(res$meta$cohort_n)` students followed through `r panel_last`.
+  marks as selected: by default the qualifying kindergarten cohort with the
+  longest follow-up. In the simulated data that is `r res$meta$cohort`, with
+  `r num(res$meta$cohort_n)` students followed through `r panel_last`. If you
+  chose Check 1's cohort with `entry_year` (for one whose years overlap your
+  academic test years; see [Check 1](check1.html#choosing-the-cohort)), pass
+  the same `entry_year` to `run_check2()`.
 - **Students already in EL status when the data begin are excluded.** Their
   entry was never observed, so their time in status cannot be measured.
 - **Three groups, defined against the years observed.** *On time* means
@@ -311,6 +314,20 @@ Disappeared), and the slot uses the ALL-CAPS codes. The first two rows give
 the count in each column and its share of the cohort. Every block below them
 is **column percentages**: within one column, they show what that group is
 made of.
+
+The question a state usually asks runs the other way: of the students who
+entered at an ELP level of 1.0 to 1.9, what share exited on time? The
+companion table, `$outcome_shares`, answers it. Each row is one of the same
+groups, split across four outcomes that sum to 100%: exited on time, exited
+later, not observed exiting, and left the data.
+
+```{r}
+ft_check2_outcome_shares(res)
+```
+
+The crosstab stays as the deck specifies it; the two tables hold the same
+counts read in different directions, so they cannot disagree. A group
+smaller than `min_cell` is not reported in the companion table at all.
 
 In the slot, the table is long, one row per block × row × column:
 
@@ -598,25 +615,18 @@ paths: the report renders in a temporary folder.
 
 ```{r}
 #| eval: false
-res <- run_check2(bundle, spec)                    # your bundle and spec
+res <- run_check2(my_bundle, my_spec)              # same entry_year as Check 1
 dir.create("results", showWarnings = FALSE)        # not a shared folder
 saveRDS(res, "results/check2_results.rds")
-files <- render_step(
-  "check2",
-  spec_file    = normalizePath("specs/XX_EL_Spec.R", winslash = "/"),
-  results_file = "results/check2_results.rds",
-  check_disclosure = FALSE
-)
-check_output_disclosure(files, bundle)             # scan against your IDs
+render_step("check2",
+            spec_file    = "specs/XX_EL_Spec.R",
+            results_file = "results/check2_results.rds",
+            bundle       = my_bundle)             # scan against your IDs
 ```
 
-Turn the automatic scan off with `check_disclosure = FALSE`: it can only build
-the simulated bundle, so it would check your report against the wrong IDs.
-`check_output_disclosure()` then checks the files against every `STUDENT_ID`
-in your bundle, and stops if any appears.
-
-Run `render_step()` from a project folder that has no `R/` subfolder. The
-report treats a working folder with an `R/` subfolder as the package's source
-and tries to load it with `devtools::load_all()`.
+Passing `bundle` makes the disclosure scan check the files against every
+`STUDENT_ID` in your delivery; it stops if any appears. Without it, a report
+rendered from your saved results cannot be scanned, and `render_step()` warns
+that it was not.
 
 [Guide home](index.html) | Previous: [Check 1: Cohort survival](check1.html) | Next: [Check 3: Academic patterns](check3.html)

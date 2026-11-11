@@ -666,18 +666,15 @@ exists.
 
 You can render each built stage's document from the results you saved, so the
 reports you cite in the map show exactly those numbers. For your own
-delivery, pass the full path to your spec file as `spec_file`: the document
-renders in a temporary folder, so a relative path will not be found. Turn off
-the built-in disclosure scan, which knows only the simulated data, and run
-`check_output_disclosure()` against your own bundle instead:
+delivery, pass your spec file and your bundle, so the disclosure scan checks
+the report against your own students:
 
 ```{r}
 #| eval: false
-files <- render_step("check4",
-                     spec_file = normalizePath("specs/XX_EL_Spec.R"),
-                     results_file = "results/check4_results.rds",
-                     check_disclosure = FALSE)
-check_output_disclosure(files, my_bundle)   # my_bundle: your as_el_data() bundle
+render_step("check4",
+            spec_file    = "specs/XX_EL_Spec.R",
+            results_file = "results/check4_results.rds",
+            bundle       = my_bundle)   # my_bundle: your as_el_data() bundle
 ```
 
 [Guide home](index.html) | Previous: [Check 4: Decision consistency](check4.html)

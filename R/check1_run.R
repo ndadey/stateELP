@@ -32,9 +32,17 @@
 #' analysis slots stay `NULL`, `$meta$note` says why, and the document renders
 #' that note. Never a crash, never an invented denominator.
 #'
+#' **Which cohort.** By default the candidate with the longest follow-up
+#' ([compute_cohorts()]). Pass `entry_year` to analyze another -- for
+#' instance one whose years in status overlap the state's academic test
+#' years, which `$cohorts$ACADEMIC_YEARS` shows -- and pass the same value to
+#' [run_check2()].
+#'
 #' @param data An `el_data` bundle.
 #' @param spec An `el_spec`.
 #' @param start_grade Entry grade defining the cohorts, e.g. `"K"`.
+#' @param entry_year Optional entry year of the cohort to analyze, e.g.
+#'   `2017`; `NULL` selects the candidate with the longest follow-up.
 #' @return A named list of results slots plus `$meta`.
 #' @export
 #' @examples
@@ -42,14 +50,15 @@
 #' bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
 #' res <- run_check1(bundle, spec)
 #' res$meta$sample
-run_check1 <- function(data, spec, start_grade = "K") {
+run_check1 <- function(data, spec, start_grade = "K", entry_year = NULL) {
   stopifnot(inherits(data, "el_data"), inherits(spec, "el_spec"),
             is.character(start_grade), length(start_grade) == 1L)
   roster <- el_roster(data)
   .check1_require_fields(roster, c("cohorts", "life_table"))
 
   panel_last <- max(roster$YEAR, na.rm = TRUE)
-  cohorts <- compute_cohorts(data, spec, start_grade = start_grade)
+  cohorts <- compute_cohorts(data, spec, start_grade = start_grade,
+                             entry_year = entry_year)
   if (!nrow(cohorts)) cohorts <- NULL   # [no candidate cohort in this panel]
 
   selected <- if (is.null(cohorts) || !any(cohorts$SELECTED)) NA_character_
@@ -178,9 +187,14 @@ run_check1 <- function(data, spec, start_grade = "K") {
       stage                = "check1",
       spec_id              = spec$program$short_name %||% NA_character_,
       sample               = .check1_sample_text(cohorts, start_grade, panel_last,
-                                                 spec),
+                                                 spec, chosen = !is.null(entry_year)),
       start_grade          = start_grade,
       cohort               = selected,
+      entry_year           = if (is.null(entry_year)) NA_integer_
+                             else as.integer(entry_year),
+      cohort_choice        = if (is.null(entry_year)) "longest follow-up"
+                             else "entry_year",
+      exit_dating_note     = .exit_dating_note(spec),
       panel                = c(min(roster$YEAR, na.rm = TRUE), panel_last),
       data_fields          = .check1_data_fields(data, spec, computed),
       note                 = .check1_note(cohorts, spec),
@@ -226,7 +240,8 @@ run_check1 <- function(data, spec, start_grade = "K") {
 # The Sample statement, built from $cohorts -- never a literal (CLAUDE.md 12
 # #4, resolved for this line 2026-09-20). It is also `$meta$sample`, so the
 # callout and the results object cannot disagree.
-.check1_sample_text <- function(cohorts, start_grade, panel_last, spec) {
+.check1_sample_text <- function(cohorts, start_grade, panel_last, spec,
+                                chosen = FALSE) {
   grade_phrase <- if (identical(start_grade, "K")) "kindergarten"
                   else paste("grade", start_grade)
 
@@ -245,14 +260,27 @@ run_check1 <- function(data, spec, start_grade = "K") {
   }
 
   sel <- cohorts[cohorts$SELECTED, ]
+  n_usable <- sum(!cohorts$SUPPRESSED)
+  why <- if (chosen) {
+    longest <- cohorts$COHORT_LABEL[!cohorts$SUPPRESSED][
+      which.max(cohorts$FOLLOWUP_YEARS[!cohorts$SUPPRESSED])]
+    paste0("Chosen by the analyst from the ", .small_number(n_usable),
+           " usable ", start_grade,
+           if (n_usable == 1L) " cohort" else " cohorts",
+           if (!identical(longest, sel$COHORT_LABEL)) paste0(
+             "; the default would be ", longest, ", the longest follow-up")
+           else "", ".")
+  } else {
+    paste0("The most complete of the ", .small_number(nrow(cohorts)),
+           " usable ", start_grade,
+           if (nrow(cohorts) == 1L) " cohort" else " cohorts",
+           " ", .EM_DASH, " the longest follow-up.")
+  }
   paste0(
     "The ", sel$COHORT_LABEL, " entry cohort: ",
     format(sel$N_ENTRY, big.mark = ","), " students who entered EL status in ",
     grade_phrase, " in ", sel$COHORT_START_YEAR, ", followed through ",
-    panel_last, " (", sel$FOLLOWUP_YEARS, " years). The most complete of the ",
-    .small_number(nrow(cohorts)), " usable ", start_grade,
-    if (nrow(cohorts) == 1L) " cohort" else " cohorts",
-    " ", .EM_DASH, " the longest follow-up.")
+    panel_last, " (", sel$FOLLOWUP_YEARS, " years). ", why)
 }
 
 # Can the fitted models run at all? Both use the headline scale score as a

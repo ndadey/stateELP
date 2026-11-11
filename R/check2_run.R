@@ -22,11 +22,17 @@
 #' Type it would apply to, so the document can tell "does not apply" from
 #' "applies, but this delivery yields no groups".
 #'
+#' `$outcome_shares` reads the crosstab the other way: for each characteristic
+#' group, how its students split across four outcomes that sum to 100% --
+#' exited on time, exited later, not observed exiting, and disappeared.
+#'
 #' @param data An `el_data` bundle.
 #' @param spec An `el_spec`.
 #' @param start_grade Entry grade defining the cohorts, e.g. `"K"`.
 #' @param subject Academic subject for `$academic_summary`. Defaults to the
 #'   spec's first.
+#' @param entry_year Optional entry year of the cohort, as in [run_check1()].
+#'   Pass the same value to both so they follow the same students.
 #' @return A named list of results slots plus `$meta`.
 #' @export
 #' @examples
@@ -34,13 +40,15 @@
 #' bundle <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
 #' res <- run_check2(bundle, spec)
 #' res$meta$sample
-run_check2 <- function(data, spec, start_grade = "K", subject = NULL) {
+run_check2 <- function(data, spec, start_grade = "K", subject = NULL,
+                       entry_year = NULL) {
   stopifnot(inherits(data, "el_data"), inherits(spec, "el_spec"),
             is.character(start_grade), length(start_grade) == 1L)
   roster <- el_roster(data)
   panel_last <- max(roster$YEAR, na.rm = TRUE)
 
-  cohorts <- compute_cohorts(data, spec, start_grade = start_grade)
+  cohorts <- compute_cohorts(data, spec, start_grade = start_grade,
+                             entry_year = entry_year)
   selected <- if (!nrow(cohorts) || !any(cohorts$SELECTED)) NA_character_
               else cohorts$COHORT_LABEL[cohorts$SELECTED]
 
@@ -55,6 +63,9 @@ run_check2 <- function(data, spec, start_grade = "K", subject = NULL) {
   }
   crosstab <- if (is.null(flags)) NULL else {
     compute_crosstab(flags, spec, profile = profile)
+  }
+  outcome_shares <- if (is.null(flags)) NULL else {
+    compute_outcome_shares(flags, spec, profile = profile)
   }
 
   academic <- if (is.null(flags)) NULL else {
@@ -79,6 +90,7 @@ run_check2 <- function(data, spec, start_grade = "K", subject = NULL) {
   list(
     flags            = flags,
     crosstab         = crosstab,
+    outcome_shares   = outcome_shares,
     profile          = profile,
     academic_summary = academic,
     trajectories     = trajectories,
@@ -89,9 +101,15 @@ run_check2 <- function(data, spec, start_grade = "K", subject = NULL) {
       spec_id              = spec$program$short_name %||% NA_character_,
       sample               = .check2_sample_text(cohorts, spec, panel_last,
                                                  start_grade, on_time_text,
-                                                 provisional),
+                                                 provisional,
+                                                 chosen = !is.null(entry_year)),
       start_grade          = start_grade,
       cohort               = selected,
+      entry_year           = if (is.null(entry_year)) NA_integer_
+                             else as.integer(entry_year),
+      cohort_choice        = if (is.null(entry_year)) "longest follow-up"
+                             else "entry_year",
+      exit_dating_note     = .exit_dating_note(spec),
       cohort_n             = if (is.null(flags)) NA_integer_ else nrow(flags),
       panel                = c(min(roster$YEAR, na.rm = TRUE), panel_last),
       max_years            = spec_max_years(spec),
@@ -186,7 +204,7 @@ run_check2 <- function(data, spec, start_grade = "K", subject = NULL) {
 # literal, and the same cohort by construction. It is also `$meta$sample`, so
 # the callout and the results object cannot disagree.
 .check2_sample_text <- function(cohorts, spec, panel_last, start_grade,
-                                on_time_text, provisional) {
+                                on_time_text, provisional, chosen = FALSE) {
   if (!nrow(cohorts) || !any(cohorts$SELECTED)) {
     return(paste0("No entry cohort: Data Check 1 selects none from this ",
                   "panel, so there is nothing to split into on-time and ",
@@ -197,10 +215,17 @@ run_check2 <- function(data, spec, start_grade = "K", subject = NULL) {
                   else paste("grade", start_grade)
   flag <- if (provisional) paste0(" [DERIVED ", .CHECK2_EM_DASH, " VERIFY]")
           else ""
+  # An analyst-chosen cohort is the same cohort only if Check 1 was run with
+  # the same entry year; say so rather than assert it.
+  same <- if (chosen) {
+    paste0("chosen by the analyst (entry year ", sel$COHORT_START_YEAR,
+           "); Data Check 1 analyzes the same cohort when run with the same ",
+           "entry year")
+  } else "the same cohort Data Check 1 analyzes"
 
   paste0(
-    "The ", sel$COHORT_LABEL, " entry cohort ", .CHECK2_EM_DASH, " the same ",
-    "cohort Data Check 1 analyzes: ", format(sel$N_ENTRY, big.mark = ","),
+    "The ", sel$COHORT_LABEL, " entry cohort ", .CHECK2_EM_DASH, " ", same,
+    ": ", format(sel$N_ENTRY, big.mark = ","),
     " students who entered EL status in ", grade_phrase, " in ",
     sel$COHORT_START_YEAR, ", followed through ", panel_last, ". They are ",
     "split into on-time exiters (exited within ", on_time_text, flag, ") and ",

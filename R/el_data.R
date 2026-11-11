@@ -42,12 +42,25 @@ KEY               <- c("STUDENT_ID", "YEAR")
 #'
 #' @section Validation:
 #' Roster unique on `STUDENT_ID x YEAR`, with `EL_STATUS` in
-#' `current / former / never`. Base table unique on `STUDENT_ID x YEAR x
-#' COMPONENT`, `COMPONENT` character and (with a spec) inside the spec's
-#' component model, every row with a roster row, and `ELP_FORM` equal to the
-#' roster's. Academic table keyed on `SUBJECT`, `GRADE` present -- no
-#' fill-from-roster fallback -- and equal to the roster's, every row with a
-#' roster row. The two key names are never swapped.
+#' `current / former / never` (or `NA`: a year with no status is on the roster
+#' but in no status group). `ELP_FORM`, on either table, is `annual`,
+#' `alternate` or `NA`. Base table unique on `STUDENT_ID x YEAR x COMPONENT`,
+#' `COMPONENT` character and (with a spec) inside the spec's component model,
+#' every row with a roster row, and `ELP_FORM` equal to the roster's.
+#' Academic table keyed on `SUBJECT`, `GRADE` present -- no fill-from-roster
+#' fallback -- and equal to the roster's, every row with a roster row. The two
+#' key names are never swapped. With a spec, a `GRADE` outside `K` and `1`
+#' to `12` and an academic `SUBJECT` that is not a spec subject each raise a
+#' warning.
+#'
+#' Run [check_el_delivery()] first: it makes every one of these checks, and
+#' more, and lists every problem at once instead of stopping at the first.
+#'
+#' @section The academic table:
+#' The academic table is passed through [as_academic_long()] on intake, after
+#' the crosswalk: subject codes become the spec's subject keys through
+#' `data$columns$value_maps$CONTENT_AREA$academic`, and performance-level
+#' labels become numbers through each subject's `level_labels`.
 #'
 #' @param elp The base table: one row per student-year-component. Or, with
 #'   `roster = NULL`, a merged single long file to be split.
@@ -94,6 +107,13 @@ as_el_data <- function(elp, roster = NULL, academic = NULL, spec = NULL) {
   elp <- .validate_base(elp, roster, spec)
   if (!is.null(academic)) {
     academic <- .apply_crosswalk(tibble::as_tibble(academic), cols$academic)
+    # The academic table's *values* are translated here, not left to a
+    # separate as_academic_long() call: subject codes to the spec's subject
+    # keys, performance-level labels to numbers. Skipping that step used to
+    # build a bundle whose subjects matched nothing in the spec, and every
+    # academic result came back NULL with no message. as_academic_long() is
+    # idempotent, so a table already passed through it is unchanged.
+    academic <- as_academic_long(academic, spec)
     academic <- .validate_academic(academic, roster, spec)
   }
 
@@ -218,7 +238,48 @@ as_el_data <- function(elp, roster = NULL, academic = NULL, spec = NULL) {
          ".\nMonitoring years are sub-states of `former`, not a fourth value.",
          call. = FALSE)
   }
+  if ("ELP_FORM" %in% names(roster)) .check_elp_form(roster$ELP_FORM, "roster")
+  .warn_grades(roster$GRADE, spec, "roster")
   roster[c(ROSTER_REQUIRED, setdiff(names(roster), ROSTER_REQUIRED))]
+}
+
+# ELP_FORM gates the main ELP score: elp_headline() keeps only "annual" rows.
+# Any other spelling -- a vendor's "general", a capitalised "Annual" -- would
+# silently leave every stage that reads that score with no students, so it
+# stops here instead.
+ELP_FORM_VALUES <- c("annual", "alternate")
+.check_elp_form <- function(x, where) {
+  bad <- setdiff(unique(stats::na.omit(as.character(x))), ELP_FORM_VALUES)
+  if (length(bad)) {
+    stop("`ELP_FORM` on the ", where, " must be \"annual\" or \"alternate\" ",
+         "(or NA); found: ", paste0("\"", utils::head(bad, 5), "\"",
+                                    collapse = ", "),
+         ".\nRecode your annual test's label (e.g. \"general\") to \"annual\". ",
+         "For Alternate ACCESS rows, mark_alternate_elp() sets \"alternate\".",
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+# Grades the stages understand: "K" and "1" to "12". Anything else is kept --
+# a state may carry pre-K or adult rows -- but said out loud, because a
+# kindergarten coded "0" means Check 1 finds no K cohort at all.
+GRADE_VALUES <- c("K", as.character(1:12))
+.warn_grades <- function(g, spec, where) {
+  odd <- sort(unique(stats::na.omit(g[!g %in% GRADE_VALUES])))
+  if (!length(odd)) return(invisible(FALSE))
+  k_hint <- if (any(odd %in% c("0", "00", "KG", "KF", "KH", "k"))) {
+    paste0(" Kindergarten looks coded as ",
+           paste0("\"", intersect(odd, c("0", "00", "KG", "KF", "KH", "k")),
+                  "\"", collapse = "/"),
+           ": add it to `data$columns$value_maps$GRADE` (e.g. c(\"0\" = ",
+           "\"K\")), or Check 1 finds no kindergarten cohort.")
+  } else ""
+  warning("GRADE value(s) on the ", where, " outside K and 1-12: ",
+          paste0("\"", utils::head(odd, 8), "\"", collapse = ", "),
+          ". Those rows are kept but no grade-keyed result will place them.",
+          k_hint, call. = FALSE)
+  invisible(TRUE)
 }
 
 .validate_base <- function(base, roster, spec) {
@@ -260,6 +321,7 @@ as_el_data <- function(elp, roster = NULL, academic = NULL, spec = NULL) {
 
   base$STUDENT_ID <- as.character(base$STUDENT_ID)
   base$YEAR <- .as_year(base$YEAR, "base table")
+  .check_elp_form(base$ELP_FORM, "base table")
   if (!is.character(base$COMPONENT)) {
     stop("`COMPONENT` must be character, never a factor: the spec supplies ",
          "display order, and a factor coerces on bind_rows() with a real ",
@@ -268,7 +330,10 @@ as_el_data <- function(elp, roster = NULL, academic = NULL, spec = NULL) {
   if (!is.numeric(base$ACHIEVEMENT_LEVEL)) {
     stop("`ACHIEVEMENT_LEVEL` must be numeric -- the instrument's value, or an ",
          "ordinal index for a categorical scale, with labels in the spec. ",
-         "Labeled deliveries are parsed by as_el_data_sgp().", call. = FALSE)
+         "Labeled deliveries are parsed by as_el_data_sgp(). Alternate ",
+         "ACCESS codes such as \"P2\" are a different scale: ",
+         "mark_alternate_elp() sets them to NA and marks those rows ",
+         "\"alternate\".", call. = FALSE)
   }
   if (anyDuplicated(base[c(KEY, "COMPONENT")]) != 0L) {
     stop("The base table is not unique on STUDENT_ID x YEAR x COMPONENT.",
@@ -338,6 +403,24 @@ as_el_data <- function(elp, roster = NULL, academic = NULL, spec = NULL) {
   if (any(disagree)) {
     stop(sum(disagree), " academic row(s) disagree with the roster on `GRADE`.",
          call. = FALSE)
+  }
+  # A subject the spec does not declare is carried but read by no stage.
+  # Usually that is a code the value map missed (READING for ELA), which is
+  # worth a word before every academic result comes back empty.
+  subjects <- if (is.null(spec)) character() else spec_academic_subjects(spec)
+  if (length(subjects)) {
+    unknown <- setdiff(unique(stats::na.omit(academic$SUBJECT)), subjects)
+    if (length(unknown)) {
+      none <- !any(academic$SUBJECT %in% subjects)
+      warning(if (none) "No academic row matches a subject in the spec. "
+              else "Some academic rows match no subject in the spec. ",
+              "SUBJECT value(s) ", paste0("\"", utils::head(unknown, 6), "\"",
+                                          collapse = ", "),
+              " are not among ", paste(subjects, collapse = ", "),
+              ", so no stage reads those rows. Map them in ",
+              "`data$columns$value_maps$CONTENT_AREA$academic`.",
+              call. = FALSE)
+    }
   }
   academic[c(intersect(ACADEMIC_COLUMNS, names(academic)),
              setdiff(names(academic), ACADEMIC_COLUMNS))]
@@ -625,6 +708,10 @@ as_el_data_sgp <- function(long_data, spec, academic = NULL) {
 #' `stateELP` does not import `stateSummative` or ReportR; a handoff between
 #' them is a rename at the boundary -- data crosses, code does not.
 #'
+#' [as_el_data()] calls this on the academic table itself, after applying the
+#' spec's column crosswalk, so there is no need to call it first. It is
+#' idempotent: a table already in the package's shape comes back unchanged.
+#'
 #' @param x A data frame of academic results.
 #' @param spec Optional `el_spec`.
 #' @return A tibble with canonical ALL-CAPS names, canonical columns first.
@@ -674,9 +761,13 @@ as_academic_long <- function(x, spec = NULL) {
       stop("`", what, "` carries labels; pass the spec so they can be mapped ",
            "through each subject's `level_labels`.", call. = FALSE)
     }
-    for (i in which(labeled)) {
-      lab <- spec$academic[[subject[i]]]$level_labels
-      num[i] <- match(as.character(x[i]), lab)
+    # One match per subject rather than per row: a statewide file has
+    # hundreds of thousands of labeled rows.
+    xs <- as.character(x)
+    for (sb in unique(subject[labeled])) {
+      at <- labeled & subject %in% sb
+      lab <- if (is.na(sb)) NULL else spec$academic[[sb]]$level_labels
+      num[at] <- if (is.null(lab)) NA_real_ else match(xs[at], lab)
     }
     if (anyNA(num[labeled])) {
       stop("`", what, "` label(s) not in the spec's `level_labels`: ",

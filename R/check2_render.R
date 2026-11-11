@@ -166,6 +166,70 @@ ft_check2_crosstab <- function(results) {
 
 #' @rdname check2_tables
 #' @export
+ft_check2_outcome_shares <- function(results) {
+  stopifnot(is.list(results), !is.null(results$outcome_shares))
+  out <- .check2_outcome_display(results)
+  header <- out$IS_HEADER
+  indent <- out$LEVEL
+
+  ft <- flextable::flextable(out[setdiff(names(out), c("IS_HEADER", "LEVEL"))])
+  ft <- do.call(flextable::set_header_labels,
+                c(list(ft, ROW = "", N_ROW = "Students"),
+                  as.list(.check2_outcome_labels())))
+  ft <- flextable::bold(ft, part = "header")
+  ft <- flextable::valign(ft, valign = "top", part = "header")
+  ft <- flextable::align(ft, j = c("N_ROW", .CHECK2_OUTCOMES), align = "right",
+                         part = "all")
+  if (any(header)) ft <- flextable::bold(ft, i = which(header), j = "ROW")
+  if (any(indent > 0L)) {
+    ft <- flextable::padding(ft, i = which(indent > 0L), j = "ROW",
+                             padding.left = 18)
+  }
+  ft <- flextable::bold(ft, i = which(indent == 0L & !header), j = "ROW")
+  flextable::autofit(ft)
+}
+
+.check2_outcome_labels <- function() {
+  c(ON_TIME     = "Exited on time",
+    LATE        = "Exited later",
+    NO_EXIT     = "Not observed exiting",
+    DISAPPEARED = "Left the data")
+}
+
+# One printed line per group, a column per outcome: the Total row first, then
+# each block's title and its groups. Split from the flextable so a test can
+# read the rendered content.
+.check2_outcome_display <- function(results) {
+  os <- results$outcome_shares
+  line <- function(sub, label, level) {
+    d <- data.frame(ROW = label, N_ROW = .check2_fmt_n(sub$N_ROW[[1]]),
+                    stringsAsFactors = FALSE)
+    for (o in .CHECK2_OUTCOMES) {
+      d[[o]] <- .check2_fmt_pct(sub$PCT[match(o, sub$OUTCOME)])
+    }
+    d$IS_HEADER <- FALSE
+    d$LEVEL <- level
+    d
+  }
+  parts <- list(line(os[os$BLOCK == "Total", ], "Total students", 0L))
+  for (b in setdiff(unique(os$BLOCK), "Total")) {
+    head_row <- data.frame(ROW = b, N_ROW = "", stringsAsFactors = FALSE)
+    for (o in .CHECK2_OUTCOMES) head_row[[o]] <- ""
+    head_row$IS_HEADER <- TRUE
+    head_row$LEVEL <- 0L
+    parts[[length(parts) + 1L]] <- head_row
+    sub_b <- os[os$BLOCK == b, , drop = FALSE]
+    for (r in unique(sub_b$ROW)) {
+      sub <- sub_b[sub_b$ROW == r, , drop = FALSE]
+      parts[[length(parts) + 1L]] <-
+        line(sub, .check2_row_labels(r, sub$FIELD[[1]]), 1L)
+    }
+  }
+  do.call(rbind, parts)
+}
+
+#' @rdname check2_tables
+#' @export
 ft_check2_academic <- function(results) {
   stopifnot(is.list(results), !is.null(results$academic_summary))
   d <- results$academic_summary

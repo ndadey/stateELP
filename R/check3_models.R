@@ -62,14 +62,23 @@ compute_summary_table <- function(data, spec, panel = NULL, box_data = NULL) {
 #' @param data An `el_data` bundle with an academic table.
 #' @param spec An `el_spec`.
 #' @param panel Output of [compute_panel()], or `NULL` to derive it.
+#' **Proficiency without cut scores.** Left at its default, the outcome is
+#' the panel grade's proficiency cut from the spec. When the spec gives no cut
+#' for that grade -- a state whose cuts differ by grade and has not entered
+#' them -- the outcome is the academic table's own `ACHIEVEMENT_LEVEL` at or
+#' above `policy$academic_benchmark$proficient_level`, and `THRESHOLD_KIND`
+#' says so. Only with neither is the result `NULL`.
+#'
 #' @param threshold Academic score defining the outcome. Defaults to the
-#'   spec's proficiency cut.
+#'   spec's proficiency cut for the panel's grade, falling back to the
+#'   delivered performance level.
 #' @param threshold_kind Label for what the threshold is, carried into the
-#'   result so a reader of the slot knows which bar was used.
+#'   result so a reader of the slot knows which bar was used. Ignored when
+#'   the default falls back to the delivered level.
 #' @return A one-row tibble: the fitted coefficients, `CROSSING` (the 50%
 #'   scale score, `NA` when the slope is not positive), `N`, `N_ABOVE`,
-#'   `THRESHOLD`, `THRESHOLD_KIND`, `SUPPRESSED`; `NULL` when the panel
-#'   cannot support a fit at all.
+#'   `THRESHOLD` (`NA` on the delivered-level basis), `THRESHOLD_KIND`,
+#'   `SUPPRESSED`; `NULL` when the panel cannot support a fit at all.
 #' @export
 #' @examples
 #' spec <- read_el_spec("00_SIM_EL_Spec")
@@ -82,16 +91,26 @@ compute_logistic <- function(data, spec, panel = NULL, threshold = NULL,
   if (is.null(panel)) panel <- compute_panel(data, spec)
   if (is.na(panel$year)) return(NULL)
 
-  if (is.null(threshold)) threshold <- .check3_cut(spec, panel$subject)
-  if (is.na(threshold)) return(NULL)   # [no cut in the spec: nothing to model]
-
   rows <- .check3_panel_rows(data, spec, panel)
+  if (is.null(threshold)) {
+    basis <- attr(rows, "basis")
+    # [no cut for this grade and no proficient level: nothing to model]
+    if (is.null(basis) || is.na(basis)) return(NULL)
+    threshold <- .check3_cut(spec, panel$subject, panel$grade)
+    if (identical(basis, "level")) {
+      threshold_kind <- "delivered performance level"
+    }
+  } else {
+    if (is.na(threshold)) return(NULL)
+    rows$PROFICIENT <- ifelse(is.na(rows$SCALE_SCORE), NA,
+                              rows$SCALE_SCORE >= threshold)
+  }
   fr <- rows[rows$EL_STATUS %in% "current" & !rows$ALTERNATE &
-               !is.na(rows$ELP_SCALE) & !is.na(rows$SCALE_SCORE), ,
+               !is.na(rows$ELP_SCALE) & !is.na(rows$PROFICIENT), ,
              drop = FALSE]
   if (!nrow(fr)) return(NULL)
 
-  fr$ABOVE <- as.integer(fr$SCALE_SCORE >= threshold)
+  fr$ABOVE <- as.integer(fr$PROFICIENT)
   out <- .check3_empty_logistic(panel, threshold, threshold_kind,
                                 n = nrow(fr), n_above = sum(fr$ABOVE))
 
@@ -153,8 +172,12 @@ compute_logistic <- function(data, spec, panel = NULL, threshold = NULL,
 #' **`NA` is an answer here, not a failure.** A grade where no band reaches
 #' half is a grade where language proficiency at every observed level is not
 #' sufficient for the content bar, which is exactly the kind of finding this
-#' stage exists to surface. `TOP_BAND_PCT` says how far the highest band did
-#' get, so the empty answer is readable.
+#' stage exists to surface. `TOP_BAND_PCT` is the best share any band
+#' reached (not necessarily the top band's), so the empty answer is readable.
+#'
+#' `CUT` and `PROFICIENCY_BASIS` record what "proficient" meant in the panel:
+#' the grade's cut score (`"cut"`), or the delivered performance level when
+#' the spec gives no cut for the grade (`"level"`, `CUT` then `NA`).
 #'
 #' `LANDING_AT_OR_ABOVE_EXIT` flags a landing band at or above the band the
 #' state's own exit threshold falls in. Those bands are thin and peculiar --
@@ -187,10 +210,16 @@ compute_landing <- function(box_data, logistic, spec) {
   landing <- if (is.na(first)) NA_character_ else bands[[first]]
   top <- suppressWarnings(max(b$PCT_AT_CUT, na.rm = TRUE))
 
+  cut <- attr(box_data, "cut")
+  basis <- attr(box_data, "basis")
   tibble::tibble(
     SUBJECT = if (is.null(panel)) NA_character_ else panel$subject,
     GRADE   = if (is.null(panel)) NA_character_ else panel$grade,
     YEAR    = if (is.null(panel)) NA_integer_ else panel$year,
+    # What "proficient" meant in this panel: the grade's own cut score, or the
+    # delivered performance level when the spec gives no cut for the grade.
+    CUT     = if (is.null(cut)) NA_real_ else as.numeric(cut),
+    PROFICIENCY_BASIS = if (is.null(basis)) NA_character_ else basis,
     LANDING_BAND = landing,
     LANDING_PCT = if (is.na(first)) NA_real_ else b$PCT_AT_CUT[[first]],
     LANDING_CROSSING = if (is.null(logistic)) NA_real_ else logistic$CROSSING,
@@ -207,19 +236,27 @@ compute_landing <- function(box_data, logistic, spec) {
 # Which band the state's own exit threshold falls in. Read from the exit
 # rule's structured terms, never typed: the rule is declared on a level, and
 # the bands are a banding of that same level scale.
+#
+# The term on the banded component itself wins, wherever it sits in the rule:
+# the bands are a banding of that component's level, so a floor on another
+# component (Massachusetts' Literacy 3.9, say) is not a point on this axis.
+# Until 2026-11 the first level term was taken whatever its component, so the
+# rule's term order changed the answer. Only when no term is on the banded
+# component does the first ELP level term stand in. `from = "elp"` written
+# out counts as ELP, the same as leaving it unset.
 .check3_exit_band <- function(spec) {
   terms <- unlist(lapply(spec$policy$exit$pathways, function(p) p$terms),
                   recursive = FALSE)
-  lvl <- NULL
-  for (tm in terms) {
-    if (identical(tm$measure, "level") && is.null(tm$from) &&
-        is.numeric(tm$value)) {
-      lvl <- tm$value
-      break
-    }
+  is_elp_level <- function(tm) {
+    identical(tm$measure, "level") && identical(tm$from %||% "elp", "elp") &&
+      is.numeric(tm$value)
   }
-  if (is.null(lvl)) return(NA_character_)
-  as.character(assign_elp_band(lvl, spec))
+  elp_terms <- Filter(is_elp_level, terms)
+  if (!length(elp_terms)) return(NA_character_)
+  on_axis <- Filter(function(tm) identical(tm$component, spec_headline(spec)),
+                    elp_terms)
+  pick <- if (length(on_axis)) on_axis[[1]] else elp_terms[[1]]
+  as.character(assign_elp_band(pick$value, spec))
 }
 
 #' The fairness check: an economically comparable English-only group
@@ -262,7 +299,7 @@ compute_fairness_boxes <- function(data, spec, panel = NULL) {
   if (is.null(out)) return(NULL)
 
   attr(out, "panel") <- panel
-  attr(out, "cut") <- .check3_cut(spec, panel$subject)
+  attr(out, "cut") <- .check3_cut(spec, panel$subject, panel$grade)
   attr(out, "filter") <- paste0(
     "English-only students restricted to the economically disadvantaged. A ",
     "crude filter, not a match: this delivery carries one SES flag and no ",
@@ -314,7 +351,9 @@ compute_fairness_logistic <- function(data, spec, panel = NULL) {
   out <- compute_logistic(data, spec, panel, threshold = bar,
                           threshold_kind = "English-only average")
   if (is.null(out)) return(NULL)
-  out$STATE_CUT <- .check3_cut(spec, panel$subject)
+  # NA when the spec has no cut for this grade: the state's bar is then the
+  # delivered performance level, which has no scale-score value to show.
+  out$STATE_CUT <- .check3_cut(spec, panel$subject, panel$grade)
   out$N_REFERENCE <- nrow(eo)
   out
 }

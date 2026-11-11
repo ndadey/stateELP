@@ -46,16 +46,34 @@ n <- !h
 
 component <- spec_headline_label(spec)
 min_cell <- spec_min_cell(spec)
+# The data, not the spec, says whether this is the shipped simulation: a
+# state's results carry no simulation contract version.
+is_sim <- !is.null(res$meta$sim_contract_version) &&
+  !is.na(res$meta$sim_contract_version)
 
 # Captions are built here, not inline: a colon-space inside an `!expr` value
 # is read as a YAML mapping and the render fails.
+cut_phrase <- if (!is.null(res$meta$cut) && !is.na(res$meta$cut)) {
+  sprintf("the red line is grade %s's proficiency cut (%s).", res$meta$grade,
+          format(round(res$meta$cut), big.mark = ","))
+} else {
+  "no cut line is drawn: the spec gives no cut score for this grade."
+}
 box_cap <- if (h[["box_data"]]) {
   sprintf(paste("%s scale score by %s band, grade %s, %d.",
                 "Former ELs and the English-only group are references, not bands.",
-                "The diamond is the mean; the red line is the proficiency cut.",
+                "The diamond is the mean; %s",
                 "Groups with fewer than %d scores are suppressed and not drawn."),
-          res$meta$subject, component, res$meta$grade, res$meta$year, min_cell)
+          res$meta$subject, component, res$meta$grade, res$meta$year,
+          cut_phrase, min_cell)
 } else "Academic scale score by ELP band"
+# Older saved results predate these notes.
+prof_note <- res$meta$proficiency_note
+if (is.null(prof_note)) prof_note <- NA_character_
+logit_note <- res$meta$logistic_note
+if (is.null(logit_note)) logit_note <- NA_character_
+h_prof <- !is.na(prof_note)
+h_logit <- !is.na(logit_note)
 
 summary_cap <- if (h[["summary_table"]]) {
   sprintf(paste("The same panel as numbers: %s, grade %s, %d.",
@@ -112,6 +130,12 @@ cat("> **No panel.** ", res$meta$note, "\n", sep = "")
 cat(res$meta$pairing_note, "\n")
 ```
 
+```{r}
+#| output: asis
+#| eval: !expr h_prof
+cat("> **How proficiency is read.** ", prof_note, "\n", sep = "")
+```
+
 ::: {.callout-warning appearance="default" icon=false}
 ## Reading the band axis
 
@@ -139,9 +163,15 @@ against Prep 2's composition findings and Data Check 1's attrition.
 
 ```{r}
 #| label: tbl-landing
-#| tbl-cap: "Where each grade lands. A dash means no band reached half; the next column says how far the highest band got. Bold marks a landing at or above the band the exit threshold falls in."
+#| tbl-cap: "Where each grade lands, each against its own grade's proficiency cut. A dash means no band reached half; the next column gives the best share any band reached. Bold marks a landing at or above the band the exit threshold falls in."
 #| eval: !expr h[["landing"]]
 ft_check3_landing(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h_logit
+cat("> ", logit_note, "\n", sep = "")
 ```
 
 ```{r}
@@ -227,9 +257,10 @@ two is more informative than its position against the cut alone.
 
 ## What is not here
 
-All `r res$meta$panels` grade-and-subject panels are computed; the figure
-draws one of them and the tables carry them all. Four things are still
-absent.
+All `r res$meta$panels` grade-and-subject panels are computed, each against
+its own grade's proficiency cut; the figure draws one of them and the tables
+carry them all. Three things are still absent, and the contested-zone models
+are not drawn.
 
 **A matched English-only group.** The fairness check filters on a single
 free-and-reduced-lunch flag. Propensity matching --- and, where a delivery
@@ -237,37 +268,40 @@ carries it, parental education --- would make the comparison a comparison
 rather than a narrowing. This delivery has no parental-education field, so
 the crude version is the ceiling here.
 
-**The contested-zone models.** Type-gated, and this spec is Type 1: with a
+**The contested-zone models.** Type-gated (Types 2, 4, 5 and 6). With a
 single overall criterion there is no second criterion to disagree with it, so
-there is no contested zone to model. A Type 2--6 state would get box plots
-split by the second criterion within band, and one logistic with an
-interaction presented as two predicted curves.
-
-**Confidence around the crossings.** The logistic reports a point. A
-delivery-quality answer wants an interval around it, and the intervals would
-be wide wherever the crossing is already an extrapolation.
+there is no contested zone to model. Under a multi-criterion rule the models
+are computed into the results (`$contested_zone_models`: box plots split by
+the second criterion within band, and one logistic with an interaction
+presented as two predicted curves), but this document does not draw them yet.
 
 **A year dimension.** Each panel takes the most recent year the pairing is
 available. Whether the landing moves year to year is a question this stage
 could answer and does not yet ask.
 
-::: {.callout-important appearance="default" icon=false}
-## What this panel can and cannot say here
-
-On simulated data this is **machinery, not a finding.** Every gap between EL
-and English-only students in this simulation is a parameter of the generator,
-not a measurement of anything. The figure demonstrates that the panel builds,
-suppresses and renders correctly; it is not evidence about any state's
-students. Run against a real delivery, the same figure is the stage's
-substantive output.
-:::
+```{r}
+#| output: asis
+#| eval: !expr is_sim
+# Only on the shipped simulation: a state's own delivery is a finding.
+cat(
+  '::: {.callout-important appearance="default" icon=false}',
+  "## What this panel can and cannot say here",
+  "",
+  "On simulated data this is **machinery, not a finding.** Every gap between EL",
+  "and English-only students in this simulation is a parameter of the generator,",
+  "not a measurement of anything. The figure demonstrates that the panel builds,",
+  "suppresses and renders correctly; it is not evidence about any state's",
+  "students. Run against a real delivery, the same figure is the stage's",
+  "substantive output.",
+  ":::", "", sep = "\n")
+```
 
 ::: {.callout-tip appearance="default" icon=false}
 ## Decide before moving on
 
-1. Whether the crossing point, once the later passes report it across every
-   grade, is stable enough to inform a threshold --- or whether it moves by
-   grade in ways Prep 2 and Data Check 1 explain.
+1. Whether the crossing point, read across every grade, is stable enough to
+   inform a threshold --- or whether it moves by grade in ways Prep 2 and
+   Data Check 1 explain.
 2. Whether the English-only comparison should be economically matched or
    taken whole, and on which variable, given what this delivery carries.
 3. Which grades carry enough students, after suppression, to be read at all.

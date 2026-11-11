@@ -140,7 +140,8 @@ test_that("compute_cohorts() returns one row per candidate, no outcomes", {
 
   expect_s3_class(co, "tbl_df")
   expect_identical(names(co), c("COHORT_LABEL", "COHORT_START_YEAR", "N_ENTRY",
-                                "FOLLOWUP_YEARS", "SELECTED", "SUPPRESSED"))
+                                "FOLLOWUP_YEARS", "ACADEMIC_YEARS",
+                                "SELECTED", "SUPPRESSED"))
   expect_identical(nrow(co), 5L)                  # five usable K cohorts
   expect_identical(sum(co$SELECTED), 1L)
   # Follow-up shrinks with every later entry year, and equals the number of
@@ -942,4 +943,62 @@ test_that("the banded curve plots, and the split curve ignores the band", {
                            survival_est = res$survival_est)
   expect_false(any(vapply(split$layers,
                           function(l) inherits(l$geom, "GeomRibbon"), TRUE)))
+})
+
+# ---- choosing the cohort (2026-11, state test run item 9) ------------------
+
+test_that("entry_year picks the cohort; the default is unchanged", {
+  b <- make_check1_sim_bundle()
+  spec <- check1_spec()
+  default <- compute_cohorts(b, spec)
+  expect_identical(attr(default, "selected_by"), "longest follow-up")
+
+  years <- default$COHORT_START_YEAR[!default$SUPPRESSED]
+  later <- years[[length(years)]]                 # derived, never typed
+  chosen <- compute_cohorts(b, spec, entry_year = later)
+  expect_identical(chosen$COHORT_START_YEAR[chosen$SELECTED], later)
+  expect_identical(sum(chosen$SELECTED), 1L)
+  expect_identical(attr(chosen, "selected_by"), "entry_year")
+  # Everything but the selection is the same table.
+  expect_equal(chosen[setdiff(names(chosen), "SELECTED")],
+               default[setdiff(names(default), "SELECTED")],
+               ignore_attr = "selected_by")
+
+  # A year that is not a usable candidate stops, naming the ones that are.
+  expect_error(compute_cohorts(b, spec, entry_year = min(years) - 5L),
+               paste("Usable entry years:", paste(years, collapse = ", ")))
+})
+
+test_that("ACADEMIC_YEARS counts the years a cohort has academic scores", {
+  b <- make_check1_sim_bundle()
+  spec <- check1_spec()
+  co <- compute_cohorts(b, spec)
+  # Later cohorts are followed for fewer years, so they reach fewer tested
+  # grades -- the number never exceeds the follow-up.
+  expect_true(all(co$ACADEMIC_YEARS <= co$FOLLOWUP_YEARS))
+  expect_true(all(co$ACADEMIC_YEARS > 0L))
+  expect_false(is.unsorted(rev(co$ACADEMIC_YEARS)))
+  # Without an academic table there is nothing to count.
+  no_ac <- as_el_data(el_long_sim, roster = el_roster_sim, spec = spec)
+  expect_true(all(is.na(compute_cohorts(no_ac, spec)$ACADEMIC_YEARS)))
+})
+
+test_that("run_check1(entry_year =) analyzes that cohort and says so", {
+  b <- make_check1_sim_bundle()
+  spec <- check1_spec()
+  co <- compute_cohorts(b, spec)
+  later <- co$COHORT_START_YEAR[!co$SUPPRESSED][[2]]
+  res <- run_check1(b, spec, entry_year = later)
+  expect_identical(res$meta$cohort,
+                   co$COHORT_LABEL[co$COHORT_START_YEAR == later])
+  expect_identical(res$meta$cohort_choice, "entry_year")
+  expect_identical(res$meta$entry_year, as.integer(later))
+  expect_match(res$meta$sample, "Chosen by the analyst")
+  expect_match(res$meta$sample, co$COHORT_LABEL[co$SELECTED], fixed = TRUE)
+  expect_identical(nrow(res$life_table),
+                   co$FOLLOWUP_YEARS[co$COHORT_START_YEAR == later])
+  # The exit-dating convention is said in words for every timeline result.
+  expect_match(res$meta$exit_dating_note, "first year a student is recorded")
+  expect_match(res$meta$exit_dating_note,
+               paste0("within ", spec_max_years(spec) - 1L, "\\."))
 })

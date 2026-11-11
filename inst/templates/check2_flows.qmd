@@ -76,6 +76,20 @@ crosstab_cap <- if (h[["crosstab"]]) {
   "Exit outcomes"
 }
 
+# Older saved results predate the outcome shares and the dating note.
+h_outcomes <- !is.null(res$outcome_shares)
+h_dating <- !is.null(res$meta$exit_dating_note) &&
+  !is.na(res$meta$exit_dating_note)
+outcome_cap <- if (h_outcomes) {
+  paste(
+    sprintf("Exit outcomes within each group, %s cohort, observed through %d. Each row sums to 100%%.",
+            res$meta$cohort, panel_last),
+    sprintf("Exited on time means within %s of entering status; exited later means after that but by %d; not observed exiting means still classified in %d.",
+            res$meta$on_time_text, panel_last, panel_last),
+    sprintf("Cells under %d students, and groups under %d, are suppressed.",
+            min_cell, min_cell))
+} else "Exit outcomes within each group"
+
 academic_cap <- if (h[["academic_summary"]]) {
   sprintf(paste0("%s achievement by exit group at the same year in status, %s ",
                  "cohort. The grade beside each year is the modal grade of the ",
@@ -196,6 +210,28 @@ first row is what tells you the column is empty.
 #| output: asis
 #| eval: !expr h[["crosstab"]]
 cat("Characteristics are read **at entry** --- the cohort's own start year, the one year every member is current by construction --- so a block describes who these students were when they entered, not something that moved with them. Two are derived rather than delivered: district size is the entry-year district banded by that district's own EL count, and the initial ELP band is the first annual ", component, " level, taken from the same derivation Data Check 1's band-split curve uses so the two stages cannot disagree.\n", sep = "")
+```
+
+### Each group's outcomes
+
+The table above reads down: of the students who exited on time, what share
+started in each ELP band. The table below reads across, which is usually the
+question a state asks: **of the students who started at a given ELP band (or
+in a given district size, or with an IEP), what share exited on time, exited
+later, were not observed exiting, or left the data?** Each row is one group
+and sums to 100%.
+
+```{r}
+#| label: tbl-outcome-shares
+#| tbl-cap: !expr outcome_cap
+#| eval: !expr h_outcomes
+ft_check2_outcome_shares(res)
+```
+
+```{r}
+#| output: asis
+#| eval: !expr h_dating
+cat("> ", res$meta$exit_dating_note, "\n", sep = "")
 ```
 
 ## Academic achievement at comparable points
@@ -362,7 +398,7 @@ cat("This document reports ", res$meta$academic_subject, ". The spec also declar
 ```{r}
 #| output: asis
 cat("*Spec: ", res$meta$spec_id, ". ",
-    if (identical(res$meta$spec_id, "SIM")) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
+    if (!is.null(res$meta$sim_contract_version) && !is.na(res$meta$sim_contract_version)) paste0("Simulated data, contract ", res$meta$sim_contract_version, ". ") else "",
     "stateELP ", res$meta$package_version, ", run ", format(res$meta$run_date), ".*\n", sep = "")
 ```
 

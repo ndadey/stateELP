@@ -190,7 +190,7 @@ compute_contested_models <- function(data, spec, panel = NULL, widen = 0.5) {
 # The academic distribution inside the zone, by band and by whether the other
 # criteria were cleared. Same summary arithmetic as the main panel.
 .check3_zone_boxes <- function(zr, spec, panel) {
-  cut <- .check3_cut(spec, panel$subject)
+  if (!"PROFICIENT" %in% names(zr)) zr <- .check3_add_proficient(zr, spec, panel)
   zr$CLEARED <- ifelse(zr$CLEARED_OTHERS, "cleared the other criteria",
                        "blocked by another criterion")
   out <- zr |>
@@ -203,7 +203,7 @@ compute_contested_models <- function(data, spec, panel = NULL, widen = 0.5) {
       Y_MEAN   = .check3_mean(.data$SCALE_SCORE),
       Y_P75    = .check3_q(.data$SCALE_SCORE, 0.75),
       Y_MAX    = .check3_q(.data$SCALE_SCORE, 1),
-      PCT_AT_CUT = .check3_share_at(.data$SCALE_SCORE, .env$cut),
+      PCT_AT_CUT = .check3_share(.data$PROFICIENT),
       .groups = "drop")
   apply_suppression(out, spec, n_col = "N",
                     cols = c("Y_MIN", "Y_P25", "Y_MEDIAN", "Y_MEAN", "Y_P75",
@@ -214,9 +214,9 @@ compute_contested_models <- function(data, spec, panel = NULL, widen = 0.5) {
 # are the output that matters: a coefficient on an interaction term is not
 # something a policy reader can act on, and two curves that separate are.
 .check3_zone_model <- function(zr, spec, panel) {
-  cut <- .check3_cut(spec, panel$subject)
-  fr <- zr[!is.na(zr$ELP_SCALE) & !is.na(zr$SCALE_SCORE), , drop = FALSE]
-  fr$ABOVE <- as.integer(fr$SCALE_SCORE >= cut)
+  if (!"PROFICIENT" %in% names(zr)) zr <- .check3_add_proficient(zr, spec, panel)
+  fr <- zr[!is.na(zr$ELP_SCALE) & !is.na(zr$PROFICIENT), , drop = FALSE]
+  fr$ABOVE <- as.integer(fr$PROFICIENT)
   fr$CLEARED <- as.integer(fr$CLEARED_OTHERS)
 
   ok <- nrow(fr) >= spec_min_cell(spec) &&
@@ -248,6 +248,6 @@ compute_contested_models <- function(data, spec, panel = NULL, widen = 0.5) {
        n = nrow(fr), n_cleared = sum(fr$CLEARED),
        note = paste0(
          "A gap between the two curves means the second criterion separates ",
-         "students the headline score does not. Curves that lie on top of ",
-         "each other mean it is restating the first."))
+         "students the ", spec_headline_label(spec), " does not. Curves that ",
+         "lie on top of each other mean it is restating the first."))
 }

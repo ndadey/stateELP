@@ -4,7 +4,7 @@
 \alias{run_check1}
 \title{Run Check 1 -- cohort survival analysis}
 \usage{
-run_check1(data, spec, start_grade = "K")
+run_check1(data, spec, start_grade = "K", entry_year = NULL)
 }
 \arguments{
 \item{data}{An \code{el_data} bundle.}
@@ -12,6 +12,9 @@ run_check1(data, spec, start_grade = "K")
 \item{spec}{An \code{el_spec}.}
 
 \item{start_grade}{Entry grade defining the cohorts, e.g. \code{"K"}.}
+
+\item{entry_year}{Optional entry year of the cohort to analyze, e.g.
+\code{2017}; \code{NULL} selects the candidate with the longest follow-up.}
 }
 \value{
 A named list of results slots plus \verb{$meta}.
@@ -45,6 +48,12 @@ With no qualifying cohort -- a panel too short for any cohort to reach the
 maximum timeline plus a year, or every candidate below \code{min_cell} -- the
 analysis slots stay \code{NULL}, \verb{$meta$note} says why, and the document renders
 that note. Never a crash, never an invented denominator.
+
+\strong{Which cohort.} By default the candidate with the longest follow-up
+(\code{\link[=compute_cohorts]{compute_cohorts()}}). Pass \code{entry_year} to analyze another -- for
+instance one whose years in status overlap the state's academic test
+years, which \verb{$cohorts$ACADEMIC_YEARS} shows -- and pass the same value to
+\code{\link[=run_check2]{run_check2()}}.
 }
 \examples{
 spec <- read_el_spec("00_SIM_EL_Spec")

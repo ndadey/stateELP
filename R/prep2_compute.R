@@ -588,11 +588,31 @@ compute_entry <- function(data, spec) {
              big.mark = ",")))
   }
   if ("LEFT_TRUNCATED" %in% names(roster)) {
-    flagged <- unique(roster$STUDENT_ID[roster$LEFT_TRUNCATED %in% TRUE])
-    agree <- mean(out$LEFT_TRUNCATED == (out$STUDENT_ID %in% flagged))
-    notes <- c(notes, sprintf(paste0("Left-truncation recomputed here agrees ",
-      "with the delivered `LEFT_TRUNCATED` flag for %s of students."),
-      .p2_fmt_pct(agree)))
+    flagged <- out$STUDENT_ID %in%
+      unique(roster$STUDENT_ID[roster$LEFT_TRUNCATED %in% TRUE])
+    agree <- mean(out$LEFT_TRUNCATED == flagged)
+    # Say where they disagree, not only how much: the rule here (no datable
+    # entry, or entry before the panel) differs from the common delivered
+    # rule "first current in the panel's first year" in one predictable
+    # place -- kindergartners in that year, whose entry this stage dates to
+    # that year because kindergarten is where EL status begins.
+    only_delivered <- flagged & !out$LEFT_TRUNCATED
+    only_here <- !flagged & out$LEFT_TRUNCATED
+    k_first <- only_delivered & out$FIRST_CURRENT_YEAR == first_year &
+      out$FIRST_CURRENT_GRADE %in% "K"
+    detail <- if (agree < 1) sprintf(paste0(
+      " Of the disagreements, %s students are flagged truncated in the ",
+      "delivery but dated here as entering in the panel (%s of them current ",
+      "in kindergarten in %d, the panel's first year), and %s are the ",
+      "reverse."),
+      format(sum(only_delivered), big.mark = ","),
+      format(sum(k_first), big.mark = ","), first_year,
+      format(sum(only_here), big.mark = ",")) else ""
+    notes <- c(notes, paste0(sprintf(paste0("Left-truncation recomputed here ",
+      "agrees with the delivered `LEFT_TRUNCATED` flag for %s of students."),
+      .p2_fmt_pct(agree)), detail, " Here a student is left-truncated when ",
+      "no entry year can be dated or the dated entry precedes the panel. ",
+      "Data Checks 1 and 2 use the delivered flag as given."))
   }
 
   sources <- dplyr::count(out, .data$ENTRY_SOURCE, name = "N")

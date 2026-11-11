@@ -65,16 +65,22 @@ What the built stages produce:
   by initial ELP band), a survival estimate with Greenwood intervals, median
   years to exit, the share exited within the state's timeline, and two
   person-period hazard models. Model 1 uses ELP only. Model 2 adds lagged
-  academic achievement as a test for selection ("skimming") bias.
+  academic achievement as a test for selection ("skimming") bias. The cohort
+  defaults to the one with the longest follow-up; `entry_year` chooses
+  another, for instance one whose years overlap the state's academic data.
 - **Check 2**: nested exit indicators (`EXIT_EVER` ⊇ `EXIT_MAX` ⊇
   `EXIT_ONTIME`, plus `NO_EXIT` and `DISAPPEARED`), a crosstab of exit group by
-  student characteristics, an academic summary for on-time vs. prolonged
-  exiters, and ELP trajectories by exit group.
+  student characteristics, the same table read across (each group's split into
+  on-time, later, no exit and left the data, summing to 100%), an academic
+  summary for on-time vs. prolonged exiters, and ELP trajectories by exit
+  group.
 - **Check 3**: box plots of academic scale score by ELP band (with former and
-  never-EL reference columns and the proficiency cut drawn in), the matching
-  summary table, a logistic model of P(proficient) on the ELP scale score with
-  its 50% crossing point, landing statistics across grades, and two fairness
-  checks against English-only peers.
+  never-EL reference columns and the grade's proficiency cut drawn in), the
+  matching summary table, a logistic model of P(proficient) on the ELP scale
+  score with its 50% crossing point, landing statistics across grades, and two
+  fairness checks against English-only peers. Each grade is read against its
+  own cut scores; without cut scores, against the academic file's own
+  performance level.
 - **Check 4** (first pass, one grade × subject): decision consistency and
   Youden's J at every candidate cut on the ELP level, the J-optimal cut, and
   the state's current exit threshold evaluated beside it. The candidate region
@@ -133,7 +139,11 @@ remotes::install_github("ndadey/stateELP")
 ```
 
 Rendering the stage documents also requires the
-[Quarto CLI](https://quarto.org/docs/get-started/) and the `quarto` R package:
+[Quarto CLI](https://quarto.org/docs/get-started/) and the `quarto` R package.
+Install Quarto from quarto.org (not only the copy inside an editor such as
+Positron), restart R, and confirm with `quarto::quarto_version()`; the
+[setup guide](https://ndadey.github.io/stateELP/guide/setup.html#quarto-for-the-stage-reports)
+has the steps and a troubleshooting list.
 
 ```r
 install.packages("quarto")
@@ -237,15 +247,35 @@ model. It accepts:
    values to components through the spec (never by label), recodes `GRADE "0"`
    to `"K"`, and honors `VALID_CASE`.
 
-`as_academic_long()` standardizes a ReportR- or SGP-shaped academic file.
 Delivered column names are mapped to the package's names through the spec's
-`data$columns` crosswalk.
+`data$columns` crosswalk, and delivered codes (a kindergarten coded `"0"`,
+subject codes such as `READING`, performance levels such as BB / B / P / A)
+through its value maps and level labels. `as_el_data()` applies both to the
+academic table itself.
 
-The stage documents currently render against the shipped simulated data. To
-analyze a state's own delivery, build a bundle and call `run_<stage>()`
-directly. The built documents also accept a `results_file` parameter (a saved
-`run_<stage>()` result), so they can be rendered from results computed
-elsewhere. Ingest of raw state files is out of scope for now.
+**Before building the bundle**, check the files: `el_data_format()` lists
+every column each table must carry, with its allowed values, and
+`check_el_delivery()` holds a delivery against it and lists every problem at
+once, with a fix for each. `mark_alternate_elp()` prepares alternate-test
+rows (Alternate ACCESS codes such as `"P2"`).
+
+```r
+check_el_delivery(my_base, roster = my_roster, academic = my_academic,
+                  spec = my_spec)
+```
+
+The stage documents render against the shipped simulated data by default. To
+report on a state's own delivery, build a bundle, call `run_<stage>()`, save
+the result, and render from it, passing the bundle so the disclosure scan
+checks the report against the state's own student IDs:
+
+```r
+saveRDS(run_check1(my_bundle, my_spec), "results/check1_results.rds")
+render_step("check1", spec_file = "specs/XX_EL_Spec.R",
+            results_file = "results/check1_results.rds", bundle = my_bundle)
+```
+
+Ingest of raw state files is out of scope for now.
 
 ---
 
@@ -261,7 +291,8 @@ reads a state value from anywhere else. A spec has these blocks:
   definition, suppression, the academic benchmark, district-size bands, the
   program inventory and error tolerance (things the **agency or legislature**
   changes)
-- `academic`: subjects, tested grades and proficiency cuts
+- `academic`: subjects, tested grades, performance levels and cut scores (one
+  set per subject, or one per grade where they differ)
 - `data`: the column crosswalk and value maps (things that change with **file
   delivery**)
 - `verification`, `source_documents`
@@ -275,7 +306,7 @@ Four specs ship in `inst/specs/`:
 | Spec | Instrument | Exit type | Purpose |
 |---|---|---|---|
 | `00_SIM_EL_Spec` | WIDA-shaped | Type 1 | Matches the simulated data |
-| `00_TEMPLATE_EL_Spec` | WIDA ACCESS | Type 1 | **Starting point for a real state spec.** Uses a non-identity column crosswalk and vendor component names. Every policy value is a placeholder and describes no state. No data |
+| `00_TEMPLATE_EL_Spec` | WIDA ACCESS | Type 1 | **Starting point for a real state spec written by hand.** Complete: an academic block with cut scores by grade, the long-term EL year and value maps, plus a non-identity column crosswalk and vendor component names. Every policy and academic value is a placeholder and describes no state. No data |
 | `00_ELPA21_EL_Spec` | ELPA21 | Type 6 | Guardrail against WIDA assumptions: a categorical headline, a level-only component and a domain-profile exit rule. Illustrative values, no data |
 | `00_MA_EL_Spec` | WIDA ACCESS | Type 2 | **Massachusetts.** The only shipped spec with a real state's exit rule, and the only one whose Type gate opens on one: Overall Composite ≥ 4.2 **and** Literacy ≥ 3.9, cited to a public DESE document. Every other policy value is a placeholder marked `provisional`. No data |
 
@@ -286,10 +317,18 @@ spec <- read_el_spec("path/to/MY_EL_Spec.R")  # ... or by path
 validate_el_spec(spec)
 ```
 
-To set up a new state, copy `inst/specs/00_TEMPLATE_EL_Spec.R`, replace every
-placeholder with the state's value and its `source`, keep anything not taken
-from an official document marked `provisional`, and set
-`verification$status`.
+To set up a new state, the quickest route is `build_el_spec()`: it asks the
+questions of the plain-language intake form (`spec_intake_form()` writes a
+copy to send to the EL program office, the assessment office and the data
+team) one at a time at the R console, writes the spec file and validates it.
+Or copy `inst/specs/00_TEMPLATE_EL_Spec.R` and fill it in by hand. Either
+way, give each value its `source`, keep anything not taken from an official
+document marked `provisional`, and set `verification$status`.
+
+```r
+spec_intake_form("XX_spec_intake_form.md")       # the form, to send out
+my_spec <- build_el_spec("specs/XX_EL_Spec.R")   # its questions, at the console
+```
 
 **One shipped spec describes a real state's exit criteria, and only that
 part of it is real.** `00_MA_EL_Spec` carries Massachusetts' ACCESS exit
@@ -355,7 +394,10 @@ These rules are enforced as tests, not just stated as conventions:
 stateELP/
 ├── R/                    # flat; files grouped by stage prefix
 │   ├── spec.R            #   el_spec() constructor, validator, accessors
+│   ├── spec_builder.R    #   build_el_spec(): the intake form's questions
 │   ├── el_data.R         #   as_el_data(), adapters, elp_headline(), coverage
+│   ├── el_data_check.R   #   el_data_format(), check_el_delivery(),
+│   │                     #   mark_alternate_elp()
 │   ├── utils.R           #   shared derivations: exit dating, flags, cohorts,
 │   │                     #   suppression, banding, weighting
 │   ├── render_step.R     #   render_step(): render one stage document
@@ -363,6 +405,7 @@ stateELP/
 ├── inst/
 │   ├── templates/        # the stage .qmd documents (the deliverable)
 │   ├── specs/            # shipped el_spec instantiations
+│   ├── spec_builder/     # the plain-language spec intake form
 │   └── lookups/          # display labels (render-side only)
 ├── data/                 # the three simulated tables (.rda)
 ├── data-raw/             # the simulation generator
