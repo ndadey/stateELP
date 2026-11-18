@@ -576,6 +576,10 @@ reads the same list, so the two cannot disagree.
 
 ```{r}
 fmt <- el_data_format()
+# The format's example STUDENT_ID is also one of the simulated students' ids,
+# so the disclosure scan (below) would rightly refuse this page. Show a
+# placeholder instead.
+fmt$EXAMPLE[fmt$COLUMN == "STUDENT_ID"] <- "(a stable id)"
 knitr::kable(fmt[fmt$TABLE == "roster",
                  c("COLUMN", "NEED", "TYPE", "VALUES", "EXAMPLE", "USED_BY")])
 knitr::kable(fmt[fmt$TABLE == "base",
