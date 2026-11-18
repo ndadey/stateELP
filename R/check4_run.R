@@ -115,7 +115,7 @@ run_check4 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
       proficiency_basis    = if (is.null(curve)) NA_character_ else
                                attr(curve, "basis"),
       proficiency_note     = .check4_basis_note(curve, panel, spec),
-      proficient_level     = spec$policy$academic_benchmark$proficient_level,
+      proficient_level     = spec_proficient_level(spec),
       threshold            = thr$value,
       threshold_op         = thr$op,
       threshold_label      = thr$label,
@@ -264,7 +264,7 @@ run_check4 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
       return(paste0(
         "The spec gives no proficiency cut for grade ", panel$grade, " ",
         panel$subject, " and no proficient level ",
-        "(`policy$academic_benchmark$proficient_level`) to read the ",
+        "(`academic$<subject>$proficient_level`) to read the ",
         "academic file's own performance level against, so no student can be ",
         "classified proficient and there is no curve to draw."))
     }
@@ -290,5 +290,5 @@ run_check4 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
     ", so a student counts as proficient when the academic file's own ",
     "performance level is at or above level ", spec_proficient_level(spec),
     ". Enter the grade's cut scores in the spec (`academic$", panel$subject,
-    "$cuts`, by grade) to classify on the scale score instead.")
+    "$proficient_cut`, by grade) to classify on the scale score instead.")
 }

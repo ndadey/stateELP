@@ -24,21 +24,23 @@ are the same in every grade; required to pick one when they differ.}
 See above.
 }
 \description{
-\code{spec$academic[[subject]]$cuts} is either one vector of level minimums for
-every grade or a list of them named by grade. These accessors hide which:
-every stage asks for a subject \emph{and a grade} and gets that grade's cuts.
+A spec gives each subject's proficient cut, \verb{academic$<subject>$ proficient_cut}: one scale score for every grade, or scores named by
+grade. These accessors hide which: every stage asks for a subject \emph{and a
+grade} and gets that grade's cut.
 }
 \details{
 \itemize{
-\item \code{spec_academic_cuts()} returns the minimum scale score of each level
-above the lowest, for one subject and grade -- \code{NULL} when the spec
-declares none for that grade.
-\item \code{spec_proficient_level()} returns
-\code{policy$academic_benchmark$proficient_level}, the position of the lowest
-proficient level (\code{NA} when the spec does not set it).
-\item \code{spec_proficient_cut()} returns the lowest scale score of that level for
-one subject and grade (\code{NA} when either piece is missing). It is the red
-line in Check 3's box plots and the content classification in Check 4.
+\item \code{spec_proficient_cut()} returns the lowest proficient scale score for
+one subject and grade (\code{NA} when the spec gives none for that grade). It
+is the red line in Check 3's box plots and the content classification in
+Check 4.
+\item \code{spec_proficient_level()} returns the position of the lowest proficient
+performance level (\code{NA} when the spec does not set it), used only for a
+grade with no cut.
+\item \code{spec_academic_cuts()} returns a full table of level minimums for one
+subject and grade. A spec written in the short form carries only the
+proficient cut, so this is \code{NULL} for it; it serves a full internal spec
+that carries \verb{academic$<subject>$cuts}.
 }
 
 When the spec has no cut for a grade, Checks 3 and 4 fall back to the

@@ -118,7 +118,7 @@ run_check2 <- function(data, spec, start_grade = "K", subject = NULL,
       blocks               = blocks,
       academic_subject     = if (is.null(academic)) NA_character_
                              else attr(academic, "subject"),
-      proficient_level     = spec$policy$academic_benchmark$proficient_level,
+      proficient_level     = spec_proficient_level(spec),
       other_subjects       = setdiff(subjects, attr(academic, "subject")),
       type_gate_applies    = spec_has_type(spec, 2:6),
       blocked_note         = .check2_blocked_note(blocked, spec),
@@ -177,10 +177,10 @@ run_check2 <- function(data, spec, start_grade = "K", subject = NULL,
   if (!is.null(blocked)) return(NA_character_)
   if (!spec_has_type(spec, 2:6)) {
     return(paste0(
-      "The exit rule is declared as Type 1 (a single overall composite), so ",
+      "The exit rule has a single criterion (Type 1), so ",
       "there are no blocked-by-one-criterion groups to compare and this check ",
-      "does not apply. Declare the additional criteria in ",
-      "`spec$policy$exit$pathways` and set `types` to activate it."))
+      "does not apply. Add the additional criteria to the spec's `exit` ",
+      "(a floor on a second score) to activate it."))
   }
   paste0(
     "The exit rule declares more than one criterion, so this check applies, ",

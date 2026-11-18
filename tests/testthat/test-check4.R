@@ -735,8 +735,8 @@ test_that("no academic table, or no academic subject, means no stage", {
   expect_match(res$meta$note, "No academic table")
   expect_match(res$meta$sample, "no panel is drawn")
 
-  # The shipped ELPA21 spec points at a separate academic spec and declares no
-  # subject: there is no cut to classify against, and no crash.
+  # The shipped ELPA21 spec has no academic block and so declares no subject:
+  # there is no cut to classify against, and no crash.
   spec21 <- read_el_spec("00_ELPA21_EL_Spec")
   b21 <- make_check4_elpa21_bundle()
   res21 <- run_check4(b21, spec21)
@@ -855,9 +855,9 @@ test_that("Check 4 classifies against the panel grade's own cut", {
   spec <- make_check4_spec()
   sb <- spec_academic_subjects(spec)[[1]]
   g <- spec_academic_grades(spec, sb)
-  base <- spec$academic[[sb]]$cuts
-  spec$academic[[sb]]$cuts <- stats::setNames(
-    lapply(g, function(x) if (x == g[[1]]) base - 20 else base), g)
+  base <- spec$academic[[sb]]$proficient_cut[[1]]
+  spec$academic[[sb]]$proficient_cut <- stats::setNames(
+    ifelse(g == g[[1]], base - 20, base), g)
   b <- make_check4_sim_bundle()
   res <- run_check4(b, spec, grade = g[[1]])
   expect_identical(res$meta$cut, spec_proficient_cut(spec, sb, g[[1]]))
@@ -872,7 +872,7 @@ test_that("Check 4 classifies against the panel grade's own cut", {
 
 test_that("without cut scores Check 4 reads the delivered level, and says so", {
   spec <- make_check4_spec()
-  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$cuts <- NULL
+  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$proficient_cut <- NULL
   b <- make_check4_sim_bundle()
   res <- run_check4(b, spec)
   expect_false(is.null(res$consistency_curve))

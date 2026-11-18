@@ -53,8 +53,12 @@ by state. Any other test is entered score by score.
 available yet -- Checks 3 and 4 then read proficiency from the academic
 file's own performance level.
 
-What it does not cover: a rule with more than one route to exit (Type 5)
-needs the extra pathways added to the file by hand.
+It writes the short form \code{\link[=el_spec]{el_spec()}} takes. That form holds an exit rule of
+minimum proficiency levels that a student must all meet; a rule it cannot
+hold -- a scale-score criterion, "any one of", a committee override, more
+than one route to exit -- stops the build with the answer to change.
+Answers the spec does not hold (who decides, growth targets, the program
+inventory, the alternate test) are kept in the answers file.
 }
 \examples{
 \dontrun{

@@ -24,12 +24,21 @@ test_that("SIM spec matches sim_contract.md v0.4.0", {
   # 4.3 headline, 4.5 bands, 2.2 P block, 5.4 cut convention.
   expect_identical(spec_headline(spec), "overall")
   expect_identical(spec_bands(spec)$breaks, c(1, 2, 3, 4, 4.5, 5, 7))
-  expect_length(spec_bands(spec)$labels, 6L)
+  expect_identical(spec_bands(spec)$labels,
+                   c("1.0-1.9", "2.0-2.9", "3.0-3.9", "4.0-4.4", "4.5-4.9",
+                     "5.0+"))
   expect_identical(spec_min_cell(spec), 10L)
   expect_identical(spec_max_years(spec), 6L)
-  expect_identical(spec$academic$ELA$cuts, c(700, 735, 750, 790))
+  expect_identical(spec_essa_years(spec), 5L)
+  expect_identical(spec$policy$timelines$lt_el_years, 6L)
+  # Level 4's minimum of c(700, 735, 750, 790), the same in every grade.
+  for (g in as.character(3:11)) {
+    expect_identical(spec_proficient_cut(spec, "ELA", g), 750)
+    expect_identical(spec_proficient_cut(spec, "Math", g), 750)
+  }
   expect_identical(spec$academic$ELA$op, ">=")
-  expect_identical(spec$academic$ELA$grades, as.character(3:11))
+  expect_identical(spec_academic_grades(spec, "ELA"), as.character(3:11))
+  expect_identical(spec$data$entry_date_rule, "calendar_year")
 
   # Type 1 means every Type-gated Additional check is skipped.
   expect_identical(spec_exit_types(spec), 1L)
@@ -39,54 +48,51 @@ test_that("SIM spec matches sim_contract.md v0.4.0", {
   expect_identical(spec$verification$status, "synthetic")
 })
 
-test_that("SIM spec's identity crosswalk names real columns of the shipped tables", {
+test_that("the shipped tables need no crosswalk under the SIM spec", {
+  # The sim emits the canonical ALL-CAPS names, so the SIM spec carries no
+  # `delivery` crosswalk and every canonical column is already there.
   spec <- read_el_spec("00_SIM_EL_Spec")
-  cols <- spec$data$columns
-  tables <- list(roster = stateELP::el_roster_sim,
-                 base = stateELP::el_long_sim,
-                 academic = stateELP::academic_long_sim)
-  for (tbl in names(tables)) {
-    m <- cols[[tbl]]
-    expect_identical(names(m), unname(m), info = tbl)        # identity
-    expect_true(all(names(m) %in% names(tables[[tbl]])), info = tbl)
-  }
+  expect_null(spec$data$columns)
+  expect_true(all(c("STUDENT_ID", "YEAR", "GRADE", "EL_STATUS", "ELP_FORM")
+                  %in% names(stateELP::el_roster_sim)))
+  expect_true(all(c("STUDENT_ID", "YEAR", "COMPONENT", "SCALE_SCORE",
+                    "ACHIEVEMENT_LEVEL") %in% names(stateELP::el_long_sim)))
+  expect_true(all(c("STUDENT_ID", "YEAR", "GRADE", "SUBJECT", "SCALE_SCORE")
+                  %in% names(stateELP::academic_long_sim)))
 })
 
 test_that("ELPA21 spec exercises the non-WIDA branches", {
   spec <- read_el_spec("00_ELPA21_EL_Spec")
 
-  # A categorical headline that reports a level and no scale score.
+  # A categorical score that reports a level and no scale score.
   expect_identical(spec_headline(spec), "determination")
   expect_identical(spec$elp$level_scale$type, "categorical")
+  expect_identical(spec$elp$level_scale$levels,
+                   c("Emerging", "Progressing", "Proficient"))
   expect_identical(spec$elp$components$determination$measures, "level")
-  # ... and the mirror case: a scale score with no level.
-  expect_identical(spec$elp$components$overall$measures, "scale")
   # No declared bands: the package default of one band per level applies.
   expect_null(spec_bands(spec))
-  # Type 6 gates the Additional checks on.
-  expect_identical(spec_exit_types(spec), 6L)
-  expect_true(spec_has_type(spec, 6))
+  # Exit is the Proficient determination, a position on the category list.
+  terms <- spec$policy$exit$pathways[[1]]$terms
+  expect_length(terms, 1L)
+  expect_identical(terms[[1]]$component, "determination")
+  expect_identical(terms[[1]]$value, 3)
+  expect_identical(spec_exit_types(spec), 1L)
+  # No academic block, so the academic analyses have no subject to run.
+  expect_length(spec_academic_subjects(spec), 0L)
 })
 
-test_that("the template spec's renamed components keep their native labels", {
-  # The migration case: an older `assessment_spec` carried `literacy` and
-  # `composite_overall`, which are not vocabulary terms. They map to `written`
-  # and `overall` and keep the vendor's label as `native_name`. The SIM spec
-  # cannot test this -- its component keys are already canonical.
+test_that("the template shows every optional field, crosswalk included", {
+  # The SIM spec needs no crosswalk, so the template is the suite's case of a
+  # non-identity one: a canonical name on the left, the file's on the right.
   spec <- read_el_spec("00_TEMPLATE_EL_Spec")
-
-  # `literacy` and `composite_overall` are not vocabulary terms; they map.
-  expect_true(all(c("written", "overall") %in% spec_components(spec)))
-  expect_false(any(c("literacy", "composite_overall") %in% spec_components(spec)))
-  expect_match(spec$elp$components$written$native_name, "Literacy")
-
-  # policy_benchmark was an exit rule, not a level label: it did not survive
-  # into level_scale.
-  expect_null(spec$elp$level_scale$policy_benchmark)
-  # scale_scores -> cuts, NULL in the shell, and never fills a level.
-  expect_null(spec$elp$cuts)
-  # cohort_anchor_grade is gone; the starting cohort is a function argument.
-  expect_null(spec$years)
+  cols <- spec$data$columns
+  expect_identical(cols$roster[["STUDENT_ID"]], "Student_UID")
+  expect_identical(cols$base[["YEAR"]], "school_year")
+  # A field the crosswalk does not mention keeps its canonical name.
+  expect_false("GRADE" %in% names(cols$roster))
+  expect_length(spec$elp$level_scale$labels, 6L)
+  expect_identical(spec_headline_label(spec), "Overall Composite")
   expect_identical(spec$verification$status, "unverified")
 })
 
@@ -96,7 +102,8 @@ test_that("MA spec carries the sourced exit rule and nothing else sourced", {
   # (14 August 2024), slide 3 -- 4.2 overall and 3.9 literacy.
   spec <- read_el_spec("00_MA_EL_Spec")
 
-  expect_identical(spec$program$state, "MA")
+  expect_identical(spec$program$short_name, "MA")
+  expect_identical(spec$program$state, "Massachusetts")
   expect_identical(spec_headline(spec), "overall")
 
   # Composite plus floor: one conjunctive pathway, two level terms.
@@ -123,18 +130,22 @@ test_that("MA spec carries the sourced exit rule and nothing else sourced", {
   }
   expect_identical(spec$verification$status, "provisional")
 
-  # No MCAS cuts are invented: the academic block is a pointer, so the spec
+  # The placeholders are left out rather than placeheld: no on-time rule or
+  # long-term year, so their absence reads as unknown.
+  expect_null(spec$policy$timelines$on_time_rule)
+  expect_null(spec$policy$timelines$lt_el_years)
+
+  # No MCAS cuts are invented: there is no academic block, so the spec
   # declares no subjects (CLAUDE.md 5) and the benchmark stays unset.
   expect_length(spec_academic_subjects(spec), 0L)
-  expect_true(is.na(spec$policy$academic_benchmark$proficient_level))
+  expect_true(is.na(spec_proficient_level(spec)))
 })
 
-test_that("the MA rule's headline term comes first, which Check 3 depends on", {
-  # .check3_exit_band() takes the FIRST term with measure = "level" whatever
-  # component it names, and only when `from` is unset. Reorder these terms,
-  # or set from = "elp" explicitly, and Check 3 silently reports the Literacy
-  # floor (3.9) as the exit threshold instead of the composite cut (4.2).
-  # Check 4 matches the headline by name and is not order dependent.
+test_that("the MA rule's headline term comes first", {
+  # el_spec() puts the score's own criterion first whatever order `exit`
+  # names them in, so a rule reads the way a state writes it. Check 3 and
+  # Check 4 both match the headline term by name, so the order is no longer
+  # load-bearing, but neither term may set `from`.
   spec <- read_el_spec("00_MA_EL_Spec")
   terms <- spec$policy$exit$pathways[[1]]$terms
 
@@ -166,6 +177,162 @@ test_that("MA is the first shipped spec whose Type gate opens on a real rule", {
   # must appear, or the second criterion is doing no independent work.
   expect_gt(nrow(cw$blocked_groups), 0L)
   expect_length(unique(cw$blocked_groups$BLOCKED_BY), 2L)
+})
+
+# ---- the short form el_spec() takes ------------------------------------------
+
+test_that("the short form expands to the conventions every stage reads", {
+  spec <- do.call(el_spec, make_spec_short())
+  tl <- spec$policy$timelines
+  p <- spec$policy$exit$pathways
+  expect_length(p, 1L)
+  expect_identical(p[[1]]$combine, "all")
+  expect_identical(spec$policy$exit$combination, "any_pathway")
+  expect_identical(p[[1]]$terms[[1]],
+                   list(component = "overall", measure = "level", op = ">=",
+                        value = 4.5))
+  expect_identical(tl$exit_dating, "first_former_year")
+  expect_identical(tl$initial_elp_source, "first_annual")
+  # Defaults: on-time falls back to the maximum; LTEL is not set.
+  expect_null(tl$on_time_rule)
+  expect_null(tl$lt_el_years)
+  expect_identical(spec_min_cell(spec), 10L)
+  expect_identical(spec$policy$district_size_bands$labels,
+                   c("<100", "101-999", "1,000+"))
+  expect_identical(spec$policy$error_tolerance$costlier_error, "unknown")
+  expect_length(spec_academic_subjects(spec), 0L)
+  # Every vocabulary component is accepted in a delivery.
+  expect_setequal(spec_components(spec), el_component_vocabulary())
+  expect_identical(spec$program$short_name, "TS")
+})
+
+test_that("the Type is derived from the rule's shape", {
+  one <- do.call(el_spec, make_spec_short())
+  expect_identical(spec_exit_types(one), 1L)
+  floor <- do.call(el_spec, make_spec_short(exit = c(written = 3.9,
+                                                     overall = 4.2)))
+  expect_identical(spec_exit_types(floor), 2L)
+  # The score's criterion is put first whatever order `exit` gives.
+  expect_identical(floor$policy$exit$pathways[[1]]$terms[[1]]$component,
+                   "overall")
+  profile <- do.call(el_spec, make_spec_short(
+    exit = c(listening = 4, speaking = 4, reading = 4, writing = 4)))
+  expect_identical(spec_exit_types(profile), 6L)
+  expect_true(spec_has_type(profile, 2:6))
+})
+
+test_that("band labels are generated from the band edges", {
+  b <- .bands_from_edges(c(1, 2, 3, 4, 4.5, 5), 6)
+  expect_identical(b$labels, c("1.0-1.9", "2.0-2.9", "3.0-3.9", "4.0-4.4",
+                               "4.5-4.9", "5.0+"))
+  expect_identical(b$breaks, c(1, 2, 3, 4, 4.5, 5, 7))
+  # Edges in hundredths label to hundredths.
+  expect_identical(.bands_from_edges(c(1, 4.25), 6)$labels,
+                   c("1.00-4.24", "4.25+"))
+  expect_error(do.call(el_spec, make_spec_short(
+    elp = list(test = "T", score = "overall", levels = c(1, 6),
+               bands = c(1, 7)))), "within `elp\\$levels`")
+})
+
+test_that("district-size edges give correct labels", {
+  d <- .district_bands(c(0, 50, 500))
+  expect_identical(d$labels, c("<50", "50-499", "500+"))
+  expect_identical(d$breaks, c(0, 50, 500, Inf))
+  expect_error(do.call(el_spec, make_spec_short(district_sizes = c(10, 100))),
+               "starting at 0")
+})
+
+test_that("the exit rule is checked against the score and its levels", {
+  expect_error(do.call(el_spec, make_spec_short(exit = c(written = 4))),
+               "single exit criterion must be on `elp\\$score`")
+  expect_error(do.call(el_spec, make_spec_short(exit = c(overall = 7))),
+               "within `elp\\$levels`")
+  expect_error(do.call(el_spec, make_spec_short(exit = c(literacy = 4))),
+               "not components")
+  expect_error(do.call(el_spec, make_spec_short(exit = 4.5)),
+               "named numeric vector")
+  # A categorical level is a position in the list of names.
+  cat_elp <- list(test = "T", score = "determination",
+                  levels = c("Low", "Mid", "High"))
+  expect_error(do.call(el_spec, make_spec_short(
+    elp = cat_elp, exit = c(determination = 4))), "a position, 1 to 3")
+  s <- do.call(el_spec, make_spec_short(elp = cat_elp,
+                                        exit = c(determination = 3)))
+  expect_identical(s$elp$components$determination$measures, "level")
+  expect_identical(spec_headline_label(s), "determination composite")
+})
+
+test_that("a short-form spec reports every problem at once", {
+  err <- tryCatch(
+    el_spec(id = "X", status = "maybe",
+            elp = list(test = "T", score = "overal", levels = c(1, 6),
+                       headline = "overall"),
+            exit = c(overall = 4.5), timelines = list(max = 0, essa = 5)),
+    error = conditionMessage)
+  expect_match(err, "`status` must be one of")
+  expect_match(err, "`elp` does not take: headline")
+  expect_match(err, "`elp\\$score` must be one of")
+  expect_match(err, "`timelines` does not take: essa")
+  expect_match(err, "`timelines\\$max`")
+  # The old long form is refused by name.
+  expect_error(el_spec(schema_version = "1.0.0", policy = list()),
+               "does not take: schema_version, policy")
+})
+
+test_that("proficient cuts are one for every grade, or one per grade", {
+  s <- do.call(el_spec, make_spec_short(academic = list(
+    ELA = list(grades = 3:5, proficient_cut = c("3" = 440, "4" = 450)),
+    Math = list(grades = 3:5, proficient_cut = 500))))
+  expect_identical(spec_proficient_cut(s, "ELA", "3"), 440)
+  expect_identical(spec_proficient_cut(s, "ELA", 4), 450)
+  # A grade with no cut has none -- never another grade's.
+  expect_true(is.na(spec_proficient_cut(s, "ELA", "5")))
+  expect_true(is.na(spec_proficient_cut(s, "ELA")))
+  expect_identical(spec_proficient_cut(s, "Math", "5"), 500)
+  expect_identical(spec_academic_grades(s, "ELA"), c("3", "4", "5"))
+  # No proficient level given: the fallback is undefined, not invented.
+  expect_true(is.na(spec_proficient_level(s)))
+
+  expect_error(do.call(el_spec, make_spec_short(academic = list(
+    ELA = list(grades = 3:5, proficient_cut = c("8" = 440))))),
+    "names grade\\(s\\) not in")
+  expect_error(do.call(el_spec, make_spec_short(academic = list(
+    ELA = list(grades = 3:5, proficient_cut = c(440, 450))))),
+    "one number for every grade")
+  expect_error(do.call(el_spec, make_spec_short(academic = list(
+    ELA = list(grades = 3:5, proficient_cut = 440, proficient_level = 3),
+    Math = list(grades = 3:5, proficient_cut = 500, proficient_level = 4)))),
+    "same in every subject")
+  expect_error(do.call(el_spec, make_spec_short(academic = list(
+    ELA = list(grades = 3:5, cuts = c(400, 440))))),
+    "`academic\\$ELA` does not take: cuts")
+})
+
+test_that("sources mark a field sourced; the rest read [DERIVED - VERIFY]", {
+  s <- do.call(el_spec, make_spec_short(sources = c(exit = "Reg. 1.2")))
+  expect_identical(s$policy$exit$source, "Reg. 1.2")
+  expect_identical(s$policy$timelines$source, "provisional")
+  expect_identical(s$policy$suppression$source, "provisional")
+  out <- capture.output(print(s))
+  expect_true(any(grepl("DERIVED - VERIFY.*min_cell", out)))
+  expect_false(any(grepl("DERIVED - VERIFY.*exit", out)))
+  expect_error(do.call(el_spec, make_spec_short(sources = c(growth = "x"))),
+               "cannot source: growth")
+})
+
+test_that("delivery carries the crosswalk and Prep 2's entry dating", {
+  s <- do.call(el_spec, make_spec_short(delivery = list(
+    roster = c(STUDENT_ID = "SASID"),
+    value_maps = list(GRADE = c("0" = "K")),
+    entry_date_rule = "calendar_year")))
+  expect_identical(s$data$columns$roster, c(STUDENT_ID = "SASID"))
+  expect_identical(s$data$columns$value_maps$GRADE, c("0" = "K"))
+  expect_identical(s$data$entry_date_rule, "calendar_year")
+  expect_error(do.call(el_spec, make_spec_short(delivery = list(
+    columns = list()))), "`delivery` does not take: columns")
+  # The full validator still guards the crosswalk's shape.
+  expect_error(do.call(el_spec, make_spec_short(delivery = list(
+    roster = c(student_id = "x")))), "canonical names are ALL CAPS")
 })
 
 # ---- the policy / measurement boundary --------------------------------------
@@ -552,12 +719,13 @@ test_that("the template is a complete spec on its own", {
   expect_true(length(subjects) >= 2L)
   for (sb in subjects) {
     a <- tmpl$academic[[sb]]
-    expect_true(is.list(a$cuts))                   # the by-grade layout
-    expect_setequal(names(a$cuts), a$grades)
+    expect_false(is.null(names(a$proficient_cut)))   # the by-grade layout
+    expect_setequal(names(a$proficient_cut), a$grades)
     for (g in a$grades) {
       expect_false(is.na(spec_proficient_cut(tmpl, sb, g)))
     }
   }
+  expect_identical(spec_proficient_level(tmpl), 3L)
   expect_true(!is.null(tmpl$policy$timelines$lt_el_years))
   expect_identical(unname(tmpl$data$columns$value_maps$GRADE), "K")
   expect_true(all(unname(tmpl$data$columns$value_maps$CONTENT_AREA$academic)

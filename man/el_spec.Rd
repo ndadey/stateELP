@@ -5,60 +5,121 @@
 \title{Construct an \code{el_spec}}
 \usage{
 el_spec(
-  schema_version = "1.0.0",
-  program = list(),
-  elp = list(),
-  policy = list(),
-  academic = list(),
-  data = list(),
-  verification = list(),
-  source_documents = list(),
-  validate = TRUE
+  id = NULL,
+  status = NULL,
+  elp = NULL,
+  exit = NULL,
+  timelines = NULL,
+  name = id,
+  academic = NULL,
+  min_cell = 10L,
+  district_sizes = NULL,
+  costlier_error = "unknown",
+  sources = NULL,
+  delivery = NULL,
+  ...
 )
 }
 \arguments{
-\item{schema_version}{Character scalar, e.g. \code{"1.0.0"}.}
+\item{id}{Short name carried by every results object as \verb{$meta$spec_id},
+e.g. \code{"MA"}.}
 
-\item{program}{Assessment-program metadata: \code{name}, \code{state}, \code{vendor},
-\code{administration_year}. Note this is the \emph{assessment} program; Prep 3's
-inventory of what EL status gates is \code{policy$program}.}
+\item{status}{How far the values can be trusted: \code{"verified"},
+\code{"unverified"}, \code{"provisional"} or \code{"synthetic"}.}
 
-\item{elp}{Measurement block: \code{instrument}, \code{administration_window},
-\code{components}, \code{headline}, \code{level_scale}, \code{bands}, \code{grade_clusters},
-\code{cuts}, \code{alternate}. \code{alternate} records the state's alternate ELP test
-for Prep 1 and is read by no stage: alternate-test students are handled
-through \code{ELP_FORM = "alternate"} in the data.}
+\item{elp}{The ELP test, a list:
+\itemize{
+\item \code{test} -- its name, e.g. \code{"WIDA ACCESS"};
+\item \code{score} -- the score every stage runs on, a key of
+\code{\link[=el_component_vocabulary]{el_component_vocabulary()}} (WIDA's Overall Composite is \code{"overall"},
+its Literacy score \code{"written"});
+\item \code{levels} -- the proficiency-level range, \code{c(lowest, highest)}, or the
+level names in order, lowest first, for a test that reports categories
+(a categorical score is taken to report no scale score);
+\item \code{label} (optional) -- what the reports call the score, e.g.
+\code{"Overall Composite"}; or names keyed by component, to name an exit
+criterion too: \code{c(overall = "Overall Composite", written = "Literacy")};
+\item \code{bands} (optional) -- the lower edge of each reporting band,
+\code{c(1, 2, 3, 4, 4.5, 5)} gives \code{1.0-1.9} ... \code{4.5-4.9}, \verb{5.0+}. Omitted:
+one band per level;
+\item \code{level_labels} (optional) -- names of the whole levels of a numeric
+range, needed only when a delivery reports levels as names.
+}}
 
-\item{policy}{Policy block, restricted to \code{\link[=el_policy_fields]{el_policy_fields()}}. Every field
-carries a \code{source}.}
+\item{exit}{The exit rule: the minimum level on each score, named by
+component, e.g. \code{c(overall = 4.5)} or \code{c(overall = 4.2, written = 3.9)}.
+A single criterion must be on \code{elp$score}. On a categorical scale a
+level is its position (\code{3} = the third name).}
 
-\item{academic}{Academic-assessment block, one entry per subject (plus an
-optional \code{spec_id} pointer). Check 3 drives its grade loop from
-\verb{spec$academic$<subject>$grades}. Each subject's \code{cuts} is either one
-vector of level minimums for every grade or a list of them named by
-grade (see \code{\link[=spec_academic_cuts]{spec_academic_cuts()}}).}
+\item{timelines}{Years in EL status, a list: \code{max} (the maximum timeline to
+exit, required), \code{on_time} (the on-time or ESSA timeline; defaults to
+\code{max}), \code{lt_el} (the year from which a current EL is long-term; omitted,
+long-term status is not computed).}
 
-\item{data}{Delivery block. \code{columns} holds one crosswalk per table --
-\code{roster}, \code{base}, \code{academic}, each a named character vector of
-ALL-CAPS canonical name = delivered name -- plus optional per-component
-entries (\code{components}) and \code{value_maps}: \code{CONTENT_AREA$base} and
-\code{CONTENT_AREA$academic} map delivered \code{CONTENT_AREA} \emph{values} to
-component and subject keys, and \code{GRADE} maps delivered grade values
-(e.g. \code{"0"} to \code{"K"}). Values map by value, never by label.}
+\item{name}{Display name, e.g. \code{"Massachusetts"}. Defaults to \code{id}.}
 
-\item{verification}{\code{status}, \code{verified_by}, \code{verified_date}, \code{method},
-\code{notes}.}
+\item{academic}{Optional. The state academic tests, a list named by
+subject; each a list of \code{grades} (the tested grades; \code{NULL} for an
+end-of-course test) and \code{proficient_cut} (the lowest proficient scale
+score: one number for every grade, or numbers named by grade,
+\code{c("3" = 450, "4" = 455)}). Optional per subject: \code{proficient_level}
+(the position of the lowest proficient performance level, lowest = 1:
+Check 2's academic summary reads proficiency from the delivered level
+against it, and Checks 3 and 4 do so for a grade with no cut; the same
+in every subject) and \code{level_labels} (the performance-level names,
+lowest first, needed only when a delivery reports them as names).
+Omitted: the academic analyses return \code{NULL} with a note.}
 
-\item{source_documents}{List of \code{list(title=, url=)} entries.}
+\item{min_cell}{Suppress any count below this. Default 10.}
 
-\item{validate}{Whether to validate on construction. Keep \code{TRUE}; \code{FALSE}
-exists so tests can build a deliberately invalid spec to check the
-validator's own messages.}
+\item{district_sizes}{Optional lower edges of the district-size groups,
+starting at 0, e.g. \code{c(0, 100, 1000)}. Omitted: the deck's groups
+(\verb{<100}, \code{101-999}, \verb{1,000+}).}
+
+\item{costlier_error}{Which classification error stakeholders judge
+costlier: \code{"premature_exit"}, \code{"prolonged_retention"}, \code{"equal"} or
+\code{"unknown"} (the default). Read by Check 4.}
+
+\item{sources}{Optional named character vector: for each sourced field
+(\code{exit}, \code{timelines}, \code{academic}, \code{min_cell}, \code{district_sizes},
+\code{costlier_error}), where it is written down. A field not named reads
+\verb{[DERIVED - VERIFY]}.}
+
+\item{delivery}{Optional, how the state's files differ from the canonical
+tables: \code{roster}, \code{base} and \code{academic} crosswalks (named character
+vectors, ALL-CAPS canonical name = delivered name); \code{value_maps}
+(\code{CONTENT_AREA$base}, \code{CONTENT_AREA$academic}, \code{GRADE}, mapping delivered
+values to the package's); and Prep 2's entry dating (\code{entry_date_rule},
+\code{entry_sources}, \code{years_in_status_first_value}).}
+
+\item{...}{Not used: anything here is an error that names the argument,
+so a spec written in the old long form says so instead of failing
+obscurely.}
 }
 \value{
 An object of class \code{el_spec}.
 }
 \description{
-The define-once parameter object. Every state-specific value the package
-reads lives here; no \verb{compute_*()} may carry a state value of its own.
+The define-once parameter object: everything a state has to tell the
+package, and nothing else. Write it in this short form; \code{el_spec()} checks
+it, fills in the package's conventions and returns the object every stage
+reads.
+}
+\details{
+What is \strong{not} a field, because it is the same for every state: the exit
+rule compares each score's \emph{level} with \code{>=}, and a student must meet
+every criterion; exit is dated to the first year observed as former; a
+student's initial ELP is their first annual score.
+}
+\examples{
+spec <- el_spec(
+  id = "XX", status = "provisional",
+  elp = list(test = "WIDA ACCESS", score = "overall",
+             label = "Overall Composite", levels = c(1, 6),
+             bands = c(1, 2, 3, 4, 4.5, 5)),
+  exit = c(overall = 4.5),
+  timelines = list(max = 6, on_time = 5),
+  academic = list(ELA = list(grades = 3:8, proficient_cut = 750))
+)
+spec
 }

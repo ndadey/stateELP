@@ -192,16 +192,15 @@ test_that("alternate-academic takers are counted in n, out of the distribution",
 test_that("the proficiency cut comes from the spec, never a literal", {
   spec <- check3_spec()
   subject <- spec_academic_subjects(spec)[[1]]
-  lvl <- spec$policy$academic_benchmark$proficient_level
 
   expect_identical(.check3_cut(spec, subject),
-                   as.numeric(spec$academic[[subject]]$cuts[[lvl - 1L]]))
+                   as.numeric(spec$academic[[subject]]$proficient_cut[[1]]))
   expect_identical(attr(compute_box_data(make_check3_sim_bundle(), spec), "cut"),
                    .check3_cut(spec, subject))
 
-  # A spec with no benchmark yields no line rather than a guessed one.
+  # A spec with no cut yields no line rather than a guessed one.
   bare <- spec
-  bare$policy$academic_benchmark$proficient_level <- NULL
+  bare$academic[[subject]]$proficient_cut <- NULL
   expect_true(is.na(.check3_cut(bare, subject)))
 })
 
@@ -734,10 +733,10 @@ check3_by_grade_spec <- function() {
   spec <- check3_spec()
   sb <- spec_academic_subjects(spec)[[1]]
   g <- spec_academic_grades(spec, sb)
-  base <- spec$academic[[sb]]$cuts
-  # Grade 3 gets its own, lower cuts; every other grade keeps the shipped ones.
-  spec$academic[[sb]]$cuts <- stats::setNames(
-    lapply(g, function(x) if (x == g[[1]]) base - 20 else base), g)
+  base <- spec$academic[[sb]]$proficient_cut[[1]]
+  # Grade 3 gets its own, lower cut; every other grade keeps the shipped one.
+  spec$academic[[sb]]$proficient_cut <- stats::setNames(
+    ifelse(g == g[[1]], base - 20, base), g)
   validate_el_spec(spec)
   spec
 }
@@ -771,7 +770,7 @@ test_that("each grade's panel is read against its own grade's cut", {
 
 test_that("without cut scores, proficiency is the delivered level", {
   spec <- check3_spec()
-  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$cuts <- NULL
+  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$proficient_cut <- NULL
   b <- make_check3_sim_bundle()
   res <- run_check3(b, spec)
 
@@ -799,7 +798,7 @@ test_that("without cut scores, proficiency is the delivered level", {
 
 test_that("with no cut and no proficient level, the logistic is NULL and says why", {
   spec <- check3_spec()
-  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$cuts <- NULL
+  for (sb in spec_academic_subjects(spec)) spec$academic[[sb]]$proficient_cut <- NULL
   spec$policy$academic_benchmark$proficient_level <- NULL
   res <- run_check3(make_check3_sim_bundle(), spec)
   expect_null(res$logistic)

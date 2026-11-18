@@ -66,7 +66,7 @@ more, and lists every problem at once instead of stopping at the first.
 
 The academic table is passed through \code{\link[=as_academic_long]{as_academic_long()}} on intake, after
 the crosswalk: subject codes become the spec's subject keys through
-\code{data$columns$value_maps$CONTENT_AREA$academic}, and performance-level
+\code{delivery$value_maps$CONTENT_AREA$academic} in the spec, and performance-level
 labels become numbers through each subject's \code{level_labels}.
 }
 

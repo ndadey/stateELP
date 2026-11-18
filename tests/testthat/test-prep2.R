@@ -702,7 +702,14 @@ test_that("run_prep2() runs on the ELPA21 fixture without naming a component", {
   expect_identical(res$initial_elp$INITIAL[res$initial_elp$IN_BANDS],
                    spec$elp$level_scale$levels)
 
-  # Type 6 opens the gate: the Additional-check slots populate structurally.
+  # The shipped rule is the Proficient determination, one criterion: the
+  # Type-gated slots stay NULL.
+  expect_null(res$criteria_crosswalk)
+
+  # As a domain profile, Type 6 opens the gate: the Additional-check slots
+  # populate structurally.
+  spec6 <- make_spec_elpa21_profile()
+  res <- run_prep2(bundle, spec6)
   expect_false(is.null(res$criteria_crosswalk))
   expect_false(is.null(res$contested_zone))
   expect_true(all(c("LISTENING_LEVEL", "SPEAKING_LEVEL", "READING_LEVEL",
@@ -713,7 +720,7 @@ test_that("run_prep2() runs on the ELPA21 fixture without naming a component", {
   # for it (CLAUDE.md 9).
   expect_match(prep2_crosswalk_note(res),
                paste("no criterion sits on the",
-                     spec_headline_label(spec), "level"), fixed = TRUE)
+                     spec_headline_label(spec6), "level"), fixed = TRUE)
   expect_match(prep2_contested_note(res), "never disagree")
 })
 

@@ -200,20 +200,20 @@ cat("`DISTRICT_ID` was not delivered, so district variation is not computed (`by
 ```{r}
 #| output: asis
 #| eval: !expr h[["by_district"]] && n[["district_bins"]]
-cat("The spec declares no `policy$district_size_bands`, so districts are ranked but not binned (`district_bins` is `NULL`).\n")
+cat("The spec declares no district-size groups (`district_sizes`), so districts are ranked but not binned (`district_bins` is `NULL`).\n")
 ```
 
 ## 4. Entry-grade patterns and candidate cohorts
 
 Each student's entry into EL status is dated from the roster, using the first
-of the fields in `spec$data$entry_sources` that is delivered and non-missing
+of the fields in `delivery$entry_sources` in the spec that is delivered and non-missing
 (by default `LEP_PROGRAM_START_DATE`, `COHORT_START_YEAR`, `YEAR_IN_STATUS`,
 then `ENTRY_GRADE`, which assumes one grade per year). A state's own count of
 years in the program maps onto `YEAR_IN_STATUS` through
-`spec$data$columns$roster`; whether that count codes a student's first year as
+the spec's `delivery$roster` crosswalk; whether that count codes a student's first year as
 1 or as 0 is detected from entrants the panel observes, unless the spec says.
 A delivered start date reads on the academic calendar (a September date
-belongs to the next spring year) unless `spec$data$entry_date_rule` says
+belongs to the next spring year) unless the spec's `delivery$entry_date_rule` says
 otherwise. With none of these fields, the panel itself dates entry only when
 the student first turns `current` *after* the panel opens (a student in K in
 the panel's first year is also taken as a K entrant that year). A student
@@ -311,7 +311,7 @@ ft_prep2_time_by_grade(res)
 ```{r}
 #| output: asis
 #| eval: !expr n[["time_in_status"]]
-cat("The spec carries no structured long-term definition (`policy$timelines$lt_el_years`), so time in status is not computed (`time_in_status` is `NULL`).\n")
+cat("The spec carries no structured long-term definition (`timelines$lt_el`), so time in status is not computed (`time_in_status` is `NULL`).\n")
 ```
 
 ## 6. Initial ELP level
@@ -396,7 +396,7 @@ the stages that follow.
 ```{r}
 #| output: asis
 #| eval: !expr n[["criteria_crosswalk"]]
-cat("The exit rule is declared as Type 1 (a single overall composite), so the criteria crosswalk does not apply. `criteria_crosswalk`, `blocked_groups` and `contested_zone` are `NULL` in the results object. Declare the additional criteria in `spec$policy$exit$pathways` and set `types` to activate this check.\n")
+cat("The exit rule has a single criterion (Type 1), so the criteria crosswalk does not apply. `criteria_crosswalk`, `blocked_groups` and `contested_zone` are `NULL` in the results object. Declare the additional criteria in `spec$policy$exit$pathways` and set `types` to activate this check.\n")
 if (!is.null(res$meta$notes$crosswalk)) cat("\n\n", res$meta$notes$crosswalk, "\n")
 ```
 

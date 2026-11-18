@@ -59,7 +59,7 @@ KEY               <- c("STUDENT_ID", "YEAR")
 #' @section The academic table:
 #' The academic table is passed through [as_academic_long()] on intake, after
 #' the crosswalk: subject codes become the spec's subject keys through
-#' `data$columns$value_maps$CONTENT_AREA$academic`, and performance-level
+#' `delivery$value_maps$CONTENT_AREA$academic` in the spec, and performance-level
 #' labels become numbers through each subject's `level_labels`.
 #'
 #' @param elp The base table: one row per student-year-component. Or, with
@@ -272,7 +272,7 @@ GRADE_VALUES <- c("K", as.character(1:12))
     paste0(" Kindergarten looks coded as ",
            paste0("\"", intersect(odd, c("0", "00", "KG", "KF", "KH", "k")),
                   "\"", collapse = "/"),
-           ": add it to `data$columns$value_maps$GRADE` (e.g. c(\"0\" = ",
+           ": add it to `delivery$value_maps$GRADE` in the spec (e.g. c(\"0\" = ",
            "\"K\")), or Check 1 finds no kindergarten cohort.")
   } else ""
   warning("GRADE value(s) on the ", where, " outside K and 1-12: ",
@@ -344,7 +344,9 @@ GRADE_VALUES <- c("K", as.character(1:12))
     if (length(unknown)) {
       stop("COMPONENT value(s) not in the spec's component model: ",
            paste(unknown, collapse = ", "),
-           ".\nMap an instrument's own name with `native_name` in the spec.",
+           ".\nRecode them to the vocabulary keys (el_component_vocabulary()); ",
+           "an SGP LONG_DATA file maps them through ",
+           "`delivery$value_maps$CONTENT_AREA$base` in the spec.",
            call. = FALSE)
     }
   }
@@ -418,7 +420,7 @@ GRADE_VALUES <- c("K", as.character(1:12))
                                           collapse = ", "),
               " are not among ", paste(subjects, collapse = ", "),
               ", so no stage reads those rows. Map them in ",
-              "`data$columns$value_maps$CONTENT_AREA$academic`.",
+              "`delivery$value_maps$CONTENT_AREA$academic` in the spec.",
               call. = FALSE)
     }
   }
@@ -623,7 +625,7 @@ as_el_data_sgp <- function(long_data, spec, academic = NULL) {
 
   ca_map <- spec$data$columns$value_maps$CONTENT_AREA$base
   if (is.null(ca_map)) {
-    stop("`spec$data$columns$value_maps$CONTENT_AREA$base` is required to ",
+    stop("The spec's `delivery$value_maps$CONTENT_AREA$base` is required to ",
          "read a LONG_DATA delivery: CONTENT_AREA values map to components ",
          "through the spec, never by label.", call. = FALSE)
   }

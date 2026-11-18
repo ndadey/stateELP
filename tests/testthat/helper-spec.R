@@ -5,9 +5,11 @@
 # name: two helpers defining the same name silently clobber each other and the
 # breakage only shows in a combined devtools::test() run.
 
-# A minimal spec that validates. Tests mutate one field at a time to check that
-# the validator catches exactly that field, rather than hand-writing a whole
-# broken spec per case.
+# A minimal FULL internal spec that validates (the shape el_spec() expands the
+# short form into). Tests mutate one field at a time to check that
+# validate_el_spec() catches exactly that field, rather than hand-writing a
+# whole broken spec per case. Short-form tests build with el_spec() directly,
+# from make_spec_short().
 make_spec_base <- function(...) {
   base <- list(
     schema_version = "1.0.0",
@@ -65,7 +67,39 @@ make_spec_base <- function(...) {
   # dropped and the base rule survives. Recurse only where both sides are
   # named lists; replace outright otherwise.
   base <- spec_merge(base, list(...))
-  do.call(stateELP::el_spec, base)
+  do.call(.el_spec_full, base)
+}
+
+# ELPA21 as a domain profile (Type 6): every domain at the top of the declared
+# scale, a waived domain exempt. The shipped ELPA21 spec writes its rule as the
+# vendor's Proficient determination (Type 1), so tests of the Type-gated
+# Additional checks build the profile here. Domains and the top level come
+# from the spec, never typed.
+make_spec_elpa21_profile <- function() {
+  spec <- read_el_spec("00_ELPA21_EL_Spec")
+  top <- length(spec$elp$level_scale$levels)
+  spec$policy$exit$pathways[[1]]$terms <- lapply(
+    spec_components(spec, "domain"), function(d) {
+      list(component = d, measure = "level", op = ">=", value = top,
+           exempt_if_absent = TRUE)
+    })
+  spec$policy$exit$types <- 6L
+  validate_el_spec(spec)
+  spec
+}
+
+# A minimal SHORT-form spec, as a list of el_spec() arguments; a test
+# overrides one argument and calls do.call(el_spec, ...).
+make_spec_short <- function(...) {
+  args <- list(
+    id = "TS", status = "synthetic",
+    elp = list(test = "Test ELP", score = "overall", levels = c(1, 6)),
+    exit = c(overall = 4.5),
+    timelines = list(max = 6)
+  )
+  over <- list(...)
+  args[names(over)] <- over
+  args
 }
 
 spec_merge <- function(x, val) {

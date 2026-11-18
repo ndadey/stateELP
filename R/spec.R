@@ -69,53 +69,566 @@ el_exit_typology <- function() {
 .has <- function(x, nm) !is.null(x[[nm]])
 
 # ---- constructor -------------------------------------------------------------
+#
+# A person writes the SHORT form (el_spec()): the ELP score and its level
+# range, the exit cut, the timelines, the academic proficiency cuts, the
+# suppression rule. el_spec() checks it and expands it into the FULL internal
+# list (.el_spec_full()) that every stage reads through the accessors below,
+# so no stage code depends on which form was written. Everything the short
+# form leaves out is a package convention (>=, the level measure, every
+# criterion must be met, first-former-year exit dating, first-annual initial
+# ELP) or a documented default.
+
+.SPEC_STATUSES <- c("verified", "unverified", "provisional", "synthetic")
+
+# Fields `sources` may name: the short form's own policy fields.
+.SPEC_SOURCE_FIELDS <- c("exit", "timelines", "academic", "min_cell",
+                         "district_sizes", "costlier_error")
+
+# Fields `delivery` may carry: how a state's files differ from the canonical
+# tables. Read by as_el_data() (the crosswalks and value maps) and Prep 2
+# (entry dating).
+.SPEC_DELIVERY_FIELDS <- c("roster", "base", "academic", "value_maps",
+                           "entry_date_rule", "entry_sources",
+                           "years_in_status_first_value")
+
+# Every vocabulary component's kind. Fixed by what the component is, so the
+# short form never asks for it.
+.component_kinds <- function() {
+  v <- el_component_vocabulary()
+  stats::setNames(ifelse(v %in% c("listening", "speaking", "reading", "writing"),
+                         "domain", "composite"), v)
+}
 
 #' Construct an `el_spec`
 #'
-#' The define-once parameter object. Every state-specific value the package
-#' reads lives here; no `compute_*()` may carry a state value of its own.
+#' The define-once parameter object: everything a state has to tell the
+#' package, and nothing else. Write it in this short form; `el_spec()` checks
+#' it, fills in the package's conventions and returns the object every stage
+#' reads.
 #'
-#' @param schema_version Character scalar, e.g. `"1.0.0"`.
-#' @param program Assessment-program metadata: `name`, `state`, `vendor`,
-#'   `administration_year`. Note this is the *assessment* program; Prep 3's
-#'   inventory of what EL status gates is `policy$program`.
-#' @param elp Measurement block: `instrument`, `administration_window`,
-#'   `components`, `headline`, `level_scale`, `bands`, `grade_clusters`,
-#'   `cuts`, `alternate`. `alternate` records the state's alternate ELP test
-#'   for Prep 1 and is read by no stage: alternate-test students are handled
-#'   through `ELP_FORM = "alternate"` in the data.
-#' @param policy Policy block, restricted to [el_policy_fields()]. Every field
-#'   carries a `source`.
-#' @param academic Academic-assessment block, one entry per subject (plus an
-#'   optional `spec_id` pointer). Check 3 drives its grade loop from
-#'   `spec$academic$<subject>$grades`. Each subject's `cuts` is either one
-#'   vector of level minimums for every grade or a list of them named by
-#'   grade (see [spec_academic_cuts()]).
-#' @param data Delivery block. `columns` holds one crosswalk per table --
-#'   `roster`, `base`, `academic`, each a named character vector of
-#'   ALL-CAPS canonical name = delivered name -- plus optional per-component
-#'   entries (`components`) and `value_maps`: `CONTENT_AREA$base` and
-#'   `CONTENT_AREA$academic` map delivered `CONTENT_AREA` *values* to
-#'   component and subject keys, and `GRADE` maps delivered grade values
-#'   (e.g. `"0"` to `"K"`). Values map by value, never by label.
-#' @param verification `status`, `verified_by`, `verified_date`, `method`,
-#'   `notes`.
-#' @param source_documents List of `list(title=, url=)` entries.
-#' @param validate Whether to validate on construction. Keep `TRUE`; `FALSE`
-#'   exists so tests can build a deliberately invalid spec to check the
-#'   validator's own messages.
+#' What is **not** a field, because it is the same for every state: the exit
+#' rule compares each score's *level* with `>=`, and a student must meet
+#' every criterion; exit is dated to the first year observed as former; a
+#' student's initial ELP is their first annual score.
+#'
+#' @param id Short name carried by every results object as `$meta$spec_id`,
+#'   e.g. `"MA"`.
+#' @param status How far the values can be trusted: `"verified"`,
+#'   `"unverified"`, `"provisional"` or `"synthetic"`.
+#' @param elp The ELP test, a list:
+#'   * `test` -- its name, e.g. `"WIDA ACCESS"`;
+#'   * `score` -- the score every stage runs on, a key of
+#'     [el_component_vocabulary()] (WIDA's Overall Composite is `"overall"`,
+#'     its Literacy score `"written"`);
+#'   * `levels` -- the proficiency-level range, `c(lowest, highest)`, or the
+#'     level names in order, lowest first, for a test that reports categories
+#'     (a categorical score is taken to report no scale score);
+#'   * `label` (optional) -- what the reports call the score, e.g.
+#'     `"Overall Composite"`; or names keyed by component, to name an exit
+#'     criterion too: `c(overall = "Overall Composite", written = "Literacy")`;
+#'   * `bands` (optional) -- the lower edge of each reporting band,
+#'     `c(1, 2, 3, 4, 4.5, 5)` gives `1.0-1.9` ... `4.5-4.9`, `5.0+`. Omitted:
+#'     one band per level;
+#'   * `level_labels` (optional) -- names of the whole levels of a numeric
+#'     range, needed only when a delivery reports levels as names.
+#' @param exit The exit rule: the minimum level on each score, named by
+#'   component, e.g. `c(overall = 4.5)` or `c(overall = 4.2, written = 3.9)`.
+#'   A single criterion must be on `elp$score`. On a categorical scale a
+#'   level is its position (`3` = the third name).
+#' @param timelines Years in EL status, a list: `max` (the maximum timeline to
+#'   exit, required), `on_time` (the on-time or ESSA timeline; defaults to
+#'   `max`), `lt_el` (the year from which a current EL is long-term; omitted,
+#'   long-term status is not computed).
+#' @param name Display name, e.g. `"Massachusetts"`. Defaults to `id`.
+#' @param academic Optional. The state academic tests, a list named by
+#'   subject; each a list of `grades` (the tested grades; `NULL` for an
+#'   end-of-course test) and `proficient_cut` (the lowest proficient scale
+#'   score: one number for every grade, or numbers named by grade,
+#'   `c("3" = 450, "4" = 455)`). Optional per subject: `proficient_level`
+#'   (the position of the lowest proficient performance level, lowest = 1:
+#'   Check 2's academic summary reads proficiency from the delivered level
+#'   against it, and Checks 3 and 4 do so for a grade with no cut; the same
+#'   in every subject) and `level_labels` (the performance-level names,
+#'   lowest first, needed only when a delivery reports them as names).
+#'   Omitted: the academic analyses return `NULL` with a note.
+#' @param min_cell Suppress any count below this. Default 10.
+#' @param district_sizes Optional lower edges of the district-size groups,
+#'   starting at 0, e.g. `c(0, 100, 1000)`. Omitted: the deck's groups
+#'   (`<100`, `101-999`, `1,000+`).
+#' @param costlier_error Which classification error stakeholders judge
+#'   costlier: `"premature_exit"`, `"prolonged_retention"`, `"equal"` or
+#'   `"unknown"` (the default). Read by Check 4.
+#' @param sources Optional named character vector: for each sourced field
+#'   (`exit`, `timelines`, `academic`, `min_cell`, `district_sizes`,
+#'   `costlier_error`), where it is written down. A field not named reads
+#'   `[DERIVED - VERIFY]`.
+#' @param delivery Optional, how the state's files differ from the canonical
+#'   tables: `roster`, `base` and `academic` crosswalks (named character
+#'   vectors, ALL-CAPS canonical name = delivered name); `value_maps`
+#'   (`CONTENT_AREA$base`, `CONTENT_AREA$academic`, `GRADE`, mapping delivered
+#'   values to the package's); and Prep 2's entry dating (`entry_date_rule`,
+#'   `entry_sources`, `years_in_status_first_value`).
+#' @param ... Not used: anything here is an error that names the argument,
+#'   so a spec written in the old long form says so instead of failing
+#'   obscurely.
 #'
 #' @return An object of class `el_spec`.
 #' @export
-el_spec <- function(schema_version = "1.0.0",
-                    program = list(),
-                    elp = list(),
-                    policy = list(),
-                    academic = list(),
-                    data = list(),
-                    verification = list(),
-                    source_documents = list(),
-                    validate = TRUE) {
+#' @examples
+#' spec <- el_spec(
+#'   id = "XX", status = "provisional",
+#'   elp = list(test = "WIDA ACCESS", score = "overall",
+#'              label = "Overall Composite", levels = c(1, 6),
+#'              bands = c(1, 2, 3, 4, 4.5, 5)),
+#'   exit = c(overall = 4.5),
+#'   timelines = list(max = 6, on_time = 5),
+#'   academic = list(ELA = list(grades = 3:8, proficient_cut = 750))
+#' )
+#' spec
+el_spec <- function(id = NULL, status = NULL, elp = NULL, exit = NULL,
+                    timelines = NULL, name = id, academic = NULL,
+                    min_cell = 10L, district_sizes = NULL,
+                    costlier_error = "unknown", sources = NULL,
+                    delivery = NULL, ...) {
+  extra <- names(list(...))
+  if (length(list(...))) {
+    stop("el_spec() does not take: ",
+         paste(if (is.null(extra)) "unnamed argument(s)" else extra,
+               collapse = ", "),
+         ". It takes the short form -- id, status, elp, exit, timelines, ",
+         "and optionally name, academic, min_cell, district_sizes, ",
+         "costlier_error, sources, delivery. See ?el_spec.", call. = FALSE)
+  }
+  if (is.list(sources)) sources <- unlist(sources)
+  short <- list(id = id, name = name, status = status, elp = elp,
+                exit = exit, timelines = timelines, academic = academic,
+                min_cell = min_cell, district_sizes = district_sizes,
+                costlier_error = costlier_error, sources = sources,
+                delivery = delivery)
+  .validate_short_spec(short)
+  .expand_el_spec(short)
+}
+
+# Every problem in a short-form spec, reported together.
+.validate_short_spec <- function(s) {
+  e <- character()
+  add <- function(...) e <<- c(e, paste0(...))
+  vocab <- el_component_vocabulary()
+  fields <- function(x, allowed, where) {
+    bad <- setdiff(names(x), allowed)
+    if (length(bad)) {
+      add("`", where, "` does not take: ", paste(bad, collapse = ", "),
+          ". Its fields are ", paste(allowed, collapse = ", "), ".")
+    }
+  }
+
+  if (!.is_string(s$id)) add("`id` must be a string, e.g. \"MA\".")
+  if (!.is_string(s$name)) add("`name` must be a string.")
+  if (!.is_string(s$status) || !s$status %in% .SPEC_STATUSES) {
+    add("`status` must be one of ", paste(.SPEC_STATUSES, collapse = ", "), ".")
+  }
+
+  # --- the ELP test -----------------------------------------------------------
+  elp <- s$elp
+  lv <- NULL
+  numeric_lv <- categorical_lv <- FALSE
+  if (!is.list(elp)) {
+    add("`elp` must be a list: test, score, levels (and optionally label, ",
+        "bands, level_labels).")
+    elp <- list()
+  } else {
+    fields(elp, c("test", "score", "label", "levels", "bands", "level_labels"),
+           "elp")
+    if (!.is_string(elp$test)) add("`elp$test` must be the test's name.")
+    if (!.is_string(elp$score) || !elp$score %in% vocab) {
+      add("`elp$score` must be one of: ", paste(vocab, collapse = ", "),
+          ". Map the test's own name for it with `elp$label`.")
+    }
+    lab <- elp$label
+    if (!is.null(lab)) {
+      one <- .is_string(lab) && is.null(names(lab))
+      keyed <- is.character(lab) && length(lab) >= 1L && !anyNA(lab) &&
+        !is.null(names(lab)) && all(names(lab) %in% vocab) &&
+        !anyDuplicated(names(lab))
+      if (!one && !keyed) {
+        add("`elp$label` must be the score's own name, \"Overall Composite\", ",
+            "or names keyed by component: c(overall = \"Overall Composite\", ",
+            "written = \"Literacy\").")
+      }
+    }
+    lv <- elp$levels
+    numeric_lv <- is.numeric(lv) && length(lv) == 2L && !anyNA(lv) &&
+      lv[1] < lv[2]
+    categorical_lv <- is.character(lv) && length(lv) >= 2L && !anyNA(lv) &&
+      !anyDuplicated(lv)
+    if (!numeric_lv && !categorical_lv) {
+      add("`elp$levels` must be the level range, c(lowest, highest), or the ",
+          "level names in order, lowest first.")
+    }
+    if (.has(elp, "bands")) {
+      b <- elp$bands
+      if (!numeric_lv) {
+        add("`elp$bands` needs a numeric `elp$levels` range; a test that ",
+            "reports categories gets one band per category.")
+      } else if (!is.numeric(b) || !length(b) || anyNA(b) ||
+                 is.unsorted(b, strictly = TRUE) || b[1] < lv[1] ||
+                 b[length(b)] > lv[2]) {
+        add("`elp$bands` must be the lower edge of each band, strictly ",
+            "increasing and within `elp$levels` (", lv[1], "-", lv[2], ").")
+      }
+    }
+    if (.has(elp, "level_labels")) {
+      if (!numeric_lv) {
+        add("`elp$level_labels` is for a numeric `elp$levels` range; ",
+            "categorical levels are already names.")
+      } else if (!is.character(elp$level_labels)) {
+        add("`elp$level_labels` must be character.")
+      }
+    }
+  }
+
+  # --- the exit rule ----------------------------------------------------------
+  ex <- s$exit
+  if (!is.numeric(ex) || !length(ex) || is.null(names(ex)) || anyNA(ex) ||
+      any(!nzchar(names(ex))) || anyDuplicated(names(ex))) {
+    add("`exit` must be a named numeric vector, the minimum level on each ",
+        "score: c(overall = 4.5), or c(overall = 4.2, written = 3.9).")
+  } else {
+    bad <- setdiff(names(ex), vocab)
+    if (length(bad)) {
+      add("`exit` names score(s) that are not components: ",
+          paste(bad, collapse = ", "), ". Use the vocabulary keys: ",
+          paste(vocab, collapse = ", "), ".")
+    }
+    if (length(ex) == 1L && .is_string(elp$score) &&
+        !identical(names(ex), elp$score)) {
+      add("A single exit criterion must be on `elp$score` (\"", elp$score,
+          "\"); `exit` names \"", names(ex), "\".")
+    }
+    if (numeric_lv && any(ex < lv[1] | ex > lv[2])) {
+      add("`exit` levels must lie within `elp$levels` (", lv[1], "-", lv[2],
+          ").")
+    }
+    if (categorical_lv && any(ex != round(ex) | ex < 1 | ex > length(lv))) {
+      add("On a categorical scale an `exit` level is a position, 1 to ",
+          length(lv), " (", paste0(seq_along(lv), " = ", lv, collapse = ", "),
+          ").")
+    }
+  }
+
+  # --- timelines --------------------------------------------------------------
+  tl <- s$timelines
+  if (!is.list(tl)) {
+    add("`timelines` must be a list: max (required), on_time, lt_el.")
+  } else {
+    fields(tl, c("max", "on_time", "lt_el"), "timelines")
+    if (!.is_count(tl$max) || tl$max < 1) {
+      add("`timelines$max` (the maximum years to exit) must be a whole ",
+          "number of 1 or more.")
+    }
+    for (f in c("on_time", "lt_el")) {
+      if (.has(tl, f) && (!.is_count(tl[[f]]) || tl[[f]] < 1)) {
+        add("`timelines$", f, "` must be a whole number of 1 or more.")
+      }
+    }
+  }
+
+  # --- academic tests ---------------------------------------------------------
+  ac <- s$academic
+  if (!is.null(ac)) {
+    if (!is.list(ac) || !length(ac) || is.null(names(ac)) ||
+        any(!nzchar(names(ac)))) {
+      add("`academic` must be a list named by subject, e.g. ",
+          "list(ELA = list(grades = 3:8, proficient_cut = 750)).")
+    } else {
+      for (sb in names(ac)) {
+        a <- ac[[sb]]
+        tag <- paste0("`academic$", sb)
+        if (!is.list(a)) {
+          add(tag, "` must be a list: grades, proficient_cut (and optionally ",
+              "proficient_level, level_labels).")
+          next
+        }
+        fields(a, c("grades", "proficient_cut", "proficient_level",
+                    "level_labels"), paste0("academic$", sb))
+        g <- a$grades
+        if (!is.null(g) && (!is.atomic(g) || !length(g) || anyNA(g) ||
+                            anyDuplicated(as.character(g)))) {
+          add(tag, "$grades` must be the tested grades, e.g. 3:8, or NULL ",
+              "for an end-of-course test.")
+        }
+        pc <- a$proficient_cut
+        if (!is.null(pc)) {
+          if (!is.numeric(pc) || !length(pc) || anyNA(pc)) {
+            add(tag, "$proficient_cut` must be a scale score, or scale ",
+                "scores named by grade.")
+          } else if (is.null(names(pc))) {
+            if (length(pc) != 1L) {
+              add(tag, "$proficient_cut` is one number for every grade, or ",
+                  "one per grade named by grade: c(\"3\" = 450, \"4\" = 455).")
+            }
+          } else {
+            pg <- names(pc)
+            if (any(!nzchar(pg)) || anyDuplicated(pg)) {
+              add(tag, "$proficient_cut` by grade needs each value named ",
+                  "by a different grade.")
+            } else if (!is.null(g)) {
+              extra <- setdiff(pg, as.character(g))
+              if (length(extra)) {
+                add(tag, "$proficient_cut` names grade(s) not in `academic$",
+                    sb, "$grades`: ", paste(extra, collapse = ", "), ".")
+              }
+            }
+          }
+        }
+        if (.has(a, "proficient_level") &&
+            (!.is_count(a$proficient_level) || a$proficient_level < 2)) {
+          add(tag, "$proficient_level` must be a whole number of 2 or more ",
+              "(lowest level = 1).")
+        }
+        if (.has(a, "level_labels") &&
+            (!is.character(a$level_labels) || length(a$level_labels) < 2L)) {
+          add(tag, "$level_labels` must name the performance levels, ",
+              "lowest first.")
+        }
+      }
+      lvls <- unique(unlist(lapply(ac, function(a) {
+        if (is.list(a)) a$proficient_level
+      })))
+      if (length(lvls) > 1L) {
+        add("`proficient_level` must be the same in every subject; got ",
+            paste(lvls, collapse = ", "), ".")
+      }
+    }
+  }
+
+  # --- the rest ---------------------------------------------------------------
+  if (!.is_count(s$min_cell) || s$min_cell < 1) {
+    add("`min_cell` must be a whole number of 1 or more.")
+  }
+  ds <- s$district_sizes
+  if (!is.null(ds) && (!is.numeric(ds) || length(ds) < 2L || anyNA(ds) ||
+                       is.unsorted(ds, strictly = TRUE) || ds[1] != 0)) {
+    add("`district_sizes` must be the lower edge of each district-size ",
+        "group, starting at 0 and increasing, e.g. c(0, 100, 1000).")
+  }
+  ce <- c("premature_exit", "prolonged_retention", "equal", "unknown")
+  if (!.is_string(s$costlier_error) || !s$costlier_error %in% ce) {
+    add("`costlier_error` must be one of ", paste(ce, collapse = ", "), ".")
+  }
+  src <- s$sources
+  if (!is.null(src)) {
+    if (!is.character(src) || is.null(names(src)) || anyNA(src) ||
+        any(!nzchar(names(src))) || anyDuplicated(names(src))) {
+      add("`sources` must be a named character vector: field = where it is ",
+          "written down.")
+    } else {
+      bad <- setdiff(names(src), .SPEC_SOURCE_FIELDS)
+      if (length(bad)) {
+        add("`sources` names field(s) it cannot source: ",
+            paste(bad, collapse = ", "), ". It takes ",
+            paste(.SPEC_SOURCE_FIELDS, collapse = ", "), ".")
+      }
+    }
+  }
+  dl <- s$delivery
+  if (!is.null(dl)) {
+    if (!is.list(dl)) {
+      add("`delivery` must be a list.")
+    } else {
+      fields(dl, .SPEC_DELIVERY_FIELDS, "delivery")
+    }
+  }
+
+  if (length(e)) {
+    stop("Invalid el_spec:\n", paste0("  - ", e, collapse = "\n"), call. = FALSE)
+  }
+  invisible(s)
+}
+
+# Band labels from lower edges, to the edges' own precision: c(4, 4.5, 5)
+# gives "4.0-4.4", "4.5-4.9", "5.0+". The top break sits one level above the
+# range so the highest level falls in the last band (bands are left-closed).
+.bands_from_edges <- function(edges, top) {
+  d <- 1L
+  while (d < 4L && any(abs(edges * 10^d - round(edges * 10^d)) > 1e-8)) {
+    d <- d + 1L
+  }
+  step <- 10^-d
+  n <- length(edges)
+  fmt <- function(x) formatC(x, format = "f", digits = d)
+  labels <- c(if (n > 1L) paste0(fmt(edges[-n]), "-", fmt(edges[-1] - step)),
+              paste0(fmt(edges[n]), "+"))
+  list(breaks = c(as.numeric(edges), top + 1), labels = labels)
+}
+
+# District-size groups from lower edges. Omitted, the deck's own groups,
+# labels as the deck prints them (CLAUDE.md 3 records that "101-999" sits on
+# a left-closed break at 100).
+.district_bands <- function(edges) {
+  if (is.null(edges)) {
+    return(list(breaks = c(0, 100, 1000, Inf),
+                labels = c("<100", "101-999", "1,000+")))
+  }
+  n <- length(edges)
+  num <- function(x) format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+  mid <- if (n > 2L) paste0(num(edges[2:(n - 1)]), "-", num(edges[3:n] - 1))
+  list(breaks = c(as.numeric(edges), Inf),
+       labels = c(paste0("<", num(edges[2])), mid, paste0(num(edges[n]), "+")))
+}
+
+# The Process Overview Type the rule's shape implies. Every stage gate reads
+# Types 2-6 alike (more than one criterion), so only 1 vs more matters to the
+# analysis; 6 is kept for a rule that is a profile of domains alone.
+.derive_exit_types <- function(comps, score) {
+  if (length(comps) == 1L) return(1L)
+  kinds <- .component_kinds()[comps]
+  if (!score %in% comps && sum(kinds == "domain") >= 2L) return(6L)
+  2L
+}
+
+# Short form -> the full internal list, then the full validator.
+.expand_el_spec <- function(s) {
+  src <- function(field) {
+    if (!is.null(s$sources) && field %in% names(s$sources)) {
+      unname(s$sources[[field]])
+    } else "provisional"
+  }
+  elp <- s$elp
+  lv <- elp$levels
+  categorical <- is.character(lv)
+  score <- elp$score
+
+  vocab <- el_component_vocabulary()
+  kinds <- .component_kinds()
+  # One unnamed label names the score; a keyed one names any component.
+  labels <- elp$label
+  if (!is.null(labels) && is.null(names(labels))) {
+    labels <- stats::setNames(labels, score)
+  }
+  components <- stats::setNames(lapply(vocab, function(k) {
+    cp <- list(kind = kinds[[k]],
+               measures = if (identical(k, score) && categorical) "level"
+                          else c("scale", "level"))
+    if (k %in% names(labels)) cp$native_name <- unname(labels[[k]])
+    cp
+  }), vocab)
+
+  level_scale <- if (categorical) {
+    list(type = "categorical", levels = lv)
+  } else {
+    c(list(type = "numeric", range = as.numeric(lv)),
+      if (!is.null(elp$level_labels)) list(labels = elp$level_labels))
+  }
+  bands <- if (!is.null(elp$bands)) .bands_from_edges(elp$bands, lv[2])
+
+  # The score's own criterion first: that is how a state writes the rule.
+  ex <- s$exit
+  ex <- ex[c(which(names(ex) == score), which(names(ex) != score))]
+  label_of <- function(k) {
+    if (k %in% names(labels)) unname(labels[[k]]) else paste(k, kinds[[k]])
+  }
+  terms <- lapply(names(ex), function(k) {
+    list(component = k, measure = "level", op = ">=", value = unname(ex[[k]]))
+  })
+  rule <- paste(vapply(names(ex), function(k) {
+    paste0(label_of(k), " level >= ", format(ex[[k]]))
+  }, ""), collapse = " and ")
+
+  tl <- s$timelines
+  timelines <- list(max_years_to_exit = as.integer(tl$max))
+  if (!is.null(tl$on_time)) {
+    timelines$essa_timeline_years <- as.integer(tl$on_time)
+    timelines$on_time_rule <- list(default_years = as.integer(tl$on_time))
+  }
+  if (!is.null(tl$lt_el)) timelines$lt_el_years <- as.integer(tl$lt_el)
+  timelines$exit_dating <- "first_former_year"
+  timelines$initial_elp_source <- "first_annual"
+  timelines$source <- src("timelines")
+
+  policy <- list(
+    exit = list(
+      pathways = list(list(name = "exit", rule = rule, terms = terms,
+                           combine = "all", discretionary = FALSE)),
+      combination = "any_pathway",
+      types = .derive_exit_types(names(ex), score),
+      source = src("exit")),
+    timelines = timelines,
+    suppression = list(min_cell = as.integer(s$min_cell),
+                       source = src("min_cell")),
+    district_size_bands = c(.district_bands(s$district_sizes),
+                            list(source = src("district_sizes"))),
+    error_tolerance = list(costlier_error = s$costlier_error,
+                           source = src("costlier_error"))
+  )
+  lvl <- unique(unlist(lapply(s$academic, function(a) a$proficient_level)))
+  if (length(lvl)) {
+    policy$academic_benchmark <- list(proficient_level = as.integer(lvl),
+                                      source = src("academic"))
+  }
+
+  academic <- lapply(s$academic, function(a) {
+    pc <- a$proficient_cut
+    if (!is.null(pc)) {
+      pc <- stats::setNames(as.numeric(pc), names(pc))
+    }
+    c(list(grades = if (!is.null(a$grades)) as.character(a$grades)),
+      list(proficient_cut = pc, op = ">=", source = src("academic")),
+      if (!is.null(a$level_labels)) list(level_labels = a$level_labels))
+  })
+  academic <- lapply(academic, function(a) Filter(Negate(is.null), a))
+
+  dl <- s$delivery
+  data <- list()
+  cols <- dl[intersect(names(dl), c("roster", "base", "academic", "value_maps"))]
+  if (length(cols)) data$columns <- cols
+  for (f in c("entry_date_rule", "entry_sources", "years_in_status_first_value")) {
+    if (!is.null(dl[[f]])) data[[f]] <- dl[[f]]
+  }
+
+  .el_spec_full(
+    schema_version = "2.0.0",
+    program = list(name = s$name, short_name = s$id, state = s$name),
+    elp = c(list(instrument = elp$test, components = components,
+                 headline = score, level_scale = level_scale),
+            if (!is.null(bands)) list(bands = bands)),
+    policy = policy,
+    academic = if (length(academic)) academic else list(),
+    data = data,
+    verification = list(status = s$status),
+    source_documents = list()
+  )
+}
+
+# The full internal constructor: the shape every stage reads. Not written by
+# hand any more -- el_spec() builds it -- but tests use it to build a
+# deliberately unusual spec (a Type 3 or Type 5 rule, which the short form
+# cannot express) and to exercise validate_el_spec() field by field.
+#
+# Blocks, as validate_el_spec() checks them:
+#   program       name, short_name ($meta$spec_id), state.
+#   elp           instrument, components (each kind, measures, optional
+#                 native_name), headline, level_scale, bands.
+#   policy        restricted to el_policy_fields(); every field carries a
+#                 `source`.
+#   academic      one entry per subject: grades, proficient_cut (or a full
+#                 `cuts` table of level minimums, one vector or a list by
+#                 grade), op, level_labels.
+#   data          columns (roster / base / academic crosswalks, value_maps)
+#                 and Prep 2's entry-dating fields.
+#   verification  status.
+# `validate = FALSE` lets a test build a deliberately invalid spec to check
+# the validator's own messages.
+.el_spec_full <- function(schema_version = "1.0.0",
+                          program = list(),
+                          elp = list(),
+                          policy = list(),
+                          academic = list(),
+                          data = list(),
+                          verification = list(),
+                          source_documents = list(),
+                          validate = TRUE) {
   spec <- list(
     schema_version   = schema_version,
     program          = program,
@@ -399,6 +912,12 @@ validate_el_spec <- function(spec) {
           "or NULL for an end-of-course subject.")
     }
     e <- c(e, .validate_academic_cuts(a, sub))
+    pc <- a$proficient_cut
+    if (!is.null(pc) && (!is.numeric(pc) || anyNA(pc) ||
+                         (is.null(names(pc)) && length(pc) != 1L))) {
+      add("`academic$", sub, "$proficient_cut` must be one scale score, or ",
+          "scale scores named by grade.")
+    }
     if (.has(a, "op") && !identical(a$op, ">=")) {
       add("`academic$", sub, "$op` must be \">=\": cuts are level minimums, ",
           "so a score exactly at a cut belongs to the upper level.")
@@ -485,7 +1004,8 @@ validate_el_spec <- function(spec) {
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 .academic_subjects <- function(spec) {
-  setdiff(names(spec$academic), c("spec_id", "source"))
+  # Always character: no academic block is character(0), never NULL.
+  as.character(setdiff(names(spec$academic), c("spec_id", "source")))
 }
 
 # A subject's `cuts` take one of two shapes:
@@ -686,19 +1206,22 @@ spec_academic_grades <- function(spec, subject) spec$academic[[subject]]$grades
 
 #' Academic cut scores and the proficiency cut
 #'
-#' `spec$academic[[subject]]$cuts` is either one vector of level minimums for
-#' every grade or a list of them named by grade. These accessors hide which:
-#' every stage asks for a subject *and a grade* and gets that grade's cuts.
+#' A spec gives each subject's proficient cut, `academic$<subject>$
+#' proficient_cut`: one scale score for every grade, or scores named by
+#' grade. These accessors hide which: every stage asks for a subject *and a
+#' grade* and gets that grade's cut.
 #'
-#' * `spec_academic_cuts()` returns the minimum scale score of each level
-#'   above the lowest, for one subject and grade -- `NULL` when the spec
-#'   declares none for that grade.
-#' * `spec_proficient_level()` returns
-#'   `policy$academic_benchmark$proficient_level`, the position of the lowest
-#'   proficient level (`NA` when the spec does not set it).
-#' * `spec_proficient_cut()` returns the lowest scale score of that level for
-#'   one subject and grade (`NA` when either piece is missing). It is the red
-#'   line in Check 3's box plots and the content classification in Check 4.
+#' * `spec_proficient_cut()` returns the lowest proficient scale score for
+#'   one subject and grade (`NA` when the spec gives none for that grade). It
+#'   is the red line in Check 3's box plots and the content classification in
+#'   Check 4.
+#' * `spec_proficient_level()` returns the position of the lowest proficient
+#'   performance level (`NA` when the spec does not set it), used only for a
+#'   grade with no cut.
+#' * `spec_academic_cuts()` returns a full table of level minimums for one
+#'   subject and grade. A spec written in the short form carries only the
+#'   proficient cut, so this is `NULL` for it; it serves a full internal spec
+#'   that carries `academic$<subject>$cuts`.
 #'
 #' When the spec has no cut for a grade, Checks 3 and 4 fall back to the
 #' academic table's own `ACHIEVEMENT_LEVEL`, compared with the proficient
@@ -734,6 +1257,14 @@ spec_proficient_level <- function(spec) {
 #' @rdname spec_academic_cuts
 #' @export
 spec_proficient_cut <- function(spec, subject, grade = NULL) {
+  # The short form stores the proficient cut itself.
+  pc <- spec$academic[[subject]]$proficient_cut
+  if (!is.null(pc)) {
+    if (is.null(names(pc))) return(as.numeric(pc[[1]]))
+    if (is.null(grade) || length(grade) != 1L || is.na(grade)) return(NA_real_)
+    i <- match(as.character(grade), names(pc))
+    return(if (is.na(i)) NA_real_ else as.numeric(pc[[i]]))
+  }
   lvl <- spec_proficient_level(spec)
   cuts <- spec_academic_cuts(spec, subject, grade)
   # `cuts` are the minima of levels 2..n, so level k is cuts[k - 1].
@@ -793,22 +1324,76 @@ read_el_spec <- function(id) {
 
 # ---- display -----------------------------------------------------------------
 
+# Grades as runs: c("3", ..., "8", "11") prints "3-8, 11", never "3-11".
+.grade_runs <- function(g) {
+  n <- suppressWarnings(as.integer(g))
+  if (anyNA(n) || is.unsorted(n, strictly = TRUE)) return(paste(g, collapse = ", "))
+  ends <- c(0L, which(diff(n) != 1L), length(n))
+  paste(vapply(seq_len(length(ends) - 1L), function(i) {
+    r <- n[(ends[i] + 1L):ends[i + 1L]]
+    if (length(r) > 2L) paste0(r[1], "-", r[length(r)]) else paste(r, collapse = ", ")
+  }, ""), collapse = ", ")
+}
+
 #' @export
 print.el_spec <- function(x, ...) {
-  cat("<el_spec>", x$program$state %||% "??",
-      x$program$name %||% "", "\n")
-  cat("  instrument :", x$elp$instrument %||% "-", "\n")
-  cat("  components :", length(x$elp$components),
-      paste0("(headline: ", x$elp$headline %||% "-", ")"), "\n")
+  id <- x$program$short_name %||% "??"
+  nm <- x$program$name %||% ""
+  cat("<el_spec>", id, if (!identical(nm, id)) paste0("(", nm, ")"), "\n")
+
+  ls <- x$elp$level_scale
+  levels <- if (identical(ls$type, "categorical")) {
+    paste(ls$levels, collapse = " < ")
+  } else paste(ls$range, collapse = "-")
+  nb <- length(spec_bands(x)$labels)
+  cat("  ELP test   :", x$elp$instrument %||% "-", "--",
+      spec_headline_label(x), paste0("(", spec_headline(x), "),"),
+      "levels", levels,
+      if (nb) paste0("in ", nb, " bands") else "", "\n")
+
   ty <- spec_exit_types(x)
-  cat("  exit types :", paste(ty, collapse = ", "),
-      paste0("- ", paste(el_exit_typology()[as.character(ty)], collapse = "; ")), "\n")
-  cat("  timelines  : max", x$policy$timelines$max_years_to_exit %||% "-",
-      "yrs; ESSA", x$policy$timelines$essa_timeline_years %||% "-", "yrs\n")
+  rules <- vapply(x$policy$exit$pathways, function(p) p$rule %||% "-", "")
+  cat("  exit       :", paste(rules, collapse = "; or "),
+      paste0("[Type ", paste(ty, collapse = ", "), "]"), "\n")
+
+  tl <- x$policy$timelines
+  cat("  timelines  : max", tl$max_years_to_exit %||% "-", "yrs; on time",
+      tl$on_time_rule$default_years %||% tl$essa_timeline_years %||%
+        tl$max_years_to_exit %||% "-",
+      "yrs; long-term EL",
+      if (is.null(tl$lt_el_years)) "not set" else paste("at", tl$lt_el_years, "yrs"),
+      "\n")
+
+  subs <- spec_academic_subjects(x)
+  if (length(subs)) {
+    desc <- vapply(subs, function(sb) {
+      a <- x$academic[[sb]]
+      g <- a$grades
+      gr <- if (is.null(g)) "end of course" else
+        paste(if (length(g) > 1L) "grades" else "grade", .grade_runs(g))
+      pc <- a$proficient_cut
+      cut <- if (is.null(pc) && is.null(a$cuts)) "no cut" else
+        if (!is.null(pc) && is.null(names(pc))) paste("cut", pc) else
+          "cuts by grade"
+      paste0(sb, " (", gr, ", ", cut, ")")
+    }, "")
+    cat("  academic   :", paste(desc, collapse = "; "), "\n")
+  } else {
+    cat("  academic   : none\n")
+  }
   cat("  suppression: min_cell", x$policy$suppression$min_cell %||% "-", "\n")
-  cat("  verification:", x$verification$status %||% "-", "\n")
+  cat("  status     :", x$verification$status %||% "-", "\n")
+  # Named as the short form names them, which is what a reader edits.
   prov <- names(x$policy)[vapply(x$policy, function(p)
     identical(p$source, "provisional"), TRUE)]
+  short <- c(suppression = "min_cell", district_size_bands = "district_sizes",
+             error_tolerance = "costlier_error", academic_benchmark = "academic")
+  prov <- ifelse(prov %in% names(short), short[prov], prov)
+  if (any(vapply(subs, function(sb) identical(x$academic[[sb]]$source,
+                                              "provisional"), TRUE))) {
+    prov <- c(prov, "academic")
+  }
+  prov <- unique(prov)
   if (length(prov)) {
     cat("  [DERIVED - VERIFY]:", paste(prov, collapse = ", "), "\n")
   }

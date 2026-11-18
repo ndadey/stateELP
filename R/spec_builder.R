@@ -906,11 +906,96 @@
     "# answer) rather than editing this file, or edit here and stop using the",
     "# builder.",
     "#",
-    "# Any policy entry with source = \"provisional\" renders as [DERIVED - VERIFY].",
+    "# Any field not named in `sources` renders as [DERIVED - VERIFY].",
+    "# Answers the spec does not hold (who decides, growth targets, the",
+    "# program inventory) stay in the answers file.",
     "# ============================================================================="
   )
   writeLines(c(header, "", paste0(object_name, " <- stateELP::el_spec("), "",
                paste(body, collapse = ",\n\n"), ")"), path)
+}
+
+# The answers, as el_spec()'s short form. Answers the short form does not hold
+# -- who decides, growth targets, the program inventory, the alternate test --
+# stay in the answers file. A rule the short form cannot express (a scale-score
+# criterion, an operator other than >=, "any one of", a committee override, an
+# exempt waived domain) stops here, before anything is written.
+.sb_short_spec <- function(a, b, c_, d, f, g, h, i, j) {
+  terms <- c_$exit$pathways[[1]]$terms
+  problems <- c(
+    if (!identical(c_$exit$pathways[[1]]$combine, "all"))
+      "the student must meet ALL of the requirements (C3)",
+    if (isTRUE(c_$exit$pathways[[1]]$discretionary))
+      "no committee or educator can override the scores (C6)",
+    if (any(vapply(terms, function(t) !identical(t$measure, "level"), TRUE)))
+      "every requirement is on a proficiency level, not a scale score (C2)",
+    if (any(vapply(terms, function(t) !identical(t$op, ">="), TRUE)))
+      "every requirement is \"at least\" (>=) (C2)",
+    if (any(vapply(terms, function(t) isTRUE(t$exempt_if_absent), TRUE)))
+      "a waived domain is not exempt (C2)")
+  if (length(problems)) {
+    stop("The spec can hold an exit rule only when ",
+         paste(problems, collapse = "; and "),
+         ". Rerun build_el_spec() with sections = \"C\" to change the answer, ",
+         "or write the rule into the spec file by hand.", call. = FALSE)
+  }
+  comps <- b$comps
+  labels <- unlist(lapply(comps, function(cp) cp$native_name))
+  ls <- b$level_scale
+  numeric_scale <- identical(ls$type, "numeric")
+  breaks <- c_$bands$breaks
+
+  # Each subject's proficient cut, read out of its full cut table: level k's
+  # minimum is the (k - 1)th cut.
+  prof <- g$benchmark$proficient_level
+  pick <- function(v) {
+    if (is.null(v) || prof < 2 || prof - 1 > length(v)) NULL else v[[prof - 1]]
+  }
+  academic <- lapply(g$academic, function(s) {
+    cuts <- s$cuts
+    pc <- if (is.list(cuts)) {
+      v <- unlist(lapply(cuts, pick))
+      if (length(v)) v
+    } else pick(cuts)
+    Filter(Negate(is.null), list(grades = s$grades, proficient_cut = pc,
+                                 proficient_level = prof,
+                                 level_labels = s$level_labels))
+  })
+
+  dsb <- f$district_size_bands$breaks
+  edges <- dsb[is.finite(dsb)]
+  src <- c(exit = c_$exit$source, timelines = d$source,
+           min_cell = f$suppression$source,
+           district_sizes = f$district_size_bands$source,
+           academic = g$benchmark$source,
+           costlier_error = h$error_tolerance$source)
+  src <- src[src != "provisional"]
+
+  out <- list(
+    id     = a$label,
+    name   = a$state,
+    status = j$status,
+    elp = Filter(Negate(is.null), list(
+      test   = a$test,
+      score  = b$headline,
+      label  = if (length(labels)) labels,
+      levels = if (numeric_scale) ls$range else ls$levels,
+      bands  = if (!is.null(breaks)) breaks[-length(breaks)],
+      level_labels = if (numeric_scale) ls$labels)),
+    exit = stats::setNames(vapply(terms, function(t) as.numeric(t$value), 0),
+                           vapply(terms, function(t) t$component, "")),
+    timelines = Filter(Negate(is.null), list(
+      max     = d$max_years_to_exit,
+      on_time = d$on_time_rule$default_years %||% d$essa_timeline_years,
+      lt_el   = d$lt_el_years)),
+    academic = if (length(academic)) academic,
+    min_cell = f$suppression$min_cell,
+    district_sizes = if (!identical(as.numeric(edges), c(0, 100, 1000))) edges,
+    costlier_error = h$error_tolerance$costlier_error,
+    sources = if (length(src)) src,
+    delivery = if (length(i$columns)) i$columns
+  )
+  Filter(Negate(is.null), out)
 }
 
 # ---- build -------------------------------------------------------------------
@@ -941,8 +1026,12 @@
 #' available yet -- Checks 3 and 4 then read proficiency from the academic
 #' file's own performance level.
 #'
-#' What it does not cover: a rule with more than one route to exit (Type 5)
-#' needs the extra pathways added to the file by hand.
+#' It writes the short form [el_spec()] takes. That form holds an exit rule of
+#' minimum proficiency levels that a student must all meet; a rule it cannot
+#' hold -- a scale-score criterion, "any one of", a committee override, more
+#' than one route to exit -- stops the build with the answer to change.
+#' Answers the spec does not hold (who decides, growth targets, the program
+#' inventory, the alternate test) are kept in the answers file.
 #'
 #' @param out_path Where to write the spec file (`.R`). Keep it outside the
 #'   package's own `inst/specs/`.
@@ -986,29 +1075,7 @@ build_el_spec <- function(out_path,
   i  <- .sb_part_i(names(g$academic))
   j  <- .sb_part_j()
 
-  cites <- unique(unlist(lapply(list(c_$exit, d, e, f$suppression, g$benchmark,
-                                     h$program), function(x) x$source)))
-  cites <- setdiff(cites, "provisional")
-
-  args <- list(
-    schema_version = "1.0.0",
-    program = list(name = a$test, short_name = a$label, state = a$state,
-                   department = a$agency, assessment_type = "elp",
-                   administration_year = a$year, vendor = a$vendor),
-    elp = list(instrument = a$test, administration_window = .sb_or_na(a$window),
-               components = b$comps, headline = b$headline,
-               level_scale = b$level_scale, bands = c_$bands,
-               grade_clusters = c("K", "1", "2-3", "4-5", "6-8", "9-12"),
-               cuts = NULL, alternate = b$alternate),
-    policy = list(exit = c_$exit, timelines = d, growth = e,
-                  suppression = f$suppression, academic_benchmark = g$benchmark,
-                  district_size_bands = f$district_size_bands,
-                  program = h$program, error_tolerance = h$error_tolerance),
-    academic = g$academic,
-    data = i,
-    verification = j,
-    source_documents = lapply(cites, function(x) list(title = x, url = NA_character_))
-  )
+  args <- .sb_short_spec(a, b, c_, d, f, g, h, i, j)
 
   dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
   .sb_write_spec(args, out_path,

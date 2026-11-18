@@ -467,7 +467,7 @@ compute_entry <- function(data, spec) {
         notes <- c(notes, paste0(
           "Too few in-panel entrants carry `YEAR_IN_STATUS` to detect its ",
           "convention; it is assumed to count the current year (first year = ",
-          "1). Set `spec$data$years_in_status_first_value` to override."))
+          "1). Set `delivery$years_in_status_first_value` in the spec to override."))
       }
     } else {
       notes <- c(notes, sprintf("`YEAR_IN_STATUS` is read per the spec as %s.",

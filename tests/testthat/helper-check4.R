@@ -14,8 +14,7 @@ make_check4_sim_bundle <- function() make_check3_sim_bundle()
 # The academic cut the package derives, restated for fixtures so a score can
 # be placed on either side of it without a test typing the number.
 make_check4_cut <- function(spec, subject = spec_academic_subjects(spec)[[1]]) {
-  lvl <- spec$policy$academic_benchmark$proficient_level
-  as.numeric(spec$academic[[subject]]$cuts[[lvl - 1L]])
+  as.numeric(spec$academic[[subject]]$proficient_cut[[1]])
 }
 
 # A hand-built paired panel: one grade, one year, one subject, current ELs
@@ -103,11 +102,11 @@ make_check4_skewed_bundle <- function(spec = make_check4_spec(), ...) {
                      spec = spec, ...)
 }
 
-# ELPA21 with an academic block: the shipped spec declares none (its academic
-# spec is a pointer), so the SIM block is grafted on -- the pattern Check 2
-# and Check 3 use for a Type-varied spec.
+# ELPA21 as a domain profile (Type 6) with an academic block: the shipped spec
+# declares none, so the SIM block is grafted on -- the pattern Check 2 and
+# Check 3 use for a Type-varied spec.
 make_check4_elpa21_spec <- function() {
-  spec <- read_el_spec("00_ELPA21_EL_Spec")
+  spec <- make_spec_elpa21_profile()
   spec$academic <- make_check4_spec()$academic
   validate_el_spec(spec)
   spec

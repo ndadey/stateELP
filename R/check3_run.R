@@ -92,7 +92,7 @@ run_check3 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
       cut                  = if (is.null(panel)) NA_real_ else
                                .check3_cut(spec, panel$subject, panel$grade),
       proficiency_basis    = .check3_focal_basis(landing, panel),
-      proficient_level     = spec$policy$academic_benchmark$proficient_level,
+      proficient_level     = spec_proficient_level(spec),
       proficiency_note     = .check3_proficiency_note(landing, panels, spec),
       logistic_note        = .check3_logistic_note(logistic, landing, panels,
                                                    spec),
@@ -165,7 +165,7 @@ run_check3 <- function(data, spec, subject = NULL, grade = NULL, year = NULL) {
       "proficient when the academic file's own performance level is at or ",
       "above level ", lvl, ", so no cut line is drawn and the share in the ",
       "tables is the share at that level. Enter the grade's cut scores in ",
-      "the spec (`academic$<subject>$cuts`, by grade) to draw the line."))
+      "the spec (`academic$<subject>$proficient_cut`, by grade) to draw the line."))
   }
   if (any(undefined)) {
     parts <- c(parts, paste0(

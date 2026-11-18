@@ -116,7 +116,7 @@ Maintain this table. It starts as the shell inventory.
 | Package skeleton, `DESCRIPTION`, `renv` | **built** | `renv::init()`, explicit snapshot — which pins `Imports`/`Depends`/`LinkingTo` only (`renv/settings.json`), so no `Suggests` is in `renv.lock` (75 entries); `officer` and `tidyr` are there only because `flextable` pulls them in. `officer` and `openxlsx` joined `Suggests` (edited 2026-10-09, committed with this file) for `test-disclosure.R` (their absence was the one `check()` WARNING in `4f402c3`); `openxlsx` is not in the project library, so that file's `.xlsx` case skips here — `renv::install("openxlsx")` runs it. `NAMESPACE`/`man` generated |
 | `data-raw/el_long_sim.R` + `sim_contract.md` | **written, RUN** | contract **v0.4.0**; every `[FILL IN]` filled from the 2026-09-16 build; values verified identical to the 0.2.0 build after renaming (§2.1) |
 | `data/` (three `.rda`) | **built** | `el_long_sim` (base) / `el_roster_sim` / `academic_long_sim`, 6.84 MB, `sim_contract_version` 0.4.0; `elp_components_sim` retired; regenerate, don't hand-edit |
-| `R/spec.R` + four specs | **built** | SIM (Type 1) / TEMPLATE / ELPA21 (Type 6) / **MA (Type 2, added 2026-10-14)**; ALL-CAPS `data$columns` crosswalks + `value_maps`. No `demographics_spec`: display labels moved out of the spec tree to `inst/lookups/Display_Labels.R` and no spec points at them. MA is the only spec carrying a real state's exit rule and the only one whose Type gate opens on one — §5 item 4 for what is sourced in it (one field) and what is not (the other eight) |
+| `R/spec.R` + four specs | **built; short form 2026-11-11 (built on branch `simplify-spec`, merged into `main` 2026-11-18)** | Specs are now written in the **short form** `el_spec()` takes (§5, the note at its top): `id`, `status`, `elp` (test, score, levels, optional label / bands / level_labels), `exit` (named minimum levels), `timelines` (max, on_time, lt_el), `academic` (grades + `proficient_cut` per subject), `min_cell`, and optional `district_sizes`, `costlier_error`, `sources`, `delivery`. `el_spec()` expands it into the full internal list the rest of this section and §5 describe (`.el_spec_full()`), so stage code reads the same shape. SIM (Type 1) / TEMPLATE (Type 1, every optional field) / ELPA21 (**Type 1 now**: the Proficient determination) / MA (Type 2). No `demographics_spec`: display labels live in `inst/lookups/Display_Labels.R`. MA is the only spec carrying a real state's exit rule — its `sources` names `exit` and nothing else |
 | `R/el_data.R` (bundle, adapter, coverage) | **built** | `as_el_data()` (separate objects, merged single file), `as_el_data_sgp()`, `as_academic_long()`, `elp_headline()`, coverage table |
 | `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below. `render_step()` renders a copy in `tempdir()` and copies only the finished files to `out_dir` (default `reports/`) — since the dev-loop commit `3356ad8` (2026-09-15; environment fact 3). Since `d63e2eb` (2026-10-09): `save_results` writes to `results_dir` (default `results/`, gitignored, never `out_dir`); `results_file` reaches RDS mode; `check_disclosure` scans every output for student ids and errors on a hit (§9). Dev helpers in `dev/render_step.R`: `rs()`, `rs_all()`, `rs_site()` (example reports into `docs/`), `rs_site_index()` (`docs/index.md` from the README), `rs_guide()` (guide pages into `docs/guide/`, disclosure-scanned). Known gaps in this path are under "Known issues" below |
@@ -719,6 +719,51 @@ copy of the working tree (tracked + new files, `renv` dropped): **0 errors,
 0 warnings, 3 NOTEs** (the known three: `openxlsx` absent, the 6.5 MB
 `data/`, "unable to verify current time"), 24m 20s, tests 13 min.
 
+**The short-form spec (2026-11-11, branch `simplify-spec`; committed with
+this file and merged into `main` 2026-11-18).**
+At the user's request the spec was simplified to what a state has to tell
+the package — "Route A" of `internal_docs/PROPOSAL-simple-spec.md` (local
+only: the user kept it out of the repo as an internal doc, 2026-11-18, so a
+clone lacks it, as it lacks `internal_docs/source/`): a new
+front door, the internal shape unchanged (§5's opening note has the field
+list). The four shipped specs went from 1,165 lines to 252 (SIM: 274 to 53,
+24 of them code). Across prefixes, by the same exception the state test run
+took: `R/spec.R` (short form, expansion, `spec_proficient_cut()` reading the
+stored cut, `print()`), `R/spec_builder.R` (writes the short form; its
+questions and the intake form are unchanged, answers the short form does not
+hold stay in the answers file), message text in `el_data`, `el_data_check`,
+`prep2_compute`, `check2_run`–`check4_run` and `prep2_population.qmd` (old
+paths → `delivery$…`, `academic$<subject>$proficient_cut`), and the three
+`$meta$proficient_level` reads now through `spec_proficient_level()`.
+`.academic_subjects()` now always returns character (`NULL` had moved the MA
+crash from "subscript out of bounds" to "argument is of length zero").
+
+*Verified 2026-11-11:* every stage run on the sim under the SIM, MA and
+TEMPLATE specs before (a clean export of `e26a39d`) and after: **every
+computed slot identical** — tables, model fits, figure data, coverage.
+Differences are text only: the generated rule string ("Overall Composite
+level >= 4.5", was "Overall composite proficiency level >= 4.5"); Checks 3–4's
+pairing note ("administered in its own window": `administration_window` is
+gone); Check 2's Type 1 note pointing at `exit`; `$meta$spec_id` for MA
+(`"MA"`, was `"ACCESS"`) and TEMPLATE (`"TEMPLATE"`); MA's crosswalk pathway
+name (`"exit"`). MA's Checks 1–3 fail exactly as before (Known issues: no
+academic subject declared). The whole suite **1,988 passing, 22 skipped (the
+same 22), 0 failing, 0 warnings** — check1 279, check2 166, check3 194,
+check4 382, data 44, disclosure 26, el_data 128, prep2 288, prep2_context
+120, render 24, **spec 272**, utils 65 — from one full run plus a rerun of
+the three files fixed after it. Tests that needed ELPA21 as a domain profile
+(Type 6) build it with `make_spec_elpa21_profile()` (`helper-spec.R`); the
+SGP fixtures' value maps and ACCESS level names moved from the SIM spec into
+`make_el_data_sim_spec()`. `tools::checkDocFiles()` silent;
+`devtools::check()` on a staging copy of the working tree (tracked + new
+files, `renv` dropped): **0 errors, 0 warnings, 3 NOTEs** (the known three),
+25m 18s, tests 569 s — run before the last edit, `print.el_spec()`'s grade
+runs (`.grade_runs()`, "3-8, 11" not "3-11"), after which `test-spec.R` was
+rerun and passes. **Not done:** the walkthrough guide
+(`guide/setup`, `prep1`, `check3`, `check4`, `decision`) still describes and
+reads the long form — several chunks read fields the short form drops — and
+`docs/` is not re-rendered; `docs/index.md` is regenerated from the README.
+
 **Concurrent-session note (2026-09-21).** Check 1's Model 1 pass and Check 2's
 completion were built in two sessions running at the same time, which is worth
 recording because two *generated* files are shared. `NAMESPACE` is regenerated
@@ -989,6 +1034,36 @@ every disagreement with the panel is reported in `$meta$notes$entry`
 Exit dating and cohort membership never read a delivered field.
 
 ## 5. `el_spec`
+
+**Short form (2026-11-11, merged into `main` 2026-11-18; proposal and its
+open decisions in `internal_docs/PROPOSAL-simple-spec.md`, local only).** A spec is now
+*written* in a short form and *read* in the full shape this section
+describes. `el_spec(id, status, elp, exit, timelines, name, academic,
+min_cell, district_sizes, costlier_error, sources, delivery)` validates the
+short form (`.validate_short_spec()`, every problem at once, unknown fields
+named), expands it (`.expand_el_spec()`) and runs the full validator on the
+result; the old long-form constructor is the internal `.el_spec_full()`,
+which tests use to build shapes the short form cannot (Types 3 and 5). What
+the expansion fixes for every state: one pathway, every term
+`measure = "level"`, `op = ">="`, `combine = "all"`, no `exempt_if_absent`;
+`exit_dating = "first_former_year"`; `initial_elp_source = "first_annual"`
+(Prep 2 now reads first-annual for every spec, not only SIM); every
+vocabulary component declared, with its kind fixed by the vocabulary and
+`measures = c("scale", "level")` except a categorical score (level only);
+`types` derived (one criterion → 1; domains only → 6; otherwise 2);
+`schema_version = "2.0.0"`. Defaults: `on_time` → `max`; `min_cell` 10;
+district sizes the deck's groups (labels as the deck prints them, the
+`101-999` known issue included); `costlier_error = "unknown"`. Each
+subject stores `proficient_cut` (one value, or named by grade) instead of a
+full `cuts` table, and `spec_proficient_cut()` reads it first;
+`proficient_level`, optional, must agree across subjects. Dropped: growth,
+accountability indicator, `policy$program`, pathway names / authority /
+dates, `grade_clusters`, `elp$cuts`, `elp$alternate`, component weights,
+`administration_window` (Checks 3–4's pairing note now says "in its own
+window"), `verification` beyond `status`, `source_documents`. Not writable:
+Types 3, 4, 5. The full shape below stays the contract every stage reads;
+where it says a spec "carries" or "declares" a field, read it as the
+expansion carrying it.
 
 A local R list in the ReportR style (constructor `el_spec()` + validator).
 `stateELP` stays standalone: no `Imports` on `stateSpecs` or `stateSummative`

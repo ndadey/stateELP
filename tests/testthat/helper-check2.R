@@ -9,22 +9,11 @@
 
 make_check2_spec <- function() read_el_spec("00_SIM_EL_Spec")
 
-# A Type 6 spec whose domain rule can actually be passed. The shipped ELPA21
-# spec asks for level 4 or higher on a three-level scale, so under it every
-# student fails every criterion and nobody is ever blocked by exactly one --
-# which is the wrong shape to test the gated Additional check against. Lowering
-# the terms to the top level of the declared scale is the smallest change that
-# makes the criteria able to disagree, which is what the check is about.
-make_check2_elpa21_spec <- function() {
-  spec <- read_el_spec("00_ELPA21_EL_Spec")
-  top <- length(spec$elp$level_scale$levels)
-  spec$policy$exit$pathways[[1]]$terms <-
-    lapply(spec$policy$exit$pathways[[1]]$terms, function(t) {
-      t$value <- top
-      t
-    })
-  spec
-}
+# A Type 6 spec whose domain rule can actually be passed: ELPA21 as a domain
+# profile with every term at the top level of the declared scale, so the
+# criteria are able to disagree, which is what the check is about. The shipped
+# ELPA21 spec writes its rule as one determination threshold (Type 1).
+make_check2_elpa21_spec <- function() make_spec_elpa21_profile()
 
 # An ELPA21-shaped cohort carrying all four domain levels, arranged so that the
 # criteria disagree: some students clear every domain, some fail exactly one,

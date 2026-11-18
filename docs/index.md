@@ -222,7 +222,7 @@ name is ALL CAPS**, following the SGP `LONG_DATA` / ReportR
 The **headline** ELP score (the component a state's exit rule and analyses run
 on, e.g. WIDA's Overall Composite) is never stored. Every stage reads it
 through one accessor, `elp_headline(bundle)`, which resolves it from the base
-table using `spec$elp$headline` and bands it using `spec$elp$bands`.
+table using the spec's `elp$score` and bands it using its `elp$bands`.
 
 **Minimum viable delivery:**
 
@@ -252,7 +252,7 @@ model. It accepts:
    to `"K"`, and honors `VALID_CASE`.
 
 Delivered column names are mapped to the package's names through the spec's
-`data$columns` crosswalk, and delivered codes (a kindergarten coded `"0"`,
+`delivery` crosswalk, and delivered codes (a kindergarten coded `"0"`,
 subject codes such as `READING`, performance levels such as BB / B / P / A)
 through its value maps and level labels. `as_el_data()` applies both to the
 academic table itself.
@@ -286,33 +286,60 @@ Ingest of raw state files is out of scope for now.
 ## Specs: `el_spec`
 
 Every state-specific value lives in one spec object, and no analysis function
-reads a state value from anywhere else. A spec has these blocks:
+reads a state value from anywhere else. A spec holds only what a state has to
+tell the package: the ELP score and its level range, the exit cut, the
+timelines, the academic proficiency cuts and the suppression rule. The whole
+spec for the simulated data:
 
-- `program`: who the spec describes
-- `elp`: the instrument, its components, the headline, the level scale and the
-  bands (things the **vendor** changes)
-- `policy`: the exit rule, timelines, growth targets, the long-term EL
-  definition, suppression, the academic benchmark, district-size bands, the
-  program inventory and error tolerance (things the **agency or legislature**
-  changes)
-- `academic`: subjects, tested grades, performance levels and cut scores (one
-  set per subject, or one per grade where they differ)
-- `data`: the column crosswalk and value maps (things that change with **file
-  delivery**)
-- `verification`, `source_documents`
+```r
+SIM_EL_Spec <- el_spec(
+  id     = "SIM",
+  name   = "Simulated state",
+  status = "synthetic",
 
-**Every policy value carries a `source`.** A value marked
-`source = "provisional"` renders as **`[DERIVED — VERIFY]`**, and the validator
-rejects a policy value that has no source.
+  elp = list(
+    test   = "WIDA ACCESS",
+    score  = "overall",               # the score every stage runs on
+    label  = "Overall Composite",     # what the reports call it
+    levels = c(1, 6),                 # proficiency-level range
+    bands  = c(1, 2, 3, 4, 4.5, 5)    # 1.0-1.9, 2.0-2.9, ... 4.5-4.9, 5.0+
+  ),
+
+  exit = c(overall = 4.5),            # minimum level; every criterion must be met
+
+  timelines = list(max = 6, on_time = 5, lt_el = 6),
+
+  academic = list(                    # the lowest proficient scale score
+    ELA  = list(grades = 3:11, proficient_cut = 750, proficient_level = 4),
+    Math = list(grades = 3:11, proficient_cut = 750, proficient_level = 4)
+  ),
+
+  min_cell = 10,
+  delivery = list(entry_date_rule = "calendar_year")
+)
+```
+
+A floor on a second score is a second entry in `exit`
+(`c(overall = 4.2, written = 3.9)`); cut scores that differ by grade are named
+by grade (`proficient_cut = c("3" = 450, "4" = 455)`). What is not a field is
+fixed for every state: the rule compares each score's level with `>=`, a
+student must meet every criterion, and exit is dated to the first year
+observed as former. `?el_spec` lists the optional fields: `delivery` (the
+column crosswalk and value maps for a state's own files), `district_sizes`,
+`costlier_error` and `sources`.
+
+**Say where each value comes from.** `sources` names each sourced field and
+the document it is written in; every field it does not name renders as
+**`[DERIVED — VERIFY]`**.
 
 Four specs ship in `inst/specs/`:
 
 | Spec | Instrument | Exit type | Purpose |
 |---|---|---|---|
 | `00_SIM_EL_Spec` | WIDA-shaped | Type 1 | Matches the simulated data |
-| `00_TEMPLATE_EL_Spec` | WIDA ACCESS | Type 1 | **Starting point for a real state spec written by hand.** Complete: an academic block with cut scores by grade, the long-term EL year and value maps, plus a non-identity column crosswalk and vendor component names. Every policy and academic value is a placeholder and describes no state. No data |
-| `00_ELPA21_EL_Spec` | ELPA21 | Type 6 | Guardrail against WIDA assumptions: a categorical headline, a level-only component and a domain-profile exit rule. Illustrative values, no data |
-| `00_MA_EL_Spec` | WIDA ACCESS | Type 2 | **Massachusetts.** The only shipped spec with a real state's exit rule, and the only one whose Type gate opens on one: Overall Composite ≥ 4.2 **and** Literacy ≥ 3.9, cited to a public DESE document. Every other policy value is a placeholder marked `provisional`. No data |
+| `00_TEMPLATE_EL_Spec` | WIDA ACCESS | Type 1 | **Starting point for a real state spec written by hand.** Shows every optional field: cut scores by grade, the performance-level names, and a `delivery` block with a non-identity column crosswalk and value maps. Every value is a placeholder and describes no state. No data |
+| `00_ELPA21_EL_Spec` | ELPA21 | Type 1 | Guardrail against WIDA assumptions: a categorical score with no scale score and no declared bands; exit is the Proficient determination. Illustrative values, no data |
+| `00_MA_EL_Spec` | WIDA ACCESS | Type 2 | **Massachusetts.** The only shipped spec with a real state's exit rule, and the only one whose Type gate opens on one: Overall Composite ≥ 4.2 **and** Literacy ≥ 3.9, cited to a public DESE document in `sources`. Every other value is a placeholder. No data |
 
 ```r
 el_spec_files()                         # list shipped specs
@@ -326,8 +353,8 @@ questions of the plain-language intake form (`spec_intake_form()` writes a
 copy to send to the EL program office, the assessment office and the data
 team) one at a time at the R console, writes the spec file and validates it.
 Or copy `inst/specs/00_TEMPLATE_EL_Spec.R` and fill it in by hand. Either
-way, give each value its `source`, keep anything not taken from an official
-document marked `provisional`, and set `verification$status`.
+way, name each value taken from an official document in `sources`, leave
+the rest unnamed so it reads `[DERIVED — VERIFY]`, and set `status`.
 
 ```r
 spec_intake_form("XX_spec_intake_form.md")       # the form, to send out
@@ -338,18 +365,19 @@ my_spec <- build_el_spec("specs/XX_EL_Spec.R")   # its questions, at the console
 part of it is real.** `00_MA_EL_Spec` carries Massachusetts' ACCESS exit
 rule because it is stated in a public DESE document, which is cited in the
 file. Nothing else in that spec is Massachusetts policy: the maximum
-timeline, the on-time rule, the long-term-EL definition, the growth targets,
-the academic benchmark, the suppression minimum and the district-size bands
-are placeholders, each marked `provisional` and so rendered as
-`[DERIVED — VERIFY]`, and the spec's own `verification$status` is
-`provisional` rather than `verified`. It ships without data and without a
+timeline and the suppression minimum are placeholders rendered as
+`[DERIVED — VERIFY]`, the on-time timeline and the long-term-EL year are
+left out, and the spec's own `status` is `provisional` rather than
+`verified`. It ships without data, without academic cut scores and without a
 column crosswalk. Read the file's header before using any number in it.
 
 ### Exit-criteria typology
 
-`policy$exit$types` declares which kinds of exit rule a state uses. A state can
-use more than one. The validator checks the declaration against the structure
-of the rule's terms.
+The Process Overview names six kinds of exit rule. A spec's Type is read
+from the shape of its `exit` rule: one criterion on the score is Type 1, the
+score plus a floor on another is Type 2, and a profile of domains alone is
+Type 6. Types 3–5 (a non-ELP source, a compensatory combination, tiered or
+discretionary routes) cannot be written in a spec's `exit`.
 
 | Type | Exit rule |
 |---|---|
@@ -362,8 +390,8 @@ of the rule's terms.
 
 Several stages carry **Additional checks** that apply only to multi-criterion
 rules, such as the criteria crosswalk, blocked-by-one-criterion groups and the
-contested ELP zone. Their results slots are `NULL` unless the spec declares a
-relevant type. A Type 1 state, like the simulated one, skips them all.
+contested ELP zone. Their results slots are `NULL` unless the rule has more
+than one criterion. A Type 1 state, like the simulated one, skips them all.
 
 ---
 
@@ -383,7 +411,7 @@ These rules are enforced as tests, not just stated as conventions:
   made on that score, so using it would build the answer into the model.
   Covariates are fixed at entry or lagged.
 - **Small cells are suppressed to `NA`, never dropped.** The threshold is the
-  spec's `policy$suppression$min_cell`.
+  spec's `min_cell`.
 - **Never-EL rows are weighted** wherever they enter a statewide share.
 - **No code names an ELP component.** Components come from the spec, so the
   package works for any instrument.

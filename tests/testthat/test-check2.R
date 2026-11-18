@@ -203,9 +203,17 @@ test_that("the ELPA21 smoke fixture runs: no WIDA assumptions in Check 2", {
   res <- run_check2(make_check1_elpa21_bundle(spec), spec)
 
   expect_false(is.null(res$crosstab))
-  # ELPA21 is Type 6, so the Additional check applies -- but is not built.
-  expect_true(res$meta$type_gate_applies)
+  # The shipped ELPA21 rule is the Proficient determination, one criterion,
+  # so the Additional check does not apply.
+  expect_false(res$meta$type_gate_applies)
   expect_null(res$blocked_groups)
+
+  # As a domain profile (Type 6) it applies; this bundle carries no domain
+  # rows, every domain is exempt, and so no one is blocked by exactly one.
+  prof <- make_spec_elpa21_profile()
+  res6 <- run_check2(make_check1_elpa21_bundle(prof), prof)
+  expect_true(res6$meta$type_gate_applies)
+  expect_null(res6$blocked_groups)
 })
 
 # ---- presentation ------------------------------------------------------------
@@ -482,10 +490,16 @@ test_that("the blocked groups are Prep 2's, not a second derivation", {
 })
 
 test_that("a Type 2-6 rule with no blocked students says so, distinctly", {
-  # "Does not apply" and "applies but finds nothing" are different facts. The
-  # shipped ELPA21 spec asks for a level above its own scale, so every student
-  # fails every criterion and none is blocked by exactly one.
-  spec <- read_el_spec("00_ELPA21_EL_Spec")
+  # "Does not apply" and "applies but finds nothing" are different facts. A
+  # domain profile asking for a level above its own scale fails every student
+  # on every criterion, so none is blocked by exactly one.
+  spec <- make_spec_elpa21_profile()
+  top <- length(spec$elp$level_scale$levels)
+  spec$policy$exit$pathways[[1]]$terms <- lapply(
+    spec$policy$exit$pathways[[1]]$terms, function(t) {
+      t$value <- top + 1
+      t
+    })
   b <- make_check2_elpa21_blocked_bundle(make_check2_elpa21_spec())
   res <- run_check2(b, spec)
 

@@ -47,7 +47,7 @@ el_data_format <- function(table = NULL) {
     "roster", "GRADE", "required", "character",
     "\"K\", \"1\" to \"12\"", "K",
     "All stages",
-    "Kindergarten must be \"K\": map another code in value_maps$GRADE (c(\"0\" = \"K\")), or Check 1 finds no kindergarten cohort.",
+    "Kindergarten must be \"K\": map another code in delivery$value_maps$GRADE (c(\"0\" = \"K\")), or Check 1 finds no kindergarten cohort.",
 
     "roster", "EL_STATUS", "required", "character",
     "current, former, never (NA allowed)", "current",
@@ -109,7 +109,7 @@ el_data_format <- function(table = NULL) {
     "A component key in the spec (el_component_vocabulary())",
     "overall (WIDA's Overall Composite)",
     "All stages that read the ELP score",
-    "One row per score: the component is a row key, not a column. Map a file's own codes in value_maps$CONTENT_AREA$base.",
+    "One row per score: the component is a row key, not a column. Map a file's own codes in delivery$value_maps$CONTENT_AREA$base.",
 
     "base", "ELP_FORM", "required", "character",
     "annual, alternate", "annual", "All stages that read the ELP score",
@@ -135,7 +135,7 @@ el_data_format <- function(table = NULL) {
 
     "academic", "SUBJECT", "required", "character",
     "A subject key in the spec's academic block", "ELA", "Checks 1-4",
-    "Map a file's own codes (READING, MATHEMATICS) in value_maps$CONTENT_AREA$academic.",
+    "Map a file's own codes (READING, MATHEMATICS) in delivery$value_maps$CONTENT_AREA$academic.",
 
     "academic", "SCALE_SCORE", "recommended", "numeric", "The scale score",
     "512", "Checks 1-4",
@@ -287,7 +287,7 @@ check_el_delivery <- function(elp = NULL, roster = NULL, academic = NULL,
           fix = if (m == "EL_STATUS") paste0(
             "Build it: current, former or never for every student-year. ",
             "See el_data_format(\"roster\").")
-          else "Add it, or map your column name in data$columns$roster.")
+          else "Add it, or map your column name in delivery$roster.")
   }
 
   if ("YEAR" %in% names(roster)) {
@@ -423,14 +423,14 @@ check_el_delivery <- function(elp = NULL, roster = NULL, academic = NULL,
       "Kindergarten coded as something other than \"K\": Check 1 will find ",
       "no kindergarten cohort."), sum(g %in% kcodes),
       g[g %in% kcodes],
-      fix = "Add the code to data$columns$value_maps$GRADE, e.g. c(\"0\" = \"K\").")
+      fix = "Add the code to delivery$value_maps$GRADE, e.g. c(\"0\" = \"K\").")
   }
   other <- odd & !g %in% kcodes
   if (any(other)) {
     p$add("warning", table, "GRADE", paste0(
       "Grades outside K and 1-12. The rows are kept, but no grade-keyed ",
       "result places them."), sum(other), g[other],
-      fix = "Drop them, or map them in data$columns$value_maps$GRADE.")
+      fix = "Drop them, or map them in delivery$value_maps$GRADE.")
   }
 }
 
@@ -471,7 +471,7 @@ check_el_delivery <- function(elp = NULL, roster = NULL, academic = NULL,
     p$add("error", "base", "SUBJECT", paste0(
       "The ELP score table keys on COMPONENT, not SUBJECT (a reading domain ",
       "and a Reading subject would mix in a join)."),
-      fix = "Rename SUBJECT to COMPONENT, or map it in data$columns$base.")
+      fix = "Rename SUBJECT to COMPONENT, or map it in delivery$base.")
   }
   for (m in setdiff(c(KEY, "COMPONENT", "ACHIEVEMENT_LEVEL"), names(base))) {
     if (m == "ACHIEVEMENT_LEVEL" && "SCALE_SCORE" %in% names(base)) {
@@ -481,7 +481,7 @@ check_el_delivery <- function(elp = NULL, roster = NULL, academic = NULL,
       next
     }
     p$add("error", "base", m, "Required column is missing.",
-          fix = "Add it, or map your column name in data$columns$base.")
+          fix = "Add it, or map your column name in delivery$base.")
   }
   extra <- setdiff(names(base), BASE_COLUMNS)
   if (length(extra)) {
@@ -632,7 +632,7 @@ check_el_delivery <- function(elp = NULL, roster = NULL, academic = NULL,
   for (m in setdiff(ACADEMIC_REQUIRED, names(ac))) {
     p$add("error", "academic", m, "Required column is missing.",
           fix = if (m == "GRADE") "GRADE is required on the academic row; it is not filled from the roster."
-                else "Add it, or map your column name in data$columns$academic.")
+                else "Add it, or map your column name in delivery$academic.")
   }
   if (!all(c(KEY, "SUBJECT") %in% names(ac))) return(invisible())
 
@@ -667,7 +667,7 @@ check_el_delivery <- function(elp = NULL, roster = NULL, academic = NULL,
               if (!is.null(map)) "; as_el_data() stops on an unmapped code."
               else ": no stage reads those rows."),
             sum(unknown), ac$SUBJECT[unknown],
-            fix = paste0("Map them in data$columns$value_maps$CONTENT_AREA$",
+            fix = paste0("Map them in delivery$value_maps$CONTENT_AREA$",
                          "academic (e.g. c(READING = \"ELA\")), or drop the ",
                          "subjects you are not analysing."))
     }
@@ -776,14 +776,14 @@ check_el_delivery <- function(elp = NULL, roster = NULL, academic = NULL,
       else "no delivered performance level",
       " to fall back on: Checks 3 and 4 cannot tell who is proficient."),
       length(no_cut), no_cut,
-      fix = "Enter each grade's cut scores in academic$<subject>$cuts (a list by grade).")
+      fix = "Enter each grade's cut scores in academic$<subject>$proficient_cut (named by grade).")
   } else {
     p$add("note", "academic", "SCALE_SCORE / ACHIEVEMENT_LEVEL", paste0(
       "No cut score in the spec for these subject-grades. Checks 3 and 4 ",
       "will read proficiency from the delivered performance level (level ",
       lvl, " or above) instead, and draw no cut line."),
       length(no_cut), no_cut,
-      fix = "Enter each grade's cut scores in academic$<subject>$cuts (a list by grade).")
+      fix = "Enter each grade's cut scores in academic$<subject>$proficient_cut (named by grade).")
   }
 }
 

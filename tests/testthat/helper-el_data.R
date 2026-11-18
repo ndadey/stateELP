@@ -9,7 +9,24 @@
 # headline, or its component list -- so the fixtures cannot smuggle a WIDA
 # assumption past the ELPA21 smoke test.
 
-make_el_data_sim_spec <- function() read_el_spec("00_SIM_EL_Spec")
+# The SIM spec describes the shipped tables, which need no crosswalk. The SGP
+# LONG_DATA fixtures below deliver the same kind of records differently, and
+# these are that delivery's facts -- what a state's spec would carry in
+# `delivery`: CONTENT_AREA codes mapped by value (READING is the headline
+# composite here), a "0" kindergarten, and ACCESS's level names.
+make_el_data_sim_spec <- function() {
+  spec <- read_el_spec("00_SIM_EL_Spec")
+  spec$data$columns <- list(value_maps = list(
+    CONTENT_AREA = list(
+      base     = stats::setNames(spec_headline(spec), "READING"),
+      academic = stats::setNames(spec_academic_subjects(spec),
+                                 c("ELA", "MATHEMATICS"))),
+    GRADE = c("0" = "K")))
+  spec$elp$level_scale$labels <- c("Entering", "Emerging", "Developing",
+                                   "Expanding", "Bridging", "Reaching")
+  validate_el_spec(spec)
+  spec
+}
 
 # An SGP LONG_DATA delivery. CONTENT_AREA is "READING" and maps to the HEADLINE
 # composite through the spec's value map, which is the case that makes
