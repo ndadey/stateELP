@@ -182,26 +182,19 @@ report tells you how the cohort behaves.
 | Roster: `STUDENT_ID`, `YEAR`, `GRADE`, `EL_STATUS` | The cohort, exit dating, the flags | Required. With no qualifying cohort every analysis slot is `NULL` and `res$meta$note` says why. |
 | Roster: `LEFT_TRUNCATED` | Drops students already in status when the panel opens | Students entering in the panel's first year are treated as left-truncated and dropped. |
 | Roster: `HOME_LANGUAGE`, `GENDER`, `FRL` (low-income flag), `IEP` (special education), `SERVICE_MODEL` | The characteristic blocks, read in the entry year | That block (or row) is left out of the crosstab, not shown empty. |
-| Roster: `DISTRICT_ID`, plus `policy$district_size_bands` in the spec | The district size block | Block left out. |
+| Roster: `DISTRICT_ID`, grouped by the spec's `district_sizes` (or the deck's default groups) | The district size block | Block left out. |
 | Base table: annual-form scores on the ELP component your spec's analyses run on (the simulated spec's `r component`) | The initial ELP band block; the trajectories | Block left out; `$trajectories` is `NULL`. |
 | Academic table | `$academic_summary` | `NULL`. |
 
-From the spec, Check 2 reads `policy$timelines`, `policy$suppression$min_cell`,
-`policy$academic_benchmark$proficient_level`, `policy$district_size_bands`,
-`elp$bands`, `elp$level_scale`, and `policy$exit$types`. Within
-`policy$timelines`, the on-time allowance is `on_time_rule$default_years`. If
-that is absent, the package falls back to `essa_timeline_years`, then to
-`max_years_to_exit`. A `source` of `"provisional"` marks the timeline
-`[DERIVED — VERIFY]` in the Sample statement. If `elp$level_scale$type` is
-`"categorical"`, `$trajectories` is `NULL`, because category labels have no
-mean.
-
-Two spec settings stop the run rather than degrade it:
-
-- `policy$timelines$initial_elp_source` must be `"first_annual"` (or absent).
-  The package derives the initial band only as the first annual score.
-- An `on_time_rule` keyed by initial band (`by_initial_band`) needs a
-  delivered `INITIAL_ELP` column on the roster. See Pitfalls.
+From the spec, Check 2 reads `timelines`, `min_cell`, each academic
+subject's `proficient_level`, `district_sizes`, and from `elp` the bands and
+the level range; it reads the rule's Type from `exit`. The on-time allowance
+is `timelines$on_time`, one number for every student; without it, the
+maximum timeline `timelines$max`. If `sources` does not name `timelines`,
+the Sample statement marks the timeline `[DERIVED — VERIFY]`. If
+`elp$levels` names categories rather than a numeric range, `$trajectories`
+is `NULL`, because category labels have no mean. The initial ELP band is
+always the band of the student's first annual score.
 
 ## Run it
 
@@ -280,8 +273,8 @@ The indicators come from shared helpers (`build_student_spans()` and
 | Column | Meaning |
 |---|---|
 | `EXIT_EVER` | Exited at any point in the years observed. |
-| `EXIT_MAX` | Exited within the maximum timeline (`policy$timelines$max_years_to_exit`, `r res$meta$max_years` years here). |
-| `EXIT_ONTIME` | Exited within the student's on-time timeline (`ON_TIME_YEARS`, from `on_time_rule`). |
+| `EXIT_MAX` | Exited within the maximum timeline (`timelines$max`, `r res$meta$max_years` years here). |
+| `EXIT_ONTIME` | Exited within the student's on-time timeline (`ON_TIME_YEARS`, from `timelines$on_time`). |
 | `NO_EXIT` | Still classified in the last year of data. |
 | `DISAPPEARED` | Left the data before the window closed, with no exit observed. |
 | `ON_TIME` / `PROLONGED` | The split: `PROLONGED` is late exiters plus `NO_EXIT`. |
@@ -398,7 +391,8 @@ ft_check2_academic(res)
 The slot's columns are `EXIT_GROUP`, `YEAR_IN_STATUS`, `GRADE_MODAL` (the
 most common grade among those students), `N`, `N_SCORED`, `PCT_PROFICIENT`,
 `MEDIAN_SCALE` and `SUPPRESSED`. Proficient means
-`ACHIEVEMENT_LEVEL` at or above `policy$academic_benchmark$proficient_level`.
+`ACHIEVEMENT_LEVEL` at or above the spec's `proficient_level`
+(`spec_proficient_level()`).
 The rate is the main measure because it means the same thing in every grade;
 a scale score does not. Students without a level that year are counted in `N`
 but not in `N_SCORED` or the rate.
@@ -449,11 +443,9 @@ str(res$meta[c("cohort", "cohort_n", "on_time_text", "on_time_provisional",
                "academic_subject", "type_gate_applies")])
 ```
 
-`on_time_provisional` is `TRUE` when `policy$timelines$source` is
-`"provisional"`. The Sample statement then flags the timeline
-`[DERIVED — VERIFY]`. `band_clock_note` is `NA` unless the on-time rule
-varies by initial band (see Pitfalls). `blocked_note` explains an empty
-Additional check.
+`on_time_provisional` is `TRUE` when the spec's `sources` does not name
+`timelines`. The Sample statement then flags the timeline
+`[DERIVED — VERIFY]`. `blocked_note` explains an empty Additional check.
 
 ## How to read it
 
@@ -525,19 +517,15 @@ may be a program or support change, not a threshold change.
 - **One kindergarten cohort is the best case.** Do not read it as the state's
   overall exit picture. Later entrants, including newcomers in upper grades,
   are not in it.
-- **An on-time rule keyed by initial band changes the Initial ELP block.** If
-  `on_time_rule$by_initial_band` is set, each band has its own deadline, and
-  `EXIT_ONTIME` down that block restates the policy rather than describing
-  students. `res$meta$band_clock_note` then carries the deadlines, and the
-  report shows it as a warning. Read `EXIT_MAX`, which uses one window for
-  everyone, down that block instead. Such a rule also reads the roster's
-  delivered `INITIAL_ELP`, while the crosstab bands the first annual score.
-  The two can disagree for a student, which the build notes record as an open
-  issue.
-- **Watch for circularity under a Type 3 rule.** If the exit rule itself
-  includes an academic criterion, the groups are partly defined by the score
-  the academic summary compares. The package does not flag this on its own
-  yet.
+- **One on-time timeline for everyone.** The spec holds a single on-time
+  timeline. If your state's on-time rule varies by start grade or initial
+  ELP level, `EXIT_ONTIME` here does not follow it: say so wherever it is
+  reported, and lean on `EXIT_MAX`, which uses one window for everyone by
+  design.
+- **Watch for circularity under a Type 3 rule.** If your state's written
+  exit rule includes an academic criterion, the groups are partly defined by
+  the score the academic summary compares. The spec cannot hold such a
+  criterion, so the package cannot flag this; say so yourself.
 - **Simulated gaps are parameters.** Every group difference in the simulated
   data was set by the generator. None is a finding.
 - **The results object is not shareable.** `$flags` and `$profile` are one
@@ -564,7 +552,8 @@ students **blocked by exactly one criterion** as extra comparison rows. If
 such a group looks systematically different from the cohort, that criterion is
 screening on something other than what the main score screens on.
 
-The spec declares the type. Check it like this:
+The package reads the type from the criteria in the spec's `exit`. Check it
+like this:
 
 ```{r}
 spec_exit_types(spec)

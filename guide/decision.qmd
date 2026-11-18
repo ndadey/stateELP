@@ -42,7 +42,6 @@ library(stateELP)
 ```{r}
 #| include: false
 spec0 <- read_el_spec("00_SIM_EL_Spec")
-term0 <- spec0$policy$exit$pathways[[1]]$terms[[1]]
 ```
 
 ## What this step answers
@@ -55,9 +54,9 @@ monitoring plan, and an explicit trail of evidence.
 A few terms first. An *English learner* (EL) is a student classified as
 needing English language support. *ELP* is English language proficiency, as
 measured by the state's ELP test. The *exit rule* is the policy that moves a
-student out of EL status. In the simulated spec it is a single criterion: an
-`r spec_headline_label(spec0)` level of `r term0$value` or higher. The *spec*
-is the `el_spec` object that holds a state's policy and assessment values; the
+student out of EL status. In the simulated spec it is a single criterion, a
+minimum `r spec_headline_label(spec0)` level. The *spec* is the `el_spec`
+object that holds a state's policy and assessment values; the
 [setup page](setup.html) covers it.
 
 This stage runs no new analysis. It reads what the earlier stages found and
@@ -132,22 +131,28 @@ built
 
 You need:
 
-- **The spec every stage ran with.** Its `policy$exit` holds the current rule.
-  Its `policy$timelines` holds the *ESSA timeline* (the years the state
-  expects a student to take to exit, under the Every Student Succeeds Act;
-  Check 2 uses it to define "on time") and the maximum timeline. Its
-  `policy$error_tolerance` holds Prep 3's answer about which error costs more.
+- **The spec every stage ran with.** Its `exit` holds the current rule. Its
+  `timelines` hold the maximum timeline and the *ESSA timeline* (the years
+  the state expects a student to take to exit, under the Every Student
+  Succeeds Act; Check 2 uses it to define "on time"). Its `costlier_error`
+  holds Prep 3's answer about which error costs more.
+- **Your Prep 1 and Prep 3 notes**: what the spec has no field for, such as
+  who makes the exit decision, any committee or discretionary route, and who
+  answered the error-tolerance question.
 - **The saved results of every stage you ran**, from the same spec and the same
   data bundle.
 - **The rendered stage reports**, and the notes your team wrote at each
   stage's "Decide before moving on" box.
 
-In the simulated spec the error-tolerance question is still open:
-
 ```{r}
 spec <- read_el_spec("00_SIM_EL_Spec")
-spec$policy$error_tolerance$costlier_error
+spec
 ```
+
+The printout shows the current rule and both timelines. The error-tolerance
+answer is not on it: Check 4 copies it into its results, and the
+[How to read it](#how-to-read-it) section reads it from there. In the
+simulated spec it is still open.
 
 **What degrades.** In the map you build below, a stage that did not run
 becomes a "not run" row, not an error. Inside the stages, missing inputs leave
@@ -498,19 +503,11 @@ then moving the threshold alone will not help those students.
 - equity around any discretionary or committee pathway, read against Checks 1
   and 2. Selection effects can concentrate in such pathways.
 
-The spec tells you whether the current rule has one:
-
-```{r}
-or_na <- function(x) if (is.null(x)) NA_character_ else as.character(x)
-pathways <- spec$policy$exit$pathways
-data.frame(
-  PATHWAY       = vapply(pathways, function(p) or_na(p$name), character(1)),
-  DISCRETIONARY = vapply(pathways, function(p) isTRUE(p$discretionary),
-                         logical(1)),
-  AUTHORITY     = vapply(pathways, function(p) or_na(p$authority),
-                         character(1))
-)
-```
+The spec cannot tell you whether the current rule has one: it holds a
+single score rule, and a committee or discretionary route goes in your
+Prep 1 notes instead. Read them here. Students who exit through such a route
+appear in the data as exits like any other, so none of the stages can
+separate them.
 
 **Know the restructuring trade-off.** More criteria always reduce exit rates.
 A student who must meet every criterion exits only if they meet each one, so
@@ -541,10 +538,11 @@ against the risk of keeping students in status who no longer need it.
   `min_cell` or pool grades to make a cell appear.
 - **Carry Check 1's guardrails forward.** There is no mean time in status
   anywhere, and a censored student is not a non-exiter.
-- **Carry provisional labels forward.** A spec value with
-  `source = "provisional"` is not from an official source, and the package
-  flags it `[DERIVED — VERIFY]` where it displays it. In the simulated spec
-  the exit rule, the timelines and the academic cuts are all provisional.
+- **Carry provisional labels forward.** A spec field that `sources` does not
+  name is not from an official source, and the package flags it
+  `[DERIVED — VERIFY]` where it displays it. In the simulated spec
+  `sources` names nothing, so the exit rule, the timelines and the academic
+  cuts are all provisional.
   Verify each one before a recommendation rests on it.
 - **Simulated numbers are not findings.** Every gap, ratio and rate on this
   page is set by the data generator.
@@ -588,8 +586,9 @@ bound. On the simulated data, any trend in this series comes from the
 generator.
 
 Prep 2 already tracks the long-term-EL share year by year. A *long-term EL*
-is a current EL in year `r spec$policy$timelines$lt_el_years` or later of
-status, under the simulated spec's definition. The share is a range where
+is a current EL in year `r saved$prep2$meta$lt_el_years` or later of
+status, under the simulated spec's `timelines$lt_el`. The share is a range
+where
 some students' entry year is unknown:
 
 ```{r}
@@ -610,7 +609,7 @@ the rule, such as a composite range, a domain floor or a compensatory
 schedule. For each piece it says whether the evidence supported changing it
 or leaving it alone.
 
-The spec declares the type:
+The package reads the type from the criteria in the spec's `exit`:
 
 ```{r}
 spec_exit_types(spec)
@@ -635,26 +634,30 @@ vapply(gated, is.null, logical(1))
 Under a multi-criterion rule the gates differ by slot:
 
 - Prep 2's crosswalk and contested zone, and Check 2's blocked groups, need a
-  Type 2 to 6 rule with a pathway that carries two or more ELP terms.
-- Check 3's contested-zone models need Type 2, 4, 5 or 6, the same kind of
-  pathway with two or more ELP terms, and enough students in the contested
-  zone to report.
-- Check 1's `$type3_covariate` needs Type 3, with an academic term whose
-  subject the delivery carries.
+  rule with two or more ELP criteria (Type 2 or 6).
+- Check 3's contested-zone models need the same, and enough students in the
+  contested zone to report.
+- Check 1's `$type3_covariate` needs a Type 3 rule, with an academic
+  criterion. The spec cannot hold one yet, so it stays `NULL`.
 - Check 4's `$policy_as_whole` is not built even then.
 
-To list your rule's pieces as rows for the per-piece statement, read the terms
-from the spec:
+The pieces of the rule are the entries of your spec's `exit`, one per
+criterion, plus any part of the written rule your Prep 1 notes record
+because the spec could not hold it. The Massachusetts example's printout
+shows a two-piece rule:
 
 ```{r}
-pieces <- do.call(rbind, lapply(spec$policy$exit$pathways, function(p) {
-  do.call(rbind, lapply(p$terms, function(t) data.frame(
-    PATHWAY = or_na(p$name),
-    FROM = if (is.null(t$from)) "elp" else t$from,
-    COMPONENT = or_na(t$component), MEASURE = or_na(t$measure),
-    OP = or_na(t$op), VALUE = or_na(t$value))))
-}))
-pieces
+ma <- read_el_spec("00_MA_EL_Spec")
+ma
+```
+
+As rows for the per-piece statement, from the `exit` its file writes:
+
+```{r}
+ma_exit <- c(overall = 4.2, written = 3.9)   # as written in 00_MA_EL_Spec.R
+data.frame(CRITERION     = names(ma_exit),
+           MINIMUM_LEVEL = unname(ma_exit),
+           SUPPORTED     = "")               # the team fills this in
 ```
 
 ## Render the stage report

@@ -3221,7 +3221,7 @@ Simulated data
 <h3 class="anchored" data-anchor-id="why-the-order-matters">Why the order matters</h3>
 <p>The code does not enforce an order. Every built <code>run_&lt;stage&gt;()</code> function takes the data bundle and the spec, never another stage’s results, so you could run Check 3 before Prep 2. The <em>reading</em> depends on order, because each stage feeds the ones after it.</p>
 <ul>
-<li><strong>Prep 1 fixes the rule and its Type.</strong> The spec declares which of six exit-rule Types the state uses. That declaration decides which Additional checks run in later stages. A mistake here carries into every document.</li>
+<li><strong>Prep 1 fixes the rule and its Type.</strong> The spec writes the exit rule, and the package reads from it which of six exit-rule Types the state uses. The Type decides which Additional checks run in later stages. A mistake here carries into every document.</li>
 <li><strong>Prep 2 is the backdrop for every Data Check.</strong> It shows where ELs concentrate, whether there is a clean kindergarten cohort for Check 1, and where pooling all ELs together would hide more than it shows.</li>
 <li><strong>Prep 3’s error-tolerance answer feeds Check 4 and the Decision.</strong> Check 4’s optimal-cut statistic is Youden’s J: sensitivity plus specificity, minus one. It weights two error <em>rates</em> equally: the share of content-proficient students a cut holds back, and the share of not-proficient students it lets exit. If stakeholders weigh the two errors differently, that is a documented reason to land above or below the J optimum. The Check 4 page explains why the direction is not always obvious.</li>
 <li><strong>Check 1 chooses the cohort that Check 2 uses.</strong> Its “Decide” box also asks how much weight later grade-level findings can carry: how much of the entry cohort is still classified at each grade, and whether academic performance, not just ELP, shapes who exits. The package’s index for combining the two is experimental, and nothing uses it.</li>
@@ -3232,26 +3232,27 @@ Simulated data
 </section>
 <section id="a-first-look-the-spec-and-the-data" class="level2">
 <h2 class="anchored" data-anchor-id="a-first-look-the-spec-and-the-data">A first look: the spec and the data</h2>
-<p>Two objects drive every stage. The first is the <strong>spec</strong>, an R list that holds every state-specific value: the ELP instrument and its components, the exit rule and its Type, timelines, the suppression rule, academic cuts, and the map from your file’s column names to the package’s. No analysis function reads a state value from anywhere else.</p>
+<p>Two objects drive every stage. The first is the <strong>spec</strong>, one call to <code>el_spec()</code> in its own R file, that holds every state-specific value: the ELP test and the score the exit rule uses, the exit rule, the timelines, the suppression rule, the academic proficiency cuts, and how your files differ from the package’s column names. No analysis function reads a state value from anywhere else. The simulated spec’s whole file is about two dozen lines of code; the <a href="setup.html">Setup page</a> shows it.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">el_spec_files</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;00_ELPA21_EL_Spec&quot;   &quot;00_SIM_EL_Spec&quot;      &quot;00_TEMPLATE_EL_Spec&quot;</code></pre>
+<pre><code>[1] &quot;00_ELPA21_EL_Spec&quot;   &quot;00_MA_EL_Spec&quot;       &quot;00_SIM_EL_Spec&quot;     
+[4] &quot;00_TEMPLATE_EL_Spec&quot;</code></pre>
 </div>
 <div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_SIM_EL_Spec&quot;</span>)</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>spec</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>&lt;el_spec&gt; SIM Simulated ELP Program 
-  instrument : WIDA ACCESS 
-  components : 8 (headline: overall) 
-  exit types : 1 - Single overall composite score 
-  timelines  : max 6 yrs; ESSA 5 yrs
+<pre><code>&lt;el_spec&gt; SIM (Simulated state) 
+  ELP test   : WIDA ACCESS -- Overall Composite (overall), levels 1-6 in 6 bands 
+  exit       : Overall Composite level &gt;= 4.5 [Type 1] 
+  timelines  : max 6 yrs; on time 5 yrs; long-term EL at 6 yrs 
+  academic   : ELA (grades 3-11, cut 750); Math (grades 3-11, cut 750) 
   suppression: min_cell 10 
-  verification: synthetic 
-  [DERIVED - VERIFY]: exit, timelines, growth, accountability_indicator, suppression, academic_benchmark, district_size_bands, program, error_tolerance </code></pre>
+  status     : synthetic 
+  [DERIVED - VERIFY]: exit, timelines, min_cell, district_sizes, costlier_error, academic </code></pre>
 </div>
 </div>
-<p>The simulated spec describes a Type 1 rule: a single overall composite score, the Overall Composite (<code>overall</code> in the printout). Its maximum timeline for exiting is 6 years. A shorter 5-year timeline defines “on time”; the package calls it the ESSA timeline, after the federal Every Student Succeeds Act. The smallest cell it reports is 10 students. The last line, headed <code>[DERIVED - VERIFY]</code>, lists the policy blocks whose <code>source</code> is <code>&quot;provisional&quot;</code>. The package marks such values <strong><code>[DERIVED — VERIFY]</code></strong>, and they must be checked against official documents before anything is reported publicly. In the simulated spec every policy value is provisional.</p>
+<p>The simulated spec describes a Type 1 rule: a single overall composite score, the Overall Composite (<code>overall</code> in the printout). Its maximum timeline for exiting is 6 years. A shorter 5-year timeline defines “on time”; the package calls it the ESSA timeline, after the federal Every Student Succeeds Act. The smallest cell it reports is 10 students. The last line, headed <code>[DERIVED - VERIFY]</code>, lists the fields the spec’s <code>sources</code> does not name. The package marks such values <strong><code>[DERIVED — VERIFY]</code></strong>, and they must be checked against official documents before anything is reported publicly. In the simulated spec every value is unsourced.</p>
 <p>The six Types are:</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">el_exit_typology</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -3330,14 +3331,15 @@ Simulated data
 <div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>cohorts <span class="ot">&lt;-</span> <span class="fu">compute_cohorts</span>(bundle, spec)</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>cohorts</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code># A tibble: 5 × 6
-  COHORT_LABEL COHORT_START_YEAR N_ENTRY FOLLOWUP_YEARS SELECTED SUPPRESSED
-  &lt;chr&gt;                    &lt;int&gt;   &lt;int&gt;          &lt;int&gt; &lt;lgl&gt;    &lt;lgl&gt;     
-1 K-2015                    2015    2373             11 TRUE     FALSE     
-2 K-2016                    2016    2360             10 FALSE    FALSE     
-3 K-2017                    2017    2411              9 FALSE    FALSE     
-4 K-2018                    2018    2403              8 FALSE    FALSE     
-5 K-2019                    2019    2374              7 FALSE    FALSE     </code></pre>
+<pre><code># A tibble: 5 × 7
+  COHORT_LABEL COHORT_START_YEAR N_ENTRY FOLLOWUP_YEARS ACADEMIC_YEARS SELECTED
+  &lt;chr&gt;                    &lt;int&gt;   &lt;int&gt;          &lt;int&gt;          &lt;int&gt; &lt;lgl&gt;   
+1 K-2015                    2015    2373             11              7 TRUE    
+2 K-2016                    2016    2360             10              6 FALSE   
+3 K-2017                    2017    2411              9              5 FALSE   
+4 K-2018                    2018    2403              8              5 FALSE   
+5 K-2019                    2019    2374              7              4 FALSE   
+# ℹ 1 more variable: SUPPRESSED &lt;lgl&gt;</code></pre>
 </div>
 </div>
 <p>Each row is a candidate kindergarten cohort. A candidate needs data for its entry year and the full maximum timeline after it. <code>FOLLOWUP_YEARS</code> counts the years the data observe the cohort, from its entry year through the last year of data. Check 1 selects one cohort (<code>SELECTED</code>): the candidate with the longest follow-up that clears the minimum cell size. Here that is K-2015, with 2,373 students, against 24,938 current ELs statewide in a single year. Check 2 calls the same function, so the two stages describe the same students.</p>
@@ -3404,13 +3406,12 @@ Check 4’s Sample statement
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">run_check1</span>(my_bundle, my_spec)</span>
 <span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(res, <span class="st">&quot;results/check1_results.rds&quot;</span>)</span>
 <span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>files <span class="ot">&lt;-</span> <span class="fu">render_step</span>(<span class="st">&quot;check1&quot;</span>,</span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>                     <span class="at">spec_file        =</span> <span class="fu">normalizePath</span>(<span class="st">&quot;specs/XX_EL_Spec.R&quot;</span>),</span>
-<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>                     <span class="at">results_file     =</span> <span class="st">&quot;results/check1_results.rds&quot;</span>,</span>
-<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>                     <span class="at">check_disclosure =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="fu">check_output_disclosure</span>(files, my_bundle)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="fu">render_step</span>(<span class="st">&quot;check1&quot;</span>,</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>            <span class="at">spec_file    =</span> <span class="st">&quot;specs/XX_EL_Spec.R&quot;</span>,</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>            <span class="at">results_file =</span> <span class="st">&quot;results/check1_results.rds&quot;</span>,</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>            <span class="at">bundle       =</span> my_bundle)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p><code>render_step()</code> scans every file it writes for student IDs and stops if any appear. On the simulated data it does this by itself. It cannot rebuild your bundle, so on your own data you turn the automatic scan off and run <code>check_output_disclosure()</code> against your bundle instead. Keep saved results out of any folder you share: some slots hold one row per student (Check 2’s <code>$flags</code> and <code>$profile</code>, for example).</p>
+<p><code>render_step()</code> scans every file it writes for student IDs and stops if any appear. On the simulated data it does this by itself. On your own data it scans against the <code>bundle</code> you pass; without one, it cannot see your students’ IDs, and it warns that the scan did not run. Keep saved results out of any folder you share: some slots hold one row per student (Check 2’s <code>$flags</code> and <code>$profile</code>, for example).</p>
 <p>Two practical details. Give <code>spec_file</code> as a full path, as above: the document renders in a temporary folder, where a relative path does not resolve. And call <code>render_step()</code> from a working directory that has no <code>R/</code> subfolder. If it has one, the document tries to load that folder as the package source (that is how the package’s own developers work), and the render fails.</p>
 </section>
 <section id="run-every-stage-at-once" class="level2">
@@ -3627,8 +3628,8 @@ Check 4’s Sample statement
 <tr class="odd">
 <td style="text-align: left;">check2</td>
 <td style="text-align: left;">TRUE</td>
+<td style="text-align: right;">7</td>
 <td style="text-align: right;">6</td>
-<td style="text-align: right;">5</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">check3</td>
@@ -3652,7 +3653,7 @@ Check 4’s Sample statement
 </table>
 </div>
 </div>
-<p>On the simulated data, 43 of the 52 slots of the built stages are filled. The rest are empty for a stated reason:</p>
+<p>On the simulated data, 44 of the 53 slots of the built stages are filled. The rest are empty for a stated reason:</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(slot_report[<span class="sc">!</span>slot_report<span class="sc">$</span>FILLED <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(slot_report<span class="sc">$</span>SLOT),</span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>                         <span class="fu">c</span>(<span class="st">&quot;STAGE&quot;</span>, <span class="st">&quot;SLOT&quot;</span>, <span class="st">&quot;DETAIL&quot;</span>)],</span>
@@ -3743,7 +3744,7 @@ Check 4’s Sample statement
 <li>Academic proficiency cuts by subject and grade.</li>
 <li>The state’s minimum cell size for public reporting.</li>
 </ul>
-<p>Each value goes into the spec with its <code>source</code>. Anything you derive rather than take from an official document stays <code>&quot;provisional&quot;</code> and displays as <code>[DERIVED — VERIFY]</code>.</p>
+<p>The spec holds the exit rule, the timelines, the academic cuts and the cell size; the rest goes in your Prep 1 notes. Name each value you took from an official document in the spec’s <code>sources</code>, with where it is written down. Anything you derive instead stays out of <code>sources</code> and displays as <code>[DERIVED — VERIFY]</code>.</p>
 </section>
 <section id="data" class="level3">
 <h3 class="anchored" data-anchor-id="data">Data</h3>
@@ -3785,7 +3786,7 @@ Check 4’s Sample statement
 <tr class="odd">
 <td>Prep 1</td>
 <td>Not yet built</td>
-<td>No <code>run_prep1()</code> or document. Write the policy into your spec and review it with <code>print()</code>, <code>validate_el_spec()</code> and the <code>spec_*()</code> accessors.</td>
+<td>No <code>run_prep1()</code> or document. Write the policy into your spec and review it with <code>print()</code> and the <code>spec_*()</code> accessors; keep what the spec has no field for in your notes.</td>
 </tr>
 <tr class="even">
 <td>Prep 2</td>
@@ -3795,7 +3796,7 @@ Check 4’s Sample statement
 <tr class="odd">
 <td>Prep 3</td>
 <td>Not yet built</td>
-<td>No <code>run_prep3()</code> or document. Record the program inventory in <code>policy$program</code> and the error-tolerance answer in <code>policy$error_tolerance$costlier_error</code> (<code>&quot;premature_exit&quot;</code>, <code>&quot;prolonged_retention&quot;</code>, <code>&quot;equal&quot;</code> or <code>&quot;unknown&quot;</code>). Check 4 reads the answer from the spec.</td>
+<td>No <code>run_prep3()</code> or document. Keep the program inventory in your notes, and record the error-tolerance answer in the spec’s <code>costlier_error</code> (<code>&quot;premature_exit&quot;</code>, <code>&quot;prolonged_retention&quot;</code>, <code>&quot;equal&quot;</code> or <code>&quot;unknown&quot;</code>). Check 4 reads the answer from the spec.</td>
 </tr>
 <tr class="even">
 <td>Check 1</td>
@@ -3827,7 +3828,7 @@ Check 4’s Sample statement
 <p>Function names and result slots may still change while the package is in development.</p>
 <section id="additional-checks-for-multi-criterion-rules" class="level3">
 <h3 class="anchored" data-anchor-id="additional-checks-for-multi-criterion-rules">Additional checks for multi-criterion rules</h3>
-<p>Several stages carry <strong>Additional checks</strong> that apply only when the exit rule combines more than one criterion (Types 2 to 6, depending on the check). Examples are a crosswalk of which criteria students pass and fail, and the ELP range where criteria disagree. Their slots are <code>NULL</code> unless the spec declares a relevant Type. Check 4’s Additional check is not built yet, so its slot stays <code>NULL</code> even then. The simulated spec is Type 1, so all of them are <code>NULL</code> throughout this guide.</p>
+<p>Several stages carry <strong>Additional checks</strong> that apply only when the exit rule combines more than one criterion (Types 2 to 6, depending on the check). Examples are a crosswalk of which criteria students pass and fail, and the ELP range where criteria disagree. Their slots are <code>NULL</code> unless the rule is of a relevant Type, which the package reads from the number and kind of criteria in the spec’s <code>exit</code>. Check 4’s Additional check is not built yet, so its slot stays <code>NULL</code> even then. The simulated spec is Type 1, so all of them are <code>NULL</code> throughout this guide.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
@@ -3850,7 +3851,7 @@ Check 4’s Sample statement
 <li><strong>A kindergarten cohort is a best case.</strong> Its exit timing does not carry over to students who enter later.</li>
 <li><strong>Grades are never pooled</strong> in Checks 3 and 4.</li>
 <li><strong>Check 1’s models of exit timing never use the current year’s ELP score as a predictor.</strong> The exit decision is made on that score, so using it would build the answer into the model. Predictors are fixed at entry or taken from an earlier year.</li>
-<li><strong>Small cells are suppressed to <code>NA</code>, not dropped.</strong> The threshold is <code>policy$suppression$min_cell</code>: counts from 1 to <code>min_cell - 1</code> are blanked. A true zero is not a small cell, so it is shown as 0. Never lower the threshold to make a cell appear.</li>
+<li><strong>Small cells are suppressed to <code>NA</code>, not dropped.</strong> The threshold is the spec’s <code>min_cell</code>: counts from 1 to <code>min_cell - 1</code> are blanked. A true zero is not a small cell, so it is shown as 0. Never lower the threshold to make a cell appear.</li>
 <li><strong>Never-EL counts are weighted</strong> wherever they enter a statewide share.</li>
 <li><strong>No student rows in a document.</strong> Results objects may hold student-level rows on your machine. Rendered files must not.</li>
 <li><strong>Simulated numbers are not findings.</strong> Every gap, ratio and rate in the simulated data comes from how the data were generated.</li>

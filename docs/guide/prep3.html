@@ -3228,7 +3228,7 @@ Simulated data
 </ol>
 <p>The first answer gives the second its stakes. How much a premature exit costs depends on what exit takes away, and how much a prolonged hold costs depends on what EL status keeps a student from.</p>
 <p>The second answer feeds later stages; no later stage reads the inventory itself. Check 4 picks a candidate ELP cut with Youden’s J: sensitivity plus specificity minus one, computed at each possible cut on the ELP level. The cut where J is highest is the <em>J optimum</em>. J builds in one particular weighting of the two errors. The recorded answer says whether stakeholders weigh them the same way. The Decision stage (not yet built) is to use it when choosing where to land inside the range of defensible thresholds that the Data Checks produce.</p>
-<p>Both answers are recorded in the <em>spec</em>: the one R file that holds every state-specific setting the package reads (its <code>el_spec</code> object).</p>
+<p>So the answer goes in the <em>spec</em>, the one R file that holds every state-specific value the package reads, as its <code>costlier_error</code> field. The inventory, which nothing computes from, goes in your Prep 3 notes.</p>
 </section>
 <section id="sample" class="level2">
 <h2 class="anchored" data-anchor-id="sample">Sample</h2>
@@ -3240,22 +3240,23 @@ Simulated data
 <p><strong>Not yet built.</strong> There is no <code>run_prep3()</code> and no stage document. The stage’s tests in <code>tests/testthat/test-prep3.R</code> are skipped placeholders.</p>
 <p>What does exist:</p>
 <ul>
-<li><strong>Two spec fields.</strong> <code>policy$program</code> holds the inventory and <code>policy$error_tolerance</code> holds the elicited answer. The spec validator checks that each block carries a <code>source</code> string and that the answer is one of four allowed values.</li>
-<li><strong>Check 4 already reads the answer.</strong> While Prep 3 is unbuilt, Check 4 reads <code>policy$error_tolerance</code> straight from the spec. It copies the answer into its results (<code>$meta$costlier_error</code>, <code>$meta$error_tolerance</code>, and the <code>COSTLIER_ERROR</code> and <code>LEAN</code> columns of <code>$j_optimal</code>). It also prints a note about the answer beside the J optimum in its stage document.</li>
+<li><strong>One spec field.</strong> <code>costlier_error</code> holds the elicited answer: one of four values, checked when the spec is read, <code>&quot;unknown&quot;</code> when the spec leaves it out. <code>sources</code> can name where the answer is written down. The spec has no field for the program inventory, or for who was asked, when and why.</li>
+<li><strong>Check 4 already reads the answer.</strong> While Prep 3 is unbuilt, Check 4 reads <code>costlier_error</code> straight from the spec. It copies the answer into its results (<code>$meta$costlier_error</code>, and the <code>COSTLIER_ERROR</code> and <code>LEAN</code> columns of <code>$j_optimal</code>), and prints a note about it beside the J optimum in its stage document.</li>
 <li><strong>A plan for the stage.</strong> Its instruction file names four result slots: <code>$program_table</code>, <code>$error_tolerance</code>, <code>$confirm_questions</code> and <code>$meta</code>. The answer is to be echoed into <code>$meta</code>, where Check 4 and the Decision stage can read it. None of these slots exist yet.</li>
+<li><strong>The spec builder asks the questions.</strong> <code>build_el_spec()</code> asks for the program inventory and the error-tolerance answer, with who answered and why. It writes the answer into the spec and keeps the rest in its answers file, beside the spec (see <a href="setup.html">Setup</a>).</li>
 </ul>
-<p>For you, this means doing Prep 3 by hand and recording the answers in your spec. What you record reaches Check 4 today. When the stage is built, its document will render from the same two fields. This page walks through the by-hand version.</p>
+<p>For you, this means doing Prep 3 by hand: the inventory and the plain statement in your notes, the answer in your spec. What you record in the spec reaches Check 4 today. This page walks through the by-hand version.</p>
 </section>
 <section id="before-you-start" class="level2">
 <h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
 <p>You need:</p>
 <ul>
-<li><strong>Your state’s spec file</strong>, copied from the template that ships with the package (<code>el_spec_path(&quot;00_TEMPLATE_EL_Spec&quot;)</code> gives its location). Prep 3 fills two of its blocks. The template, like the simulated spec, ships them empty.</li>
+<li><strong>Your state’s spec file</strong> (see <a href="setup.html">Setup</a>). Prep 3 sets one of its fields, <code>costlier_error</code>. The template and the simulated spec leave it out, so they read <code>&quot;unknown&quot;</code>.</li>
 <li><strong>Program documents</strong>: state EL regulations and guidance on program models, course scheduling and placement rules, educator licensure or endorsement rules, and district EL handbooks.</li>
 <li><strong>People</strong>: EL program staff who know practice on the ground, and the stakeholders whose buy-in the final threshold will need. You put the error-tolerance question to them.</li>
-<li><strong>Helpful, not required</strong>: Prep 2’s results (where ELs concentrate, which service models the data record) and the exit rule in <code>policy$exit</code>, which Prep 1 (not yet built) reviews. The service-model cross-check in Step 2 needs a <code>SERVICE_MODEL</code> column on the roster. Without one, <code>compute_profile()</code> simply leaves it out, and <code>$SERVICE_MODEL</code> is <code>NULL</code>.</li>
+<li><strong>Helpful, not required</strong>: Prep 2’s results (where ELs concentrate, which service models the data record) and the exit rule, which Prep 1 (not yet built) reviews. The service-model cross-check in Step 2 needs a <code>SERVICE_MODEL</code> column on the roster. Without one, <code>compute_profile()</code> simply leaves it out, and <code>$SERVICE_MODEL</code> is <code>NULL</code>.</li>
 </ul>
-<p><strong>What degrades if a block is absent.</strong> The validator requires only <code>policy$exit</code>, <code>policy$timelines</code> and <code>policy$suppression</code>. A spec without <code>policy$program</code> or <code>policy$error_tolerance</code> still validates (the shipped ELPA21 spec has no <code>policy$program</code>). Check 4 treats a missing <code>error_tolerance</code> exactly like an answer of <code>&quot;unknown&quot;</code>: <code>LEAN</code> is <code>NA</code> and its note says the question is open. Nothing crashes. If you include either block, it must carry a <code>source</code>.</p>
+<p><strong>What degrades if the answer is absent.</strong> Nothing crashes. A spec without <code>costlier_error</code> reads <code>&quot;unknown&quot;</code>: Check 4’s <code>LEAN</code> is <code>NA</code> and its note says the question is open.</p>
 </section>
 <section id="run-it" class="level2">
 <h2 class="anchored" data-anchor-id="run-it">Run it</h2>
@@ -3264,47 +3265,23 @@ Simulated data
 <h3 class="anchored" data-anchor-id="step-1-see-what-the-spec-holds">Step 1: See what the spec holds</h3>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_SIM_EL_Spec&quot;</span>)</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>spec<span class="sc">$</span>policy<span class="sc">$</span>program</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>spec</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>$models
-[1] NA
-
-$course_access
-[1] NA
-
-$credentialing
-[1] NA
-
-$gated_by_el_status
-[1] NA
-
-$source
-[1] &quot;provisional&quot;</code></pre>
-</div>
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>spec<span class="sc">$</span>policy<span class="sc">$</span>error_tolerance</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>$costlier_error
-[1] &quot;unknown&quot;
-
-$asked_of
-[1] NA
-
-$asked_date
-[1] NA
-
-$rationale
-[1] NA
-
-$source
-[1] &quot;provisional&quot;</code></pre>
+<pre><code>&lt;el_spec&gt; SIM (Simulated state) 
+  ELP test   : WIDA ACCESS -- Overall Composite (overall), levels 1-6 in 6 bands 
+  exit       : Overall Composite level &gt;= 4.5 [Type 1] 
+  timelines  : max 6 yrs; on time 5 yrs; long-term EL at 6 yrs 
+  academic   : ELA (grades 3-11, cut 750); Math (grades 3-11, cut 750) 
+  suppression: min_cell 10 
+  status     : synthetic 
+  [DERIVED - VERIFY]: exit, timelines, min_cell, district_sizes, costlier_error, academic </code></pre>
 </div>
 </div>
-<p>The simulated spec leaves every inventory field <code>NA</code> and the answer <code>&quot;unknown&quot;</code>. That is deliberate: a synthetic state has no programs and no stakeholders to ask. The planned stage renders each as an open item to confirm, not as an error.</p>
-<p>There are two blocks called “program” in a spec. <code>spec$program</code> describes the <em>assessment</em> program: its name, vendor and administration year. Prep 3’s inventory is <code>spec$policy$program</code>. Keep them apart.</p>
+<p>The printout does not show <code>costlier_error</code>. The simulated spec leaves it out, so it reads <code>&quot;unknown&quot;</code>: a synthetic state has no stakeholders to ask. Check 4’s results show the value it read, in <a href="#what-you-get">What you get</a>. The planned stage renders an open answer as an item to confirm, not as an error.</p>
 </section>
 <section id="step-2-build-the-inventory" class="level3">
 <h3 class="anchored" data-anchor-id="step-2-build-the-inventory">Step 2: Build the inventory</h3>
-<p>Four fields hold the inventory. Each is a character value you write in plain language. The spec names the fields but does not define what goes in them, and the validator checks only the block’s <code>source</code>. The descriptions below follow the stage’s plan: program models, access to grade-level content and advanced coursework, educator credentialing, and anything else conditioned on EL status or ELP level.</p>
+<p>Four headings organize the inventory. Each is plain language you write in your notes. They follow the stage’s plan, and <code>build_el_spec()</code> asks the same four questions: program models, access to grade-level content and advanced coursework, educator credentialing, and anything else conditioned on EL status or ELP level.</p>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 50%">
@@ -3312,7 +3289,7 @@ $source
 </colgroup>
 <thead>
 <tr class="header">
-<th>Field</th>
+<th>Heading</th>
 <th>What to record</th>
 </tr>
 </thead>
@@ -3338,12 +3315,12 @@ $source
 <p>Check the inventory against the data. The roster’s <code>SERVICE_MODEL</code> column records the model each current EL receives. Prep 2’s <code>compute_profile()</code> tabulates it for current ELs in the latest year. Every code that appears should match a model in your inventory, or be explained: the simulated <code>refused_services</code> code, for example, records students who declined services, not a model. The package does not make this comparison for you.</p>
 <p>The code below first builds the <em>bundle</em>: the validated set of data tables that <code>as_el_data()</code> returns and every built stage takes. It is only for these cross-references; Prep 3 itself reads no data.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="ot">&lt;-</span> <span class="fu">as_el_data</span>(el_long_sim,</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>                     <span class="at">roster   =</span> el_roster_sim,</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>                     <span class="at">academic =</span> academic_long_sim,</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>                     <span class="at">spec     =</span> spec)</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="fu">compute_profile</span>(bundle, spec, <span class="at">vars =</span> <span class="st">&quot;SERVICE_MODEL&quot;</span>)<span class="sc">$</span>SERVICE_MODEL</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="ot">&lt;-</span> <span class="fu">as_el_data</span>(el_long_sim,</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>                     <span class="at">roster   =</span> el_roster_sim,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>                     <span class="at">academic =</span> academic_long_sim,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>                     <span class="at">spec     =</span> spec)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="fu">compute_profile</span>(bundle, spec, <span class="at">vars =</span> <span class="st">&quot;SERVICE_MODEL&quot;</span>)<span class="sc">$</span>SERVICE_MODEL</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 7 × 4
   VALUE                N    PCT SUPPRESSED
@@ -3360,9 +3337,9 @@ $source
 <p><code>N</code> counts current ELs with each code and <code>PCT</code> is their share. Both are unweighted, since all of these students are ELs. <code>SUPPRESSED</code> marks cells below the spec’s minimum cell size.</p>
 <p>Then find where ELs concentrate:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>districts <span class="ot">&lt;-</span> <span class="fu">compute_by_district</span>(bundle, spec)</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">districts_holding_two_thirds =</span> <span class="fu">sum</span>(districts<span class="sc">$</span>TWO_THIRDS),</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">districts_in_total           =</span> <span class="fu">nrow</span>(districts))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>districts <span class="ot">&lt;-</span> <span class="fu">compute_by_district</span>(bundle, spec)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">districts_holding_two_thirds =</span> <span class="fu">sum</span>(districts<span class="sc">$</span>TWO_THIRDS),</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">districts_in_total           =</span> <span class="fu">nrow</span>(districts))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>districts_holding_two_thirds           districts_in_total 
                            6                           12 </code></pre>
@@ -3381,12 +3358,12 @@ $source
 <li>what testing or accommodations end.</li>
 </ul>
 <p>If your roster carries a monitoring field (<code>EL_MONITOR_YEAR</code> or <code>EL_STATUS_DETAIL</code>), Prep 2’s <code>compute_monitoring()</code> counts former ELs by monitoring year, so you can see how many students are in that phase. Without either field it returns <code>NULL</code>.</p>
-<p>The spec has no field for this statement. Until the stage document exists to carry it, keep it with your spec, for example as a comment in the spec file next to <code>policy$program</code>.</p>
+<p>The spec has no field for this statement. Until the stage document exists to carry it, keep it with the inventory in your Prep 3 notes.</p>
 </section>
 <section id="step-4-ask-the-error-tolerance-question" class="level3">
 <h3 class="anchored" data-anchor-id="step-4-ask-the-error-tolerance-question">Step 4: Ask the error-tolerance question</h3>
 <p>Ask the people who own the decision which error is worse for a student: exiting EL status before they are ready, or staying in EL status after they no longer need it. Check 4 reads the answer <em>per student</em> (see <a href="#how-to-read-it">How to read it</a>), so phrase the question that way. That reading is itself awaiting confirmation; see <a href="#decide-before-moving-on">Decide before moving on</a>.</p>
-<p>Record one of four values in <code>costlier_error</code>:</p>
+<p>The answer is one of four values:</p>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 50%">
@@ -3417,159 +3394,140 @@ $source
 </tr>
 </tbody>
 </table>
-<p>Record who was asked (<code>asked_of</code>, which can list several groups), when (<code>asked_date</code>) and why they answered as they did (<code>rationale</code>). If they give a magnitude, such as “a premature exit is about twice as bad”, put it in <code>rationale</code>. The spec has no structured field for it, and no stage reads <code>rationale</code>. It is a record for the people who later decide where to land, and some answers cannot be placed on either side of the J optimum without a magnitude (see <a href="#how-to-read-it">How to read it</a>).</p>
+<p>Record in your notes who was asked (it can be several groups), when, and why they answered as they did. If they give a magnitude, such as “a premature exit is about twice as bad”, note that too. No stage reads these; they are a record for the people who later decide where to land, and some answers cannot be placed on either side of the J optimum without a magnitude (see <a href="#how-to-read-it">How to read it</a>).</p>
 <p>Present this as a values judgment, because it is one. No analysis in the package can tell you which error matters more. It is sensible to ask before anyone has seen where Check 4’s optimum lands, so the answer is not shaped by a preferred threshold.</p>
 </section>
-<section id="step-5-record-the-answers-and-validate" class="level3">
-<h3 class="anchored" data-anchor-id="step-5-record-the-answers-and-validate">Step 5: Record the answers and validate</h3>
-<p>In your spec file the two blocks look like this. Every value below is invented for illustration and describes no state.</p>
+<section id="step-5-record-the-answer-in-the-spec" class="level3">
+<h3 class="anchored" data-anchor-id="step-5-record-the-answer-in-the-spec">Step 5: Record the answer in the spec</h3>
+<p>In your spec file, the answer is one argument to <code>el_spec()</code>, and where it is written down is one entry of <code>sources</code>. The values below are invented for illustration and describe no state:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>policy <span class="ot">=</span> <span class="fu">list</span>(</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="co"># ... exit, timelines, suppression and the other policy blocks ...</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">program =</span> <span class="fu">list</span>(</span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">models             =</span> <span class="st">&quot;ESL pull-out (K-5); sheltered content courses (6-12)&quot;</span>,</span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">course_access      =</span> <span class="st">&quot;An ELD period occupies one elective slot in grades 6-12.&quot;</span>,</span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">credentialing      =</span> <span class="st">&quot;Sheltered course teachers hold an ESL endorsement.&quot;</span>,</span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">gated_by_el_status =</span> <span class="st">&quot;Annual ELP testing; testing accommodations; ELD period.&quot;</span>,</span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">source             =</span> <span class="st">&quot;provisional&quot;</span></span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">error_tolerance =</span> <span class="fu">list</span>(</span>
-<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">costlier_error =</span> <span class="st">&quot;premature_exit&quot;</span>,</span>
-<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">asked_of       =</span> <span class="fu">c</span>(<span class="st">&quot;State EL advisory committee&quot;</span>, <span class="st">&quot;District EL coordinators&quot;</span>),</span>
-<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">asked_date     =</span> <span class="st">&quot;2026-11-15&quot;</span>,</span>
-<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">rationale      =</span> <span class="st">&quot;Exit ends the ELD period for students still building academic English.&quot;</span>,</span>
-<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">source         =</span> <span class="st">&quot;Minutes of the advisory committee meeting, 2026-11-15&quot;</span></span>
-<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>costlier_error <span class="ot">=</span> <span class="st">&quot;premature_exit&quot;</span>,</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>sources <span class="ot">=</span> <span class="fu">c</span>(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="co"># ... any other sourced fields ...</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">costlier_error =</span> <span class="st">&quot;Minutes of the state EL advisory committee, 2026-11-15&quot;</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p><code>source</code> belongs to the whole block, not to each field. Keep <code>source = &quot;provisional&quot;</code> on a block until every value in it is confirmed against a document. Printing the spec (<code>print(spec)</code>) then lists the block under <code>[DERIVED - VERIFY]</code>, and the tables in <a href="#what-you-get">What you get</a> show the same label.</p>
-<p>The same change, made in memory to a copy of the simulated spec, shows that the validator accepts it:</p>
+<p>Leave <code>costlier_error</code> out of <code>sources</code> until the answer is written down somewhere a reader can check. The printout then lists it under <code>[DERIVED - VERIFY]</code>.</p>
+<p>Reading the file checks the answer. To show it, here are the simulated spec’s arguments written out as a list, <code>sim</code>, so that copies can change one field. Built with <code>el_spec()</code>, the list gives exactly the spec its file builds:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>filled <span class="ot">&lt;-</span> spec</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>filled<span class="sc">$</span>policy<span class="sc">$</span>program <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">models             =</span> <span class="st">&quot;ESL pull-out (K-5); sheltered content courses (6-12)&quot;</span>,</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">course_access      =</span> <span class="st">&quot;An ELD period occupies one elective slot in grades 6-12.&quot;</span>,</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">credentialing      =</span> <span class="st">&quot;Sheltered course teachers hold an ESL endorsement.&quot;</span>,</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">gated_by_el_status =</span> <span class="st">&quot;Annual ELP testing; testing accommodations; ELD period.&quot;</span>,</span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">source             =</span> <span class="st">&quot;provisional&quot;</span></span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>filled<span class="sc">$</span>policy<span class="sc">$</span>error_tolerance <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">costlier_error =</span> <span class="st">&quot;premature_exit&quot;</span>,</span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">asked_of       =</span> <span class="fu">c</span>(<span class="st">&quot;State EL advisory committee&quot;</span>, <span class="st">&quot;District EL coordinators&quot;</span>),</span>
-<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">asked_date     =</span> <span class="st">&quot;2026-11-15&quot;</span>,</span>
-<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">rationale      =</span> <span class="st">&quot;Exit ends the ELD period for students still building academic English.&quot;</span>,</span>
-<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">source         =</span> <span class="st">&quot;Minutes of the advisory committee meeting, 2026-11-15&quot;</span></span>
-<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a><span class="fu">validate_el_spec</span>(filled)   <span class="co"># silent when the spec is valid</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>sim <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">id     =</span> <span class="st">&quot;SIM&quot;</span>,</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">name   =</span> <span class="st">&quot;Simulated state&quot;</span>,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">status =</span> <span class="st">&quot;synthetic&quot;</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">elp =</span> <span class="fu">list</span>(<span class="at">test =</span> <span class="st">&quot;WIDA ACCESS&quot;</span>, <span class="at">score =</span> <span class="st">&quot;overall&quot;</span>,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">label =</span> <span class="st">&quot;Overall Composite&quot;</span>, <span class="at">levels =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">6</span>),</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">bands =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">4</span>, <span class="fl">4.5</span>, <span class="dv">5</span>)),</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">exit      =</span> <span class="fu">c</span>(<span class="at">overall =</span> <span class="fl">4.5</span>),</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">timelines =</span> <span class="fu">list</span>(<span class="at">max =</span> <span class="dv">6</span>, <span class="at">on_time =</span> <span class="dv">5</span>, <span class="at">lt_el =</span> <span class="dv">6</span>),</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">academic  =</span> <span class="fu">list</span>(</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">ELA  =</span> <span class="fu">list</span>(<span class="at">grades =</span> <span class="dv">3</span><span class="sc">:</span><span class="dv">11</span>, <span class="at">proficient_cut =</span> <span class="dv">750</span>, <span class="at">proficient_level =</span> <span class="dv">4</span>),</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">Math =</span> <span class="fu">list</span>(<span class="at">grades =</span> <span class="dv">3</span><span class="sc">:</span><span class="dv">11</span>, <span class="at">proficient_cut =</span> <span class="dv">750</span>, <span class="at">proficient_level =</span> <span class="dv">4</span>)),</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">min_cell =</span> <span class="dv">10</span>,</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">delivery =</span> <span class="fu">list</span>(<span class="at">entry_date_rule =</span> <span class="st">&quot;calendar_year&quot;</span>)</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a><span class="fu">identical</span>(<span class="fu">do.call</span>(el_spec, sim), spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] TRUE</code></pre>
 </div>
-<p>An answer outside the four values, or a block without a <code>source</code>, fails:</p>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>filled <span class="ot">&lt;-</span> <span class="fu">do.call</span>(el_spec, <span class="fu">modifyList</span>(sim, <span class="fu">list</span>(</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">costlier_error =</span> <span class="st">&quot;premature_exit&quot;</span>,</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">sources =</span> <span class="fu">c</span>(<span class="at">costlier_error =</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;Minutes of the state EL advisory committee, 2026-11-15&quot;</span>))))</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>filled</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>&lt;el_spec&gt; SIM (Simulated state) 
+  ELP test   : WIDA ACCESS -- Overall Composite (overall), levels 1-6 in 6 bands 
+  exit       : Overall Composite level &gt;= 4.5 [Type 1] 
+  timelines  : max 6 yrs; on time 5 yrs; long-term EL at 6 yrs 
+  academic   : ELA (grades 3-11, cut 750); Math (grades 3-11, cut 750) 
+  suppression: min_cell 10 
+  status     : synthetic 
+  [DERIVED - VERIFY]: exit, timelines, min_cell, district_sizes, academic </code></pre>
+</div>
+</div>
+<p><code>costlier_error</code> is now off the printout’s <code>[DERIVED - VERIFY]</code> line. An answer outside the four values fails, with the allowed values listed:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>bad <span class="ot">&lt;-</span> filled</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>bad<span class="sc">$</span>policy<span class="sc">$</span>error_tolerance<span class="sc">$</span>costlier_error <span class="ot">&lt;-</span> <span class="st">&quot;both&quot;</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="fu">tryCatch</span>(<span class="fu">validate_el_spec</span>(bad), <span class="at">error =</span> <span class="cf">function</span>(e) <span class="fu">cat</span>(<span class="fu">conditionMessage</span>(e)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">tryCatch</span>(<span class="fu">do.call</span>(el_spec, <span class="fu">modifyList</span>(sim, <span class="fu">list</span>(<span class="at">costlier_error =</span> <span class="st">&quot;both&quot;</span>))),</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>         <span class="at">error =</span> <span class="cf">function</span>(e) <span class="fu">cat</span>(<span class="fu">conditionMessage</span>(e)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Invalid el_spec:
-  - `policy$error_tolerance$costlier_error` must be one of premature_exit, prolonged_retention, equal, unknown.</code></pre>
-</div>
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>bad <span class="ot">&lt;-</span> filled</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>bad<span class="sc">$</span>policy<span class="sc">$</span>program<span class="sc">$</span>source <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="fu">tryCatch</span>(<span class="fu">validate_el_spec</span>(bad), <span class="at">error =</span> <span class="cf">function</span>(e) <span class="fu">cat</span>(<span class="fu">conditionMessage</span>(e)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Invalid el_spec:
-  - `policy$program` must carry a `source` string. Use source = &quot;provisional&quot; for a value that is not yet verified; it renders as [DERIVED - VERIFY].</code></pre>
+  - `costlier_error` must be one of premature_exit, prolonged_retention, equal, unknown.</code></pre>
 </div>
 </div>
-<p>The validator collects every problem and reports them together, so one run lists everything to fix.</p>
 </section>
 </section>
 <section id="what-you-get" class="level2">
 <h2 class="anchored" data-anchor-id="what-you-get">What you get</h2>
-<p>Until the stage is built, you get two tables you assemble yourself, plus Check 4’s use of the answer.</p>
+<p>Until the stage is built, you get two records you assemble yourself, plus Check 4’s use of the answer.</p>
 <section id="the-program-inventory" class="level3">
 <h3 class="anchored" data-anchor-id="the-program-inventory">The program inventory</h3>
-<p>The two helpers below are written on this page. <strong>They are not part of the package</strong>; they stand in for the planned <code>$program_table</code> and <code>$error_tolerance</code> tables.</p>
+<p>The helper below is written on this page. <strong>It is not part of the package</strong>; it stands in for the planned <code>$program_table</code>. It takes your notes as a named list, one entry per heading:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>by_hand_inventory <span class="ot">&lt;-</span> <span class="cf">function</span>(spec) {</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  prog   <span class="ot">&lt;-</span> spec<span class="sc">$</span>policy<span class="sc">$</span>program</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  fields <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(<span class="fu">names</span>(prog), <span class="st">&quot;source&quot;</span>)</span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  value  <span class="ot">&lt;-</span> <span class="fu">vapply</span>(prog[fields], <span class="cf">function</span>(x) {</span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">is.na</span>(x))) <span class="st">&quot;(not recorded)&quot;</span> <span class="cf">else</span> <span class="fu">paste</span>(x, <span class="at">collapse =</span> <span class="st">&quot;; &quot;</span>)</span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  }, <span class="fu">character</span>(<span class="dv">1</span>))</span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>  src <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="fu">identical</span>(prog<span class="sc">$</span>source, <span class="st">&quot;provisional&quot;</span>)) <span class="st">&quot;[DERIVED — VERIFY]&quot;</span> <span class="cf">else</span> prog<span class="sc">$</span>source</span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>  tab <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">FIELD  =</span> fields,</span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">VALUE  =</span> <span class="fu">unname</span>(value),</span>
-<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">STATUS =</span> <span class="fu">unname</span>(<span class="fu">ifelse</span>(value <span class="sc">==</span> <span class="st">&quot;(not recorded)&quot;</span>, <span class="st">&quot;Open: confirm&quot;</span>, <span class="st">&quot;Recorded&quot;</span>)),</span>
-<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">SOURCE =</span> src</span>
-<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>  flextable<span class="sc">::</span><span class="fu">flextable</span>(tab) <span class="sc">|&gt;</span></span>
-<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>    flextable<span class="sc">::</span><span class="fu">set_table_properties</span>(<span class="at">layout =</span> <span class="st">&quot;autofit&quot;</span>, <span class="at">width =</span> <span class="dv">1</span>)</span>
-<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a><span class="fu">by_hand_inventory</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>by_hand_inventory <span class="ot">&lt;-</span> <span class="cf">function</span>(notes) {</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  value <span class="ot">&lt;-</span> <span class="fu">vapply</span>(notes, <span class="cf">function</span>(x) {</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">is.na</span>(x))) <span class="st">&quot;(not recorded)&quot;</span> <span class="cf">else</span> <span class="fu">paste</span>(x, <span class="at">collapse =</span> <span class="st">&quot;; &quot;</span>)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  }, <span class="fu">character</span>(<span class="dv">1</span>))</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  tab <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">HEADING =</span> <span class="fu">names</span>(notes),</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">VALUE   =</span> <span class="fu">unname</span>(value),</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">STATUS  =</span> <span class="fu">unname</span>(<span class="fu">ifelse</span>(value <span class="sc">==</span> <span class="st">&quot;(not recorded)&quot;</span>, <span class="st">&quot;Open: confirm&quot;</span>,</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>                            <span class="st">&quot;Recorded&quot;</span>))</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>  flextable<span class="sc">::</span><span class="fu">flextable</span>(tab) <span class="sc">|&gt;</span></span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>    flextable<span class="sc">::</span><span class="fu">set_table_properties</span>(<span class="at">layout =</span> <span class="st">&quot;autofit&quot;</span>, <span class="at">width =</span> <span class="dv">1</span>)</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>open_notes <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">models =</span> <span class="cn">NA</span>, <span class="at">course_access =</span> <span class="cn">NA</span>, <span class="at">credentialing =</span> <span class="cn">NA</span>,</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>                   <span class="at">gated_by_el_status =</span> <span class="cn">NA</span>)</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a><span class="fu">by_hand_inventory</span>(open_notes)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<div class="tabwid"><style>.cl-eefbcfb5{table-layout:auto;width:100%;}.cl-9f1c1ce9{font-family:'Arial';font-size:11pt;font-weight:normal;font-style:normal;text-decoration:none;color:rgba(0, 0, 0, 1.00);background-color:transparent;}.cl-6477613b{margin:0;text-align:left;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:5pt;padding-top:5pt;padding-left:5pt;padding-right:5pt;line-height: 1;background-color:transparent;}.cl-205c961f{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 1.5pt solid rgba(102, 102, 102, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-5f23df5d{background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-13e067dc{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}</style><table data-quarto-disable-processing="true" class="cl-eefbcfb5"><thead><tr style="overflow-wrap:break-word;"><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">FIELD</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">VALUE</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">STATUS</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">SOURCE</span></p></th></tr></thead><tbody><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">models</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Open: confirm</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">course_access</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Open: confirm</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">credentialing</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Open: confirm</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">gated_by_el_status</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Open: confirm</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr></tbody></table></div>
+<div class="tabwid"><style>.cl-eefbcfb5{table-layout:auto;width:100%;}.cl-9f1c1ce9{font-family:'Arial';font-size:11pt;font-weight:normal;font-style:normal;text-decoration:none;color:rgba(0, 0, 0, 1.00);background-color:transparent;}.cl-6477613b{margin:0;text-align:left;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:5pt;padding-top:5pt;padding-left:5pt;padding-right:5pt;line-height: 1;background-color:transparent;}.cl-205c961f{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 1.5pt solid rgba(102, 102, 102, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-5f23df5d{background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-13e067dc{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}</style><table data-quarto-disable-processing="true" class="cl-eefbcfb5"><thead><tr style="overflow-wrap:break-word;"><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">HEADING</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">VALUE</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">STATUS</span></p></th></tr></thead><tbody><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">models</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Open: confirm</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">course_access</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Open: confirm</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">credentialing</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Open: confirm</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">gated_by_el_status</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Open: confirm</span></p></td></tr></tbody></table></div>
 </div>
 </div>
-<p>For the simulated spec, every row is open. With the illustrative answers filled in, the same table reads:</p>
+<p>Before anyone is asked, every row is open. With illustrative answers filled in, describing no state, the same table reads:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">by_hand_inventory</span>(filled)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>notes <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">models             =</span> <span class="st">&quot;ESL pull-out (K-5); sheltered content courses (6-12)&quot;</span>,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">course_access      =</span> <span class="st">&quot;An ELD period occupies one elective slot in grades 6-12.&quot;</span>,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">credentialing      =</span> <span class="st">&quot;Sheltered course teachers hold an ESL endorsement.&quot;</span>,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">gated_by_el_status =</span> <span class="st">&quot;Annual ELP testing; testing accommodations; ELD period.&quot;</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="fu">by_hand_inventory</span>(notes)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<div class="tabwid"><style>.cl-eefbcfb5{table-layout:auto;width:100%;}.cl-9f1c1ce9{font-family:'Arial';font-size:11pt;font-weight:normal;font-style:normal;text-decoration:none;color:rgba(0, 0, 0, 1.00);background-color:transparent;}.cl-6477613b{margin:0;text-align:left;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:5pt;padding-top:5pt;padding-left:5pt;padding-right:5pt;line-height: 1;background-color:transparent;}.cl-205c961f{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 1.5pt solid rgba(102, 102, 102, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-5f23df5d{background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-13e067dc{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}</style><table data-quarto-disable-processing="true" class="cl-eefbcfb5"><thead><tr style="overflow-wrap:break-word;"><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">FIELD</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">VALUE</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">STATUS</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">SOURCE</span></p></th></tr></thead><tbody><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">models</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">ESL pull-out (K-5); sheltered content courses (6-12)</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Recorded</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">course_access</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">An ELD period occupies one elective slot in grades 6-12.</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Recorded</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">credentialing</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Sheltered course teachers hold an ESL endorsement.</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Recorded</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">gated_by_el_status</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Annual ELP testing; testing accommodations; ELD period.</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Recorded</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr></tbody></table></div>
+<div class="tabwid"><style>.cl-eefbcfb5{table-layout:auto;width:100%;}.cl-9f1c1ce9{font-family:'Arial';font-size:11pt;font-weight:normal;font-style:normal;text-decoration:none;color:rgba(0, 0, 0, 1.00);background-color:transparent;}.cl-6477613b{margin:0;text-align:left;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:5pt;padding-top:5pt;padding-left:5pt;padding-right:5pt;line-height: 1;background-color:transparent;}.cl-205c961f{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 1.5pt solid rgba(102, 102, 102, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-5f23df5d{background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-13e067dc{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}</style><table data-quarto-disable-processing="true" class="cl-eefbcfb5"><thead><tr style="overflow-wrap:break-word;"><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">HEADING</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">VALUE</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">STATUS</span></p></th></tr></thead><tbody><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">models</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">ESL pull-out (K-5); sheltered content courses (6-12)</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Recorded</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">course_access</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">An ELD period occupies one elective slot in grades 6-12.</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Recorded</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">credentialing</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Sheltered course teachers hold an ESL endorsement.</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Recorded</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">gated_by_el_status</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Annual ELP testing; testing accommodations; ELD period.</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">Recorded</span></p></td></tr></tbody></table></div>
 </div>
 </div>
-<p><code>FIELD</code> is the spec field, <code>VALUE</code> what was recorded, <code>STATUS</code> whether it still needs an answer, and <code>SOURCE</code> where the value came from. A <code>[DERIVED — VERIFY]</code> source means the value is not yet confirmed.</p>
+<p><code>HEADING</code> is the inventory heading, <code>VALUE</code> what was recorded, and <code>STATUS</code> whether it still needs an answer. Keep each value’s source beside it in your notes.</p>
 </section>
 <section id="the-error-tolerance-record" class="level3">
 <h3 class="anchored" data-anchor-id="the-error-tolerance-record">The error-tolerance record</h3>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>by_hand_tolerance <span class="ot">&lt;-</span> <span class="cf">function</span>(spec) {</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  et   <span class="ot">&lt;-</span> spec<span class="sc">$</span>policy<span class="sc">$</span>error_tolerance</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>  show <span class="ot">&lt;-</span> <span class="cf">function</span>(x) <span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">is.na</span>(x))) <span class="st">&quot;(not recorded)&quot;</span> <span class="cf">else</span> <span class="fu">paste</span>(x, <span class="at">collapse =</span> <span class="st">&quot;; &quot;</span>)</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>  tab <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">COSTLIER_ERROR =</span> <span class="fu">show</span>(et<span class="sc">$</span>costlier_error),</span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">ASKED_OF       =</span> <span class="fu">show</span>(et<span class="sc">$</span>asked_of),</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">ASKED_DATE     =</span> <span class="fu">show</span>(et<span class="sc">$</span>asked_date),</span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">RATIONALE      =</span> <span class="fu">show</span>(et<span class="sc">$</span>rationale),</span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">SOURCE         =</span> <span class="cf">if</span> (<span class="fu">identical</span>(et<span class="sc">$</span>source, <span class="st">&quot;provisional&quot;</span>)) <span class="st">&quot;[DERIVED — VERIFY]&quot;</span> <span class="cf">else</span> et<span class="sc">$</span>source</span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  flextable<span class="sc">::</span><span class="fu">flextable</span>(tab) <span class="sc">|&gt;</span></span>
-<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>    flextable<span class="sc">::</span><span class="fu">set_table_properties</span>(<span class="at">layout =</span> <span class="st">&quot;autofit&quot;</span>, <span class="at">width =</span> <span class="dv">1</span>)</span>
-<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a><span class="fu">by_hand_tolerance</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<div class="tabwid"><style>.cl-eefbcfb5{table-layout:auto;width:100%;}.cl-9f1c1ce9{font-family:'Arial';font-size:11pt;font-weight:normal;font-style:normal;text-decoration:none;color:rgba(0, 0, 0, 1.00);background-color:transparent;}.cl-6477613b{margin:0;text-align:left;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:5pt;padding-top:5pt;padding-left:5pt;padding-right:5pt;line-height: 1;background-color:transparent;}.cl-205c961f{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 1.5pt solid rgba(102, 102, 102, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-13e067dc{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}</style><table data-quarto-disable-processing="true" class="cl-eefbcfb5"><thead><tr style="overflow-wrap:break-word;"><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">COSTLIER_ERROR</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">ASKED_OF</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">ASKED_DATE</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">RATIONALE</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">SOURCE</span></p></th></tr></thead><tbody><tr style="overflow-wrap:break-word;"><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">unknown</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">(not recorded)</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">[DERIVED — VERIFY]</span></p></td></tr></tbody></table></div>
-</div>
-</div>
-<p>For the simulated spec the answer is <code>&quot;unknown&quot;</code> and nobody was asked. That is an open item, not a failure: Check 4 still runs and says the question is open.</p>
+<p>The answer itself is in the spec; who was asked, when and why are in your notes. Keep them together on one page of the Prep 3 record: the value, its <code>sources</code> entry, who was asked, the date, and the reasons and any magnitude they gave. For the simulated spec the answer is <code>&quot;unknown&quot;</code> and nobody was asked. That is an open item, not a failure: Check 4 still runs and says the question is open.</p>
 </section>
 <section id="what-check-4-does-with-the-answer" class="level3">
 <h3 class="anchored" data-anchor-id="what-check-4-does-with-the-answer">What Check 4 does with the answer</h3>
 <p>Check 4 already consumes the answer. Run it on the simulated spec and look at what it recorded:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>res4 <span class="ot">&lt;-</span> <span class="fu">run_check4</span>(bundle, spec)</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>res4<span class="sc">$</span>meta<span class="sc">$</span>costlier_error</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>res4 <span class="ot">&lt;-</span> <span class="fu">run_check4</span>(bundle, spec)</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>res4<span class="sc">$</span>meta<span class="sc">$</span>costlier_error</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] &quot;unknown&quot;</code></pre>
 </div>
 </div>
-<p>Check 4 treats each grade and subject as its own panel, and its first pass computes one: here, ELA grade 3 in 2025. Its <code>$j_optimal</code> table compares the answer with the J-optimal cut. To see how each possible answer would read, recompute that table from the same curve with the answer swapped. Only the spec changes; the curve is not rebuilt.</p>
+<p>Check 4 treats each grade and subject as its own panel, and its first pass computes one: here, ELA grade 3 in 2025. Its <code>$j_optimal</code> table compares the answer with the J-optimal cut. To see how each possible answer would read, recompute that table from the same curve with specs that differ only in <code>costlier_error</code>. The curve is not rebuilt.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>answers <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;unknown&quot;</span>, <span class="st">&quot;premature_exit&quot;</span>, <span class="st">&quot;equal&quot;</span>, <span class="st">&quot;prolonged_retention&quot;</span>)</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>lean <span class="ot">&lt;-</span> dplyr<span class="sc">::</span><span class="fu">bind_rows</span>(<span class="fu">lapply</span>(answers, <span class="cf">function</span>(a) {</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  s <span class="ot">&lt;-</span> spec</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>  s<span class="sc">$</span>policy<span class="sc">$</span>error_tolerance<span class="sc">$</span>costlier_error <span class="ot">&lt;-</span> a</span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">compute_j_optimal</span>(res4<span class="sc">$</span>youden_j, s)</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>}))</span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>lean <span class="sc">|&gt;</span></span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">transmute</span>(COSTLIER_ERROR,</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>                   <span class="at">BASE_RATE =</span> <span class="fu">round</span>(BASE_RATE, <span class="dv">3</span>),</span>
-<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>                   J_CUT_LABEL, AGREE_CUT_LABEL,</span>
-<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>                   <span class="at">IMPLIED_COST_RATIO =</span> <span class="fu">round</span>(IMPLIED_COST_RATIO, <span class="dv">1</span>),</span>
-<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>                   <span class="at">LEAN =</span> dplyr<span class="sc">::</span><span class="fu">coalesce</span>(LEAN, <span class="st">&quot;NA&quot;</span>)) <span class="sc">|&gt;</span></span>
-<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>  flextable<span class="sc">::</span><span class="fu">flextable</span>() <span class="sc">|&gt;</span></span>
-<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>  flextable<span class="sc">::</span><span class="fu">set_table_properties</span>(<span class="at">layout =</span> <span class="st">&quot;autofit&quot;</span>, <span class="at">width =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>answers <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;unknown&quot;</span>, <span class="st">&quot;premature_exit&quot;</span>, <span class="st">&quot;equal&quot;</span>, <span class="st">&quot;prolonged_retention&quot;</span>)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>lean <span class="ot">&lt;-</span> dplyr<span class="sc">::</span><span class="fu">bind_rows</span>(<span class="fu">lapply</span>(answers, <span class="cf">function</span>(a) {</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>  s <span class="ot">&lt;-</span> <span class="fu">do.call</span>(el_spec, <span class="fu">modifyList</span>(sim, <span class="fu">list</span>(<span class="at">costlier_error =</span> a)))</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">compute_j_optimal</span>(res4<span class="sc">$</span>youden_j, s)</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>lean <span class="sc">|&gt;</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">transmute</span>(COSTLIER_ERROR,</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>                   <span class="at">BASE_RATE =</span> <span class="fu">round</span>(BASE_RATE, <span class="dv">3</span>),</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>                   J_CUT_LABEL, AGREE_CUT_LABEL,</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>                   <span class="at">IMPLIED_COST_RATIO =</span> <span class="fu">round</span>(IMPLIED_COST_RATIO, <span class="dv">1</span>),</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>                   <span class="at">LEAN =</span> dplyr<span class="sc">::</span><span class="fu">coalesce</span>(LEAN, <span class="st">&quot;NA&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>  flextable<span class="sc">::</span><span class="fu">flextable</span>() <span class="sc">|&gt;</span></span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>  flextable<span class="sc">::</span><span class="fu">set_table_properties</span>(<span class="at">layout =</span> <span class="st">&quot;autofit&quot;</span>, <span class="at">width =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <div class="tabwid"><style>.cl-eefbcfb5{table-layout:auto;width:100%;}.cl-9f1c1ce9{font-family:'Arial';font-size:11pt;font-weight:normal;font-style:normal;text-decoration:none;color:rgba(0, 0, 0, 1.00);background-color:transparent;}.cl-6477613b{margin:0;text-align:left;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:5pt;padding-top:5pt;padding-left:5pt;padding-right:5pt;line-height: 1;background-color:transparent;}.cl-a1958ec5{margin:0;text-align:right;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:5pt;padding-top:5pt;padding-left:5pt;padding-right:5pt;line-height: 1;background-color:transparent;}.cl-205c961f{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 1.5pt solid rgba(102, 102, 102, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-b17086d4{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 1.5pt solid rgba(102, 102, 102, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-5f23df5d{background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-212ffd11{background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-13e067dc{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-adaf0255{background-color:transparent;vertical-align: middle;border-bottom: 1.5pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}</style><table data-quarto-disable-processing="true" class="cl-eefbcfb5"><thead><tr style="overflow-wrap:break-word;"><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">COSTLIER_ERROR</span></p></th><th class="cl-b17086d4"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">BASE_RATE</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">J_CUT_LABEL</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">AGREE_CUT_LABEL</span></p></th><th class="cl-b17086d4"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">IMPLIED_COST_RATIO</span></p></th><th class="cl-205c961f"><p class="cl-6477613b"><span class="cl-9f1c1ce9">LEAN</span></p></th></tr></thead><tbody><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">unknown</span></p></td><td class="cl-212ffd11"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">0.115</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">4.2</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">5.2</span></p></td><td class="cl-212ffd11"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">7.7</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">NA</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">premature_exit</span></p></td><td class="cl-212ffd11"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">0.115</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">4.2</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">5.2</span></p></td><td class="cl-212ffd11"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">7.7</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">above</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">equal</span></p></td><td class="cl-212ffd11"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">0.115</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">4.2</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">5.2</span></p></td><td class="cl-212ffd11"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">7.7</span></p></td><td class="cl-5f23df5d"><p class="cl-6477613b"><span class="cl-9f1c1ce9">above</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">prolonged_retention</span></p></td><td class="cl-adaf0255"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">0.115</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">4.2</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">5.2</span></p></td><td class="cl-adaf0255"><p class="cl-a1958ec5"><span class="cl-9f1c1ce9">7.7</span></p></td><td class="cl-13e067dc"><p class="cl-6477613b"><span class="cl-9f1c1ce9">NA</span></p></td></tr></tbody></table></div>
 </div>
@@ -3584,7 +3542,7 @@ $source
 <li><code>LEAN</code> is the side of the J optimum the answer points to: <code>&quot;above&quot;</code>, <code>&quot;below&quot;</code>, <code>&quot;at&quot;</code>, or <code>NA</code> when the answer alone cannot settle it.</li>
 </ul>
 <p>Check 4’s stage document prints a note on the answer under the heading “Which error costs more”. For the simulated spec it reads:</p>
-<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;&gt; &quot;</span>, <span class="fu">check4_tolerance_note</span>(res4), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>, <span class="at">sep =</span> <span class="st">&quot;&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;&gt; &quot;</span>, <span class="fu">check4_tolerance_note</span>(res4), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>, <span class="at">sep =</span> <span class="st">&quot;&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <blockquote class="blockquote">
 <p>Which error costs more is still an open question: Prep 3 has not recorded an answer. Youden’s J weights the two errors equally as rates – the share of proficient students held back and the share of not-proficient students exited – however common each group is. Per student that is not an even trade: with 11% of these students proficient, the J optimum of 4.2 weighs holding back one proficient student as heavily as exiting 7.7 who are not. If stakeholders price the two errors differently from that, it is a documented reason to land the threshold deliberately above or below the J optimum – a values input, not a departure from the evidence.</p>
 </blockquote>
@@ -3609,29 +3567,27 @@ $source
 <ul>
 <li><strong>Do not look to the data for the error-tolerance answer.</strong> It is a values judgment. No Data Check can tell you which error is worse.</li>
 <li><strong>Do not read “J assumes equal costs” as per student.</strong> J equalizes error <em>rates</em>. At a low base rate it weighs one held-back proficient student as several premature exits. Equal per-student costs then point above the J optimum, not to it.</li>
-<li><strong>Record who was asked and when.</strong> An answer without its provenance cannot be defended later. <code>asked_of</code> and <code>asked_date</code> exist for that.</li>
-<li><strong>“Prolonged retention is costlier” may not settle the direction.</strong> Unless the base rate is one half or more, the side depends on how much costlier. Capture any magnitude in <code>rationale</code>.</li>
-<li><strong>Do not fill the simulated spec with invented answers for a report.</strong> Its <code>NA</code> and <code>&quot;unknown&quot;</code> values are by design. Put real answers in your state’s spec, copied from the template.</li>
-<li><strong>Do not confuse the two “program” blocks.</strong> <code>spec$program</code> is the assessment program; Prep 3’s inventory is <code>spec$policy$program</code>.</li>
-<li><strong>Keep both blocks under <code>policy</code>.</strong> The validator rejects a policy field that appears under <code>elp</code>.</li>
-<li><strong>Keep unconfirmed values <code>provisional</code>.</strong> They then display as <code>[DERIVED — VERIFY]</code> rather than passing for verified facts.</li>
+<li><strong>Record who was asked and when.</strong> An answer without its provenance cannot be defended later. The spec has no field for it, so it lives in your notes; name the document that holds the answer in <code>sources</code>.</li>
+<li><strong>“Prolonged retention is costlier” may not settle the direction.</strong> Unless the base rate is one half or more, the side depends on how much costlier. Capture any magnitude in your notes.</li>
+<li><strong>Do not fill the simulated spec with invented answers for a report.</strong> Its <code>&quot;unknown&quot;</code> is by design. Put real answers in your state’s spec.</li>
+<li><strong>Keep an unconfirmed answer out of <code>sources</code>.</strong> It then displays as <code>[DERIVED — VERIFY]</code> rather than passing for a verified fact.</li>
 <li><strong>Do not skip the step because the stage is unbuilt.</strong> Check 4 reads the answer from the spec today, so what you record changes how its document reads.</li>
 </ul>
 </section>
 <section id="decide-before-moving-on" class="level2">
 <h2 class="anchored" data-anchor-id="decide-before-moving-on">Decide before moving on</h2>
 <ol type="1">
-<li><strong>Is the inventory complete?</strong> Each of the four fields should hold a sourced value, or be explicitly left open with someone responsible for answering it.</li>
+<li><strong>Is the inventory complete?</strong> Each of the four headings should hold a sourced value, or be explicitly left open with someone responsible for answering it.</li>
 <li><strong>Is there an agreed plain statement</strong> of what changes for a student the moment they exit?</li>
-<li><strong>Is the error-tolerance answer recorded</strong>, with who was asked and when? If it stays <code>&quot;unknown&quot;</code>, accept explicitly that Check 4 and the Decision stage will say the question is open, and that the J optimum then carries only J’s own equal-rates weighting.</li>
-<li><strong>Did stakeholders answer per student?</strong> The package reads the answer that way. Check 4’s build notes mark this reading as proposed and awaiting confirmation. If your stakeholders meant something else, note it in <code>rationale</code>.</li>
+<li><strong>Is the error-tolerance answer recorded</strong>, in the spec, with who was asked and when in your notes? If it stays <code>&quot;unknown&quot;</code>, accept explicitly that Check 4 and the Decision stage will say the question is open, and that the J optimum then carries only J’s own equal-rates weighting.</li>
+<li><strong>Did stakeholders answer per student?</strong> The package reads the answer that way. Check 4’s build notes mark this reading as proposed and awaiting confirmation. If your stakeholders meant something else, note it.</li>
 </ol>
 </section>
 <section id="additional-checks-for-multi-criterion-exit-rules" class="level2">
 <h2 class="anchored" data-anchor-id="additional-checks-for-multi-criterion-exit-rules">Additional checks for multi-criterion exit rules</h2>
-<p><strong>Prep 3 has none.</strong> Several other stages carry an extra check that runs only when the spec declares a multi-criterion Type; which Types trigger it varies by stage. The spec records the exit rule’s structure in <code>policy$exit$types</code>, using six Types: Type 1 is a single overall composite score, and Types 2 to 6 combine criteria or pathways in different ways.</p>
+<p><strong>Prep 3 has none.</strong> Several other stages carry an extra check that runs only for a multi-criterion rule; which Types trigger it varies by stage. The package reads the exit rule’s Type from the criteria in the spec’s <code>exit</code>, using six Types: Type 1 is a single overall composite score, and Types 2 to 6 combine criteria or pathways in different ways.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">el_exit_typology</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">el_exit_typology</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>                               1                                2 
 &quot;Single overall composite score&quot;           &quot;Composite-plus-floor&quot; 
@@ -3640,11 +3596,11 @@ $source
                                5                                6 
           &quot;Tiered/discretionary&quot;                 &quot;Domain profile&quot; </code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 1</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] FALSE</code></pre>
 </div>
@@ -3655,25 +3611,24 @@ $source
 <h2 class="anchored" data-anchor-id="render-the-stage-report">Render the stage report</h2>
 <p>Prep 3 has no stage document yet. <code>stage_qmd_path()</code> returns <code>NA</code> for it, and <code>render_step(&quot;prep3&quot;)</code> stops with “No document found”:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stage_qmd_path</span>(<span class="st">&quot;prep3&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stage_qmd_path</span>(<span class="st">&quot;prep3&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] NA</code></pre>
 </div>
 </div>
-<p>Until it exists, keep the two tables from this page with your spec as the Prep 3 record.</p>
+<p>Until it exists, keep your inventory, the plain statement and the error-tolerance record together as the Prep 3 record.</p>
 <p>To see your error-tolerance answer in a rendered document, render Check 4, whose report shows it under “Which error costs more”. On its own, <code>render_step(&quot;check4&quot;)</code> runs on the simulated data and spec, so it shows the simulated <code>&quot;unknown&quot;</code>, not your answer. For your state, run Check 4 on your bundle and spec, save the results outside the folder you share, and render from the saved file:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">run_check4</span>(my_bundle, my_spec)</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="fu">dir.create</span>(<span class="st">&quot;results&quot;</span>, <span class="at">showWarnings =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(res, <span class="st">&quot;results/check4_results.rds&quot;</span>)</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>files <span class="ot">&lt;-</span> <span class="fu">render_step</span>(<span class="st">&quot;check4&quot;</span>,</span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>                     <span class="at">spec_file        =</span> <span class="fu">normalizePath</span>(<span class="st">&quot;specs/XX_EL_Spec.R&quot;</span>),</span>
-<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>                     <span class="at">results_file     =</span> <span class="st">&quot;results/check4_results.rds&quot;</span>,</span>
-<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>                     <span class="at">check_disclosure =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a><span class="fu">check_output_disclosure</span>(files, my_bundle)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">run_check4</span>(my_bundle, my_spec)</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="fu">dir.create</span>(<span class="st">&quot;results&quot;</span>, <span class="at">showWarnings =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(res, <span class="st">&quot;results/check4_results.rds&quot;</span>)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="fu">render_step</span>(<span class="st">&quot;check4&quot;</span>,</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>            <span class="at">spec_file    =</span> <span class="st">&quot;specs/XX_EL_Spec.R&quot;</span>,</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>            <span class="at">results_file =</span> <span class="st">&quot;results/check4_results.rds&quot;</span>,</span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>            <span class="at">bundle       =</span> my_bundle)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Pass the spec as a full path: the report renders in a temporary folder, where a relative path does not resolve. <code>check_disclosure = FALSE</code> turns off the built-in identifier scan, which knows only the simulated students; <code>check_output_disclosure()</code> runs the same scan against your own bundle. The <a href="check4.html">Check 4 page</a> covers the report.</p>
+<p><code>bundle</code> gives the built-in identifier scan your own students’ IDs. The <a href="check4.html">Check 4 page</a> covers the report.</p>
 <p><a href="index.html">Guide home</a> | Previous: <a href="prep2.html">Prep 2: Population analysis</a> | Next: <a href="check1.html">Check 1: Cohort survival</a></p>
 </section>
 

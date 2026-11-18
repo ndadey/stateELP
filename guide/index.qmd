@@ -95,9 +95,10 @@ takes the data bundle and the spec, never another stage's results, so you
 could run Check 3 before Prep 2. The *reading* depends on order, because
 each stage feeds the ones after it.
 
-- **Prep 1 fixes the rule and its Type.** The spec declares which of six
-  exit-rule Types the state uses. That declaration decides which Additional
-  checks run in later stages. A mistake here carries into every document.
+- **Prep 1 fixes the rule and its Type.** The spec writes the exit rule,
+  and the package reads from it which of six exit-rule Types the state
+  uses. The Type decides which Additional checks run in later stages. A
+  mistake here carries into every document.
 - **Prep 2 is the backdrop for every Data Check.** It shows where ELs
   concentrate, whether there is a clean kindergarten cohort for Check 1, and
   where pooling all ELs together would hide more than it shows.
@@ -123,11 +124,13 @@ each stage feeds the ones after it.
 
 ## A first look: the spec and the data
 
-Two objects drive every stage. The first is the **spec**, an R list that
-holds every state-specific value: the ELP instrument and its components, the
-exit rule and its Type, timelines, the suppression rule, academic cuts, and
-the map from your file's column names to the package's. No analysis function
-reads a state value from anywhere else.
+Two objects drive every stage. The first is the **spec**, one call to
+`el_spec()` in its own R file, that holds every state-specific value: the
+ELP test and the score the exit rule uses, the exit rule, the timelines, the
+suppression rule, the academic proficiency cuts, and how your files differ
+from the package's column names. No analysis function reads a state value
+from anywhere else. The simulated spec's whole file is about two dozen lines
+of code; the [Setup page](setup.html) shows it.
 
 ```{r}
 el_spec_files()
@@ -142,10 +145,10 @@ exiting is `r spec_max_years(spec)` years. A shorter
 `r spec_essa_years(spec)`-year timeline defines "on time"; the package calls
 it the ESSA timeline, after the federal Every Student Succeeds Act. The
 smallest cell it reports is `r spec_min_cell(spec)` students. The last line,
-headed `[DERIVED - VERIFY]`, lists the policy blocks whose `source` is
-`"provisional"`. The package marks such values **`[DERIVED — VERIFY]`**, and
-they must be checked against official documents before anything is reported
-publicly. In the simulated spec every policy value is provisional.
+headed `[DERIVED - VERIFY]`, lists the fields the spec's `sources` does not
+name. The package marks such values **`[DERIVED — VERIFY]`**, and they must
+be checked against official documents before anything is reported publicly.
+In the simulated spec every value is unsourced.
 
 The six Types are:
 
@@ -455,8 +458,10 @@ through `render_step(results_file = ...)`, as shown above.
 - Academic proficiency cuts by subject and grade.
 - The state's minimum cell size for public reporting.
 
-Each value goes into the spec with its `source`. Anything you derive rather
-than take from an official document stays `"provisional"` and displays as
+The spec holds the exit rule, the timelines, the academic cuts and the cell
+size; the rest goes in your Prep 1 notes. Name each value you took from an
+official document in the spec's `sources`, with where it is written down.
+Anything you derive instead stays out of `sources` and displays as
 `[DERIVED — VERIFY]`.
 
 ### Data
@@ -504,9 +509,9 @@ their pages here.
 
 | Stage | Status | What that means for you |
 |---|---|---|
-| Prep 1 | Not yet built | No `run_prep1()` or document. Write the policy into your spec and review it with `print()`, `validate_el_spec()` and the `spec_*()` accessors. |
+| Prep 1 | Not yet built | No `run_prep1()` or document. Write the policy into your spec and review it with `print()` and the `spec_*()` accessors; keep what the spec has no field for in your notes. |
 | Prep 2 | Built | `run_prep2()` and its document. |
-| Prep 3 | Not yet built | No `run_prep3()` or document. Record the program inventory in `policy$program` and the error-tolerance answer in `policy$error_tolerance$costlier_error` (`"premature_exit"`, `"prolonged_retention"`, `"equal"` or `"unknown"`). Check 4 reads the answer from the spec. |
+| Prep 3 | Not yet built | No `run_prep3()` or document. Keep the program inventory in your notes, and record the error-tolerance answer in the spec's `costlier_error` (`"premature_exit"`, `"prolonged_retention"`, `"equal"` or `"unknown"`). Check 4 reads the answer from the spec. |
 | Check 1 | Built | `run_check1()` and its document, for one kindergarten-entry cohort. The function has a `start_grade` argument, but later start grades have not been worked through or tested. |
 | Check 2 | Built | `run_check2()` and its document, on Check 1's cohort. |
 | Check 3 | Built | `run_check3()` and its document, for every tested grade and subject in the most recent year each has data. |
@@ -522,7 +527,8 @@ Several stages carry **Additional checks** that apply only when the exit
 rule combines more than one criterion (Types 2 to 6, depending on the
 check). Examples are a crosswalk of which criteria students pass and fail,
 and the ELP range where criteria disagree. Their slots are `NULL` unless the
-spec declares a relevant Type. Check 4's Additional check is not built yet,
+rule is of a relevant Type, which the package reads from the number and kind
+of criteria in the spec's `exit`. Check 4's Additional check is not built yet,
 so its slot stays `NULL` even then. The simulated spec is Type
 `r spec_exit_types(spec)`, so all of them are `NULL` throughout this guide.
 
@@ -550,8 +556,8 @@ anything you write from its output.
   as a predictor.** The exit decision is made on that score, so using it
   would build the answer into the model. Predictors are fixed at entry or
   taken from an earlier year.
-- **Small cells are suppressed to `NA`, not dropped.** The threshold is
-  `policy$suppression$min_cell`: counts from 1 to `min_cell - 1` are
+- **Small cells are suppressed to `NA`, not dropped.** The threshold is the
+  spec's `min_cell`: counts from 1 to `min_cell - 1` are
   blanked. A true zero is not a small cell, so it is shown as 0. Never lower
   the threshold to make a cell appear.
 - **Never-EL counts are weighted** wherever they enter a statewide share.

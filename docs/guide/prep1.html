@@ -3149,8 +3149,8 @@ Simulated data
 <li>Which of the six exit-criteria Types describe the rule? A Type is the structure of the rule, from a single overall score (Type 1) to a minimum on every domain (Type 6).</li>
 </ol>
 <p>“Exit” means reclassification. A student leaves <code>current</code> EL status and appears as <code>former</code> in later years. The exit rule is the set of criteria a student must meet to exit, usually scores on the state’s English language proficiency (ELP) assessment.</p>
-<p>This step is an inventory, not an analysis. It reads no student records. Its product is a review-and-confirm record of the policy as written. That record covers the ELP assessment and its components, every exit pathway, the timelines and growth targets, the long-term EL (LTEL) definition, the accountability indicator, where initial ELP comes from, and how exit is dated.</p>
-<p>Every later stage reads these values. Checks 1 and 2 count years against the timelines, Checks 3 and 4 compare academic results with the exit threshold, and the declared Type decides which Additional checks run at all. (Additional checks are the extra analyses later stages run only for rules with more than one criterion.) A mistake here carries into every document after it.</p>
+<p>This step is an inventory, not an analysis. It reads no student records. Its product is a review-and-confirm record of the policy as written. That record covers the ELP assessment and the score the rule uses, every exit pathway and who decides it, the timelines and growth targets, the long-term EL (LTEL) definition, the accountability indicator, where initial ELP comes from, and how exit is dated.</p>
+<p>Part of that record goes into the spec, the one R file that holds every state-specific value the package reads. The rest goes into your Prep 1 notes, because no stage computes from it. Every later stage reads the spec: Checks 1 and 2 count years against the timelines, Checks 3 and 4 compare academic results with the exit threshold, and the rule’s Type decides which Additional checks run at all. (Additional checks are the extra analyses later stages run only for rules with more than one criterion.) A mistake here carries into every document after it.</p>
 </section>
 <section id="sample" class="level2">
 <h2 class="anchored" data-anchor-id="sample">Sample</h2>
@@ -3182,428 +3182,255 @@ Not yet built
 <pre><code>[1] NA</code></pre>
 </div>
 </div>
-<p>What exists today is the spec layer: the constructor <code>el_spec()</code>, the validator <code>validate_el_spec()</code>, the <code>spec_*()</code> accessors, the typology <code>el_exit_typology()</code> and the fixed list of policy fields <code>el_policy_fields()</code>. The validator already makes several of the checks Prep 1 is meant to make: every policy entry has a source, the declared Type matches the rule’s shape, and exit dating follows the package’s convention.</p>
-<p>The stage plan gives it five result slots, <code>$policy_table</code>, <code>$components_table</code>, <code>$exit_table</code>, <code>$types</code> and <code>$confirm_questions</code>, plus the usual <code>$meta</code>. None of them exists yet. The code below builds rough versions of the first four, so you can work through the same review now. The confirm questions are listed in <a href="#decide-before-moving-on">Decide before moving on</a>.</p>
+<p>What exists today is the spec layer: the constructor <code>el_spec()</code>, the <code>spec_*()</code> accessors that read a spec back, and the typology <code>el_exit_typology()</code>. <code>el_spec()</code> already makes several of the checks Prep 1 is meant to make: every field is one it knows, each exit criterion names a real component at a level inside the scale, and a single criterion is on the score the stages use.</p>
+<p>The stage plan gives it five result slots, <code>$policy_table</code>, <code>$components_table</code>, <code>$exit_table</code>, <code>$types</code> and <code>$confirm_questions</code>, plus the usual <code>$meta</code>. None of them exists yet. The sections below walk through the same review by hand. The confirm questions are listed in <a href="#decide-before-moving-on">Decide before moving on</a>.</p>
 </section>
 <section id="before-you-start" class="level2">
 <h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
 <p>Gather the state’s own documents, and someone in the EL office who can confirm what they mean:</p>
 <ul>
-<li><strong>The ELP assessment’s score structure.</strong> The domains it reports (listening, speaking, reading, writing), the composites built from them and their weights, and the level scale. For WIDA ACCESS, the shipped template lists the vendor’s interpretive guide for score reports as its source.</li>
+<li><strong>The ELP assessment’s score structure.</strong> The domains it reports (listening, speaking, reading, writing), the composites built from them, the level scale, and the name the state uses for the score its exit rule is written on.</li>
 <li><strong>The exit policy.</strong> Statute, regulation or guidance, with the date it was set and who set it. Include every pathway, including any committee review, appeal or teacher-judgment route.</li>
-<li><strong>Timelines.</strong> The state’s maximum time to exit, its timeline under the Every Student Succeeds Act (ESSA), and any on-time rule that varies by start grade or initial ELP level.</li>
-<li><strong>Growth targets</strong> and how they were set.</li>
-<li><strong>The LTEL definition</strong>, and the accountability indicator for ELP progress.</li>
+<li><strong>Timelines.</strong> The state’s maximum time to exit, its timeline under the Every Student Succeeds Act (ESSA), and its long-term EL definition.</li>
+<li><strong>Growth targets</strong> and how they were set, and the accountability indicator for ELP progress.</li>
 <li><strong>How initial ELP is determined</strong>: a screener, or the first annual test.</li>
 </ul>
-<p>Then start a spec. Copy the shipped template, which has the right shape and placeholder values that describe no state:</p>
+<p>Then start a spec. Answer the questions with <code>build_el_spec()</code>, or copy the shipped template, which has the right shape and placeholder values that describe no state (the <a href="setup.html">Setup page</a> covers both):</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">dir.create</span>(<span class="st">&quot;specs&quot;</span>, <span class="at">showWarnings =</span> <span class="cn">FALSE</span>)</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">file.copy</span>(<span class="fu">el_spec_path</span>(<span class="st">&quot;00_TEMPLATE_EL_Spec&quot;</span>), <span class="st">&quot;specs/XX_EL_Spec.R&quot;</span>)</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># edit specs/XX_EL_Spec.R, then:</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;specs/XX_EL_Spec.R&quot;</span>)   <span class="co"># sourcing the file validates it</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>my_spec <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;specs/XX_EL_Spec.R&quot;</span>)   <span class="co"># reading the file checks it</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Replace every placeholder with your state’s value. Give each policy entry a <code>source</code>. Keep <code>source = &quot;provisional&quot;</code> on anything you did not take from an official document. Set <code>verification$status</code> to say how far the spec has been checked: <code>&quot;verified&quot;</code>, <code>&quot;unverified&quot;</code>, <code>&quot;provisional&quot;</code> or <code>&quot;synthetic&quot;</code> (the validator accepts no other value). The <a href="setup.html">Setup page</a> covers the rest of the spec and the data bundle.</p>
+<p>Replace every placeholder with your state’s value. Name each value you took from an official document in <code>sources</code>, with where it is written down; a field <code>sources</code> does not name stays provisional. Set <code>status</code> to say how far the spec has been checked: <code>&quot;verified&quot;</code>, <code>&quot;unverified&quot;</code>, <code>&quot;provisional&quot;</code> or <code>&quot;synthetic&quot;</code> (no other value is accepted).</p>
 <p><strong>What degrades if something is missing.</strong> Prep 1 needs no data, so nothing here returns <code>NULL</code>. Gaps in the spec show up later instead:</p>
 <ul>
-<li><code>policy$exit</code>, <code>policy$timelines</code>, <code>policy$suppression</code> and <code>policy$exit$types</code> are required. The validator stops without them.</li>
-<li>With no <code>lt_el_years</code>, Prep 2’s time-in-status view is <code>NULL</code>, its profile leaves out the long-term share, and <code>add_lt_el()</code> sets <code>LT_EL</code> to <code>NA</code>. A text definition alone is not enough.</li>
-<li>The on-time timeline comes from <code>on_time_rule$default_years</code> when it is set, otherwise from <code>essa_timeline_years</code>, otherwise from the maximum. With no <code>essa_timeline_years</code>, <code>spec_essa_years()</code> returns <code>NA</code>.</li>
-<li>Leave out <code>initial_elp_source</code> and the stages disagree: Prep 2 falls back to the entry year’s score alone, while Checks 1 and 2 use the first annual test. Set it explicitly.</li>
+<li><code>id</code>, <code>status</code>, <code>elp</code>, <code>exit</code> and <code>timelines$max</code> are required. <code>el_spec()</code> stops without them and lists everything missing at once.</li>
+<li>With no <code>timelines$lt_el</code>, Prep 2’s time-in-status view is <code>NULL</code>, its profile leaves out the long-term share, and <code>add_lt_el()</code> sets <code>LT_EL</code> to <code>NA</code>.</li>
+<li>With no <code>timelines$on_time</code>, the on-time timeline is the maximum, and <code>spec_essa_years()</code> returns <code>NA</code>.</li>
 </ul>
 </section>
 <section id="run-it" class="level2">
 <h2 class="anchored" data-anchor-id="run-it">Run it</h2>
-<p>The examples use the simulated spec. Load it and print the summary:</p>
+<p>The examples use the simulated spec. This is its file, which is what a state’s spec looks like once written:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_SIM_EL_Spec&quot;</span>)</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>spec</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">readLines</span>(<span class="fu">el_spec_path</span>(<span class="st">&quot;00_SIM_EL_Spec&quot;</span>)), <span class="at">sep =</span> <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>&lt;el_spec&gt; SIM Simulated ELP Program 
-  instrument : WIDA ACCESS 
-  components : 8 (headline: overall) 
-  exit types : 1 - Single overall composite score 
-  timelines  : max 6 yrs; ESSA 5 yrs
+<pre><code># =============================================================================
+# 00_SIM_EL_Spec.R  --  the spec for the shipped simulated data
+# -----------------------------------------------------------------------------
+# Matches data-raw/el_long_sim.R and sim_contract.md v0.4.0: the bands of 4.5
+# (the 4.5 edge IS the exit cut, so the top two bands hold only students in
+# their exit year), the exit rule of 4.7, min_cell and the maximum timeline
+# from the P block of 2.2, and the academic cuts of 5.4 (level 4 of 5 is
+# proficient; its minimum is 750). The 5-year on-time timeline is a choice,
+# not a source: the contract reports both &lt;=5 and &lt;=6 year exit shares.
+#
+# status = &quot;synthetic&quot;: these values describe a fixture, and no number
+# produced from them may be reported as a finding about any real state.
+# Nothing is sourced, so every field reads [DERIVED - VERIFY].
+#
+# A state starts from 00_TEMPLATE_EL_Spec.R, not from this file.
+# =============================================================================
+
+SIM_EL_Spec &lt;- stateELP::el_spec(
+  id     = &quot;SIM&quot;,
+  name   = &quot;Simulated state&quot;,
+  status = &quot;synthetic&quot;,
+
+  elp = list(
+    test   = &quot;WIDA ACCESS&quot;,
+    score  = &quot;overall&quot;,               # the score every stage runs on
+    label  = &quot;Overall Composite&quot;,     # what the reports call it
+    levels = c(1, 6),                 # proficiency-level range
+    bands  = c(1, 2, 3, 4, 4.5, 5)    # 1.0-1.9, 2.0-2.9, ... 4.5-4.9, 5.0+
+  ),
+
+  exit = c(overall = 4.5),            # minimum level; every criterion must be met
+
+  timelines = list(
+    max     = 6,                      # maximum years to exit
+    on_time = 5,                      # on-time (ESSA) timeline
+    lt_el   = 6                       # long-term EL from year 6 in status
+  ),
+
+  # The proficient cut: the lowest proficient scale score, every grade alike.
+  # The proficient level: level 4 of the five, which Check 2 reads off the
+  # file&#39;s own performance levels. Check 3 drives its grade loop from
+  # `grades`, never from the observed span.
+  academic = list(
+    ELA  = list(grades = 3:11, proficient_cut = 750, proficient_level = 4),
+    Math = list(grades = 3:11, proficient_cut = 750, proficient_level = 4)
+  ),
+
+  min_cell = 10,
+
+  # The sim stamps LEP_PROGRAM_START_DATE on 15 September of the SPRING-year
+  # label (sim_contract.md 3.5), so its calendar year is the entry year.
+  delivery = list(entry_date_rule = &quot;calendar_year&quot;)
+)</code></pre>
+</div>
+</div>
+<p>Load it and print the summary:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>spec <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_SIM_EL_Spec&quot;</span>)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>spec</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>&lt;el_spec&gt; SIM (Simulated state) 
+  ELP test   : WIDA ACCESS -- Overall Composite (overall), levels 1-6 in 6 bands 
+  exit       : Overall Composite level &gt;= 4.5 [Type 1] 
+  timelines  : max 6 yrs; on time 5 yrs; long-term EL at 6 yrs 
+  academic   : ELA (grades 3-11, cut 750); Math (grades 3-11, cut 750) 
   suppression: min_cell 10 
-  verification: synthetic 
-  [DERIVED - VERIFY]: exit, timelines, growth, accountability_indicator, suppression, academic_benchmark, district_size_bands, program, error_tolerance </code></pre>
+  status     : synthetic 
+  [DERIVED - VERIFY]: exit, timelines, min_cell, district_sizes, costlier_error, academic </code></pre>
 </div>
 </div>
-<p>The printout shows the instrument, the component count, the declared Type, the timelines, the suppression minimum and the verification status. Its last line lists the policy entries still marked provisional. In the simulated spec that is all of them, by design.</p>
-<p>Next, build the review tables. A few small helper functions keep the code readable, since a state spec may leave optional fields out:</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Read one scalar field, or NA when the spec leaves it out</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>get_or_na <span class="ot">&lt;-</span> <span class="cf">function</span>(x, name) {</span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.null</span>(x[[name]])) <span class="cn">NA_character_</span> <span class="cf">else</span> <span class="fu">as.character</span>(x[[name]])</span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="co"># One row per exit pathway</span></span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>pathway_table <span class="ot">&lt;-</span> <span class="cf">function</span>(spec) {</span>
-<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> spec<span class="sc">$</span>policy<span class="sc">$</span>exit<span class="sc">$</span>pathways</span>
-<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>  tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">PATHWAY       =</span> <span class="fu">vapply</span>(p, get_or_na, <span class="fu">character</span>(<span class="dv">1</span>), <span class="at">name =</span> <span class="st">&quot;name&quot;</span>),</span>
-<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">RULE          =</span> <span class="fu">vapply</span>(p, get_or_na, <span class="fu">character</span>(<span class="dv">1</span>), <span class="at">name =</span> <span class="st">&quot;rule&quot;</span>),</span>
-<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">COMBINE       =</span> <span class="fu">vapply</span>(p, get_or_na, <span class="fu">character</span>(<span class="dv">1</span>), <span class="at">name =</span> <span class="st">&quot;combine&quot;</span>),</span>
-<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">AUTHORITY     =</span> <span class="fu">vapply</span>(p, get_or_na, <span class="fu">character</span>(<span class="dv">1</span>), <span class="at">name =</span> <span class="st">&quot;authority&quot;</span>),</span>
-<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">DISCRETIONARY =</span> <span class="fu">vapply</span>(p, <span class="cf">function</span>(x) <span class="fu">isTRUE</span>(x<span class="sc">$</span>discretionary), <span class="fu">logical</span>(<span class="dv">1</span>))</span>
-<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a><span class="co"># One row per term (criterion) within each pathway</span></span>
-<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>term_table <span class="ot">&lt;-</span> <span class="cf">function</span>(spec) {</span>
-<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>  rows <span class="ot">&lt;-</span> <span class="fu">lapply</span>(spec<span class="sc">$</span>policy<span class="sc">$</span>exit<span class="sc">$</span>pathways, <span class="cf">function</span>(p) {</span>
-<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">lapply</span>(p<span class="sc">$</span>terms, <span class="cf">function</span>(t) tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a>      <span class="at">PATHWAY          =</span> <span class="fu">get_or_na</span>(p, <span class="st">&quot;name&quot;</span>),</span>
-<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a>      <span class="at">FROM             =</span> <span class="cf">if</span> (<span class="fu">is.null</span>(t<span class="sc">$</span>from)) <span class="st">&quot;elp&quot;</span> <span class="cf">else</span> t<span class="sc">$</span>from,</span>
-<span id="cb9-24"><a href="#cb9-24" aria-hidden="true" tabindex="-1"></a>      <span class="at">COMPONENT        =</span> t<span class="sc">$</span>component,</span>
-<span id="cb9-25"><a href="#cb9-25" aria-hidden="true" tabindex="-1"></a>      <span class="at">MEASURE          =</span> <span class="fu">get_or_na</span>(t, <span class="st">&quot;measure&quot;</span>),</span>
-<span id="cb9-26"><a href="#cb9-26" aria-hidden="true" tabindex="-1"></a>      <span class="at">OP               =</span> t<span class="sc">$</span>op,</span>
-<span id="cb9-27"><a href="#cb9-27" aria-hidden="true" tabindex="-1"></a>      <span class="at">VALUE            =</span> <span class="fu">as.character</span>(t<span class="sc">$</span>value),</span>
-<span id="cb9-28"><a href="#cb9-28" aria-hidden="true" tabindex="-1"></a>      <span class="at">EXEMPT_IF_ABSENT =</span> <span class="fu">isTRUE</span>(t<span class="sc">$</span>exempt_if_absent)</span>
-<span id="cb9-29"><a href="#cb9-29" aria-hidden="true" tabindex="-1"></a>    ))</span>
-<span id="cb9-30"><a href="#cb9-30" aria-hidden="true" tabindex="-1"></a>  })</span>
-<span id="cb9-31"><a href="#cb9-31" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">bind_rows</span>(<span class="fu">unlist</span>(rows, <span class="at">recursive =</span> <span class="cn">FALSE</span>))</span>
-<span id="cb9-32"><a href="#cb9-32" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<p>Then confirm the spec is valid. <code>read_el_spec()</code> already validated it on load; run <code>validate_el_spec()</code> again after any change you make in R. It is silent when the spec passes, and lists every problem at once when it does not:</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">validate_el_spec</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
+<p>Reading the file runs <code>el_spec()</code>, which checks every field and stops with a list of every problem when something is wrong. After any edit to the file, read it again. The printout is the review sheet: the ELP test and the score the stages use, the exit rule and its Type, the timelines, the academic tests, the suppression minimum and the status. Its last line lists every field still without a source.</p>
 </section>
 <section id="what-you-get" class="level2">
 <h2 class="anchored" data-anchor-id="what-you-get">What you get</h2>
-<p>Work through the inventory below in order. Each part shows where the value lives in the spec and how to read it.</p>
-<section id="policy-review-every-entry-and-its-source" class="level3">
-<h3 class="anchored" data-anchor-id="policy-review-every-entry-and-its-source">Policy review: every entry and its source</h3>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>policy_review_table <span class="ot">&lt;-</span> <span class="cf">function</span>(spec) {</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  fields <span class="ot">&lt;-</span> <span class="fu">el_policy_fields</span>()</span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  present <span class="ot">&lt;-</span> fields <span class="sc">%in%</span> <span class="fu">names</span>(spec<span class="sc">$</span>policy)</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  source <span class="ot">&lt;-</span> <span class="fu">vapply</span>(fields, <span class="cf">function</span>(f) <span class="fu">get_or_na</span>(spec<span class="sc">$</span>policy[[f]], <span class="st">&quot;source&quot;</span>),</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>                   <span class="fu">character</span>(<span class="dv">1</span>), <span class="at">USE.NAMES =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>  tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">FIELD    =</span> fields,</span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">SOURCE   =</span> source,</span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">SHOWN_AS =</span> dplyr<span class="sc">::</span><span class="fu">case_when</span>(</span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>      <span class="sc">!</span>present                <span class="sc">~</span> <span class="st">&quot;(not in spec)&quot;</span>,</span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>      source <span class="sc">==</span> <span class="st">&quot;provisional&quot;</span> <span class="sc">~</span> <span class="st">&quot;[DERIVED — VERIFY]&quot;</span>,</span>
-<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>      <span class="cn">TRUE</span>                    <span class="sc">~</span> source</span>
-<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>policy_review <span class="ot">&lt;-</span> <span class="fu">policy_review_table</span>(spec)</span>
-<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(policy_review)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<table class="caption-top table table-sm table-striped small">
+<p>Work through the inventory below in order. Each part shows where the value lives in the spec and how to read it back.</p>
+<section id="what-the-spec-holds-and-what-goes-in-your-notes" class="level3">
+<h3 class="anchored" data-anchor-id="what-the-spec-holds-and-what-goes-in-your-notes">What the spec holds, and what goes in your notes</h3>
+<p>The spec holds only what some stage computes from. Prep 1’s record is larger, so part of it lives in your notes:</p>
+<table class="caption-top table">
 <thead>
 <tr class="header">
-<th style="text-align: left;">FIELD</th>
-<th style="text-align: left;">SOURCE</th>
-<th style="text-align: left;">SHOWN_AS</th>
+<th>Prep 1 records</th>
+<th>In the spec</th>
+<th>In your notes</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td style="text-align: left;">exit</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>The ELP test, its level scale and the score the rule uses</td>
+<td><code>elp</code>: <code>test</code>, <code>levels</code>, <code>score</code>, <code>label</code></td>
+<td>How composites are weighted</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">timelines</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>The exit rule</td>
+<td><code>exit</code>: the minimum level on each score</td>
+<td>Any part the spec cannot hold (see <a href="#the-exit-rule-and-who-decides">The exit rule</a>)</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;">growth</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>Who decides, and any committee or discretionary route</td>
+<td>—</td>
+<td>All of it</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">accountability_indicator</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>When the rule was set, and by whom</td>
+<td>—</td>
+<td>All of it</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;">suppression</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>Timelines</td>
+<td><code>timelines</code>: <code>max</code>, <code>on_time</code>, <code>lt_el</code></td>
+<td>The long-term EL definition in words, and any on-time rule that varies by start grade or initial level</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">academic_benchmark</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>Growth targets, the accountability indicator</td>
+<td>—</td>
+<td>All of it</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;">district_size_bands</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>The alternate ELP test and how its students exit</td>
+<td>—</td>
+<td>All of it</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">program</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>Initial ELP and exit dating</td>
+<td>— (fixed by the package; see below)</td>
+<td>Whether your state agrees</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;">error_tolerance</td>
-<td style="text-align: left;">provisional</td>
-<td style="text-align: left;">[DERIVED — VERIFY]</td>
+<td>Where each value comes from</td>
+<td><code>sources</code> and <code>status</code></td>
+<td>Anything finer than one source per field</td>
 </tr>
 </tbody>
 </table>
-</div>
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>spec<span class="sc">$</span>verification<span class="sc">$</span>status</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;synthetic&quot;</code></pre>
-</div>
-</div>
-<p><code>el_policy_fields()</code> is the fixed list of entries allowed under <code>policy</code>, and the table lists every one of them. <code>SOURCE</code> records where each entry came from. A <code>provisional</code> source displays as <strong><code>[DERIVED — VERIFY]</code></strong>, the package’s mark for a value not yet checked against an official document. An entry the spec leaves out shows as “(not in spec)”. Only <code>exit</code>, <code>timelines</code> and <code>suppression</code> are required, so for the rest, confirm that leaving one out is deliberate. Here 9 of the 9 entries in the spec are provisional, because the spec describes a synthetic state (<code>verification$status</code> is “synthetic”).</p>
-<p>The source is recorded per entry, not per value. All of <code>policy$timelines</code> shares one <code>source</code>, for example. If some values in an entry are verified and others are not, keep the entry provisional and say which in a comment.</p>
+<p>If you built the spec with <code>build_el_spec()</code>, the answers it has no field for (who decides, growth targets, the program inventory, the alternate test) are already kept in its answers file, beside the spec.</p>
 </section>
-<section id="the-elp-assessment-and-its-components" class="level3">
-<h3 class="anchored" data-anchor-id="the-elp-assessment-and-its-components">The ELP assessment and its components</h3>
+<section id="sources-what-is-still-derived-verify" class="level3">
+<h3 class="anchored" data-anchor-id="sources-what-is-still-derived-verify">Sources: what is still <code>[DERIVED — VERIFY]</code></h3>
+<p><code>sources</code> names, for each field taken from an official document, where it is written down. It can name <code>exit</code>, <code>timelines</code>, <code>academic</code>, <code>min_cell</code>, <code>district_sizes</code> and <code>costlier_error</code>. Every field it does not name is listed on the printout’s last line, and the package marks such values <strong><code>[DERIVED — VERIFY]</code></strong> wherever it displays them: not yet checked against an official document. In the simulated spec nothing is sourced, because it describes a synthetic state (its <code>status</code> is <code>&quot;synthetic&quot;</code>).</p>
+<p>The Massachusetts example shows the other case. Its exit rule is cited to a public document, so <code>exit</code> is off the list, and everything else is a placeholder still to verify:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>spec<span class="sc">$</span>elp<span class="sc">$</span>instrument</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>ma <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_MA_EL_Spec&quot;</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>ma</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;WIDA ACCESS&quot;</code></pre>
-</div>
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>spec<span class="sc">$</span>elp<span class="sc">$</span>administration_window</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;Jan-Mar&quot;</code></pre>
-</div>
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>comps <span class="ot">&lt;-</span> spec<span class="sc">$</span>elp<span class="sc">$</span>components</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>weights <span class="ot">&lt;-</span> <span class="cf">function</span>(cp) {</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.null</span>(cp<span class="sc">$</span>from)) <span class="st">&quot;&quot;</span> <span class="cf">else</span> <span class="fu">paste0</span>(<span class="fu">names</span>(cp<span class="sc">$</span>from), <span class="st">&quot; &quot;</span>, cp<span class="sc">$</span>from, <span class="at">collapse =</span> <span class="st">&quot;, &quot;</span>)</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>components_table <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">COMPONENT   =</span> <span class="fu">names</span>(comps),</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">KIND        =</span> <span class="fu">vapply</span>(comps, <span class="cf">function</span>(cp) cp<span class="sc">$</span>kind, <span class="fu">character</span>(<span class="dv">1</span>)),</span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">MEASURES    =</span> <span class="fu">vapply</span>(comps, <span class="cf">function</span>(cp) <span class="fu">paste</span>(cp<span class="sc">$</span>measures, <span class="at">collapse =</span> <span class="st">&quot; + &quot;</span>),</span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>                       <span class="fu">character</span>(<span class="dv">1</span>)),</span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">FROM        =</span> <span class="fu">vapply</span>(comps, weights, <span class="fu">character</span>(<span class="dv">1</span>)),</span>
-<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">NATIVE_NAME =</span> <span class="fu">vapply</span>(comps, <span class="cf">function</span>(cp) {</span>
-<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (<span class="fu">is.null</span>(cp<span class="sc">$</span>native_name)) <span class="st">&quot;&quot;</span> <span class="cf">else</span> cp<span class="sc">$</span>native_name</span>
-<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>  }, <span class="fu">character</span>(<span class="dv">1</span>))</span>
-<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(components_table)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<table class="caption-top table table-sm table-striped small">
-<colgroup>
-<col style="width: 12%">
-<col style="width: 8%">
-<col style="width: 12%">
-<col style="width: 50%">
-<col style="width: 15%">
-</colgroup>
-<thead>
-<tr class="header">
-<th style="text-align: left;">COMPONENT</th>
-<th style="text-align: left;">KIND</th>
-<th style="text-align: left;">MEASURES</th>
-<th style="text-align: left;">FROM</th>
-<th style="text-align: left;">NATIVE_NAME</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">listening</td>
-<td style="text-align: left;">domain</td>
-<td style="text-align: left;">scale + level</td>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">speaking</td>
-<td style="text-align: left;">domain</td>
-<td style="text-align: left;">scale + level</td>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">reading</td>
-<td style="text-align: left;">domain</td>
-<td style="text-align: left;">scale + level</td>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">writing</td>
-<td style="text-align: left;">domain</td>
-<td style="text-align: left;">scale + level</td>
-<td style="text-align: left;"></td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">oral</td>
-<td style="text-align: left;">composite</td>
-<td style="text-align: left;">scale + level</td>
-<td style="text-align: left;">listening 0.5, speaking 0.5</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">written</td>
-<td style="text-align: left;">composite</td>
-<td style="text-align: left;">scale + level</td>
-<td style="text-align: left;">reading 0.5, writing 0.5</td>
-<td style="text-align: left;">Literacy</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">comprehension</td>
-<td style="text-align: left;">composite</td>
-<td style="text-align: left;">scale + level</td>
-<td style="text-align: left;">listening 0.3, reading 0.7</td>
-<td style="text-align: left;"></td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">overall</td>
-<td style="text-align: left;">composite</td>
-<td style="text-align: left;">scale + level</td>
-<td style="text-align: left;">listening 0.15, speaking 0.15, reading 0.35, writing 0.35</td>
-<td style="text-align: left;">Overall Composite</td>
-</tr>
-</tbody>
-</table>
+<pre><code>&lt;el_spec&gt; MA (Massachusetts) 
+  ELP test   : ACCESS for ELLs (WIDA) -- Overall Composite (overall), levels 1-6 in 6 bands 
+  exit       : Overall Composite level &gt;= 4.2 and Literacy level &gt;= 3.9 [Type 2] 
+  timelines  : max 6 yrs; on time 6 yrs; long-term EL not set 
+  academic   : none
+  suppression: min_cell 10 
+  status     : provisional 
+  [DERIVED - VERIFY]: timelines, min_cell, district_sizes, costlier_error </code></pre>
 </div>
 </div>
-<p>Each row is one score the assessment reports. <code>KIND</code> is <code>domain</code> (one of the four language skills, tested on its own) or <code>composite</code> (a score combining domains). <code>MEASURES</code> says whether the component reports a scale score, a level or both. <code>FROM</code> holds the composite weights. These weights are informational: the package never recomputes a composite from them, and it never derives a level from a scale score. Levels are always the vendor’s. <code>NATIVE_NAME</code> is the state’s own name for the component. The stage documents use it to name the score the analyses run on, through <code>spec_headline_label()</code>.</p>
-<p>Component names come from a fixed vocabulary (<code>el_component_vocabulary()</code>). Map your instrument onto it with <code>native_name</code>. For example, WIDA’s “Literacy” composite is <code>written</code>. Never add a new name for something the vocabulary already covers.</p>
-<p>One component is the score the exit rule and the analyses use. Find it, and the name the documents give it, with:</p>
+<p>The source is recorded per field, not per value. All of <code>timelines</code> shares one source, for example. If some values in a field are verified and others are not, leave the field out of <code>sources</code> and say which in a comment.</p>
+</section>
+<section id="the-elp-assessment-and-its-score" class="level3">
+<h3 class="anchored" data-anchor-id="the-elp-assessment-and-its-score">The ELP assessment and its score</h3>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_headline</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_headline</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] &quot;overall&quot;</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_headline_label</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_headline_label</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] &quot;Overall Composite&quot;</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_components</span>(spec, <span class="at">kind =</span> <span class="st">&quot;domain&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_components</span>(spec, <span class="at">kind =</span> <span class="st">&quot;domain&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] &quot;listening&quot; &quot;speaking&quot;  &quot;reading&quot;   &quot;writing&quot;  </code></pre>
 </div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_components</span>(spec, <span class="at">kind =</span> <span class="st">&quot;composite&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] &quot;oral&quot;          &quot;written&quot;       &quot;comprehension&quot; &quot;expressive&quot;   
+[5] &quot;overall&quot;       &quot;determination&quot;</code></pre>
 </div>
-<p>In the simulated spec that score is the Overall Composite. Then check the level scale and the ELP bands (the ranges of levels used to group students in later stages):</p>
+</div>
+<p><code>spec_headline()</code> is <code>elp$score</code>, the one score the exit rule and the analyses use; <code>spec_headline_label()</code> is the name the documents give it, from <code>elp$label</code>. In the simulated spec that score is the Overall Composite.</p>
+<p>Component names come from a fixed vocabulary (<code>el_component_vocabulary()</code>), and the spec lists all of them, sorted into domains (one of the four language skills, tested on its own) and composites (a score combining domains). The stages read whichever components the delivery carries. Map your test onto the vocabulary through <code>elp$label</code>: WIDA’s “Literacy” composite, for example, is <code>written</code>, and the Massachusetts spec names it with <code>label = c(overall = &quot;Overall Composite&quot;, written = &quot;Literacy&quot;)</code>. Never add a new name for something the vocabulary already covers.</p>
+<p>The package never derives a level from a scale score, and never recomputes a composite from domains: levels and composites are always the vendor’s. Then check the ELP bands, the ranges of levels used to group students in later stages:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">str</span>(spec<span class="sc">$</span>elp<span class="sc">$</span>level_scale)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_bands</span>(spec)<span class="sc">$</span>labels</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>List of 3
- $ type  : chr &quot;numeric&quot;
- $ range : num [1:2] 1 6
- $ labels: chr [1:6] &quot;Entering&quot; &quot;Emerging&quot; &quot;Developing&quot; &quot;Expanding&quot; ...</code></pre>
-</div>
-<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">str</span>(<span class="fu">spec_bands</span>(spec))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>List of 2
- $ breaks: num [1:7] 1 2 3 4 4.5 5 7
- $ labels: chr [1:6] &quot;1.0-1.9&quot; &quot;2.0-2.9&quot; &quot;3.0-3.9&quot; &quot;4.0-4.4&quot; ...</code></pre>
+<pre><code>[1] &quot;1.0-1.9&quot; &quot;2.0-2.9&quot; &quot;3.0-3.9&quot; &quot;4.0-4.4&quot; &quot;4.5-4.9&quot; &quot;5.0+&quot;   </code></pre>
 </div>
 </div>
 </section>
-<section id="the-exit-rule-every-pathway-and-who-decides" class="level3">
-<h3 class="anchored" data-anchor-id="the-exit-rule-every-pathway-and-who-decides">The exit rule, every pathway, and who decides</h3>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">pathway_table</span>(spec))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<table class="caption-top table table-sm table-striped small">
-<colgroup>
-<col style="width: 13%">
-<col style="width: 31%">
-<col style="width: 5%">
-<col style="width: 38%">
-<col style="width: 10%">
-</colgroup>
-<thead>
-<tr class="header">
-<th style="text-align: left;">PATHWAY</th>
-<th style="text-align: left;">RULE</th>
-<th style="text-align: left;">COMBINE</th>
-<th style="text-align: left;">AUTHORITY</th>
-<th style="text-align: left;">DISCRETIONARY</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">overall_composite</td>
-<td style="text-align: left;">Overall composite proficiency level &gt;= 4.5</td>
-<td style="text-align: left;">all</td>
-<td style="text-align: left;">Automatic on the annual score report; no committee.</td>
-<td style="text-align: left;">FALSE</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">term_table</span>(spec))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<table class="caption-top table table-sm table-striped small">
-<colgroup>
-<col style="width: 26%">
-<col style="width: 7%">
-<col style="width: 14%">
-<col style="width: 11%">
-<col style="width: 4%">
-<col style="width: 8%">
-<col style="width: 25%">
-</colgroup>
-<thead>
-<tr class="header">
-<th style="text-align: left;">PATHWAY</th>
-<th style="text-align: left;">FROM</th>
-<th style="text-align: left;">COMPONENT</th>
-<th style="text-align: left;">MEASURE</th>
-<th style="text-align: left;">OP</th>
-<th style="text-align: left;">VALUE</th>
-<th style="text-align: left;">EXEMPT_IF_ABSENT</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">overall_composite</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">overall</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4.5</td>
-<td style="text-align: left;">FALSE</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">str</span>(spec<span class="sc">$</span>policy<span class="sc">$</span>exit[<span class="fu">c</span>(<span class="st">&quot;combination&quot;</span>, <span class="st">&quot;set_date&quot;</span>, <span class="st">&quot;set_by&quot;</span>, <span class="st">&quot;source&quot;</span>)])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>List of 4
- $ combination: chr &quot;any_pathway&quot;
- $ set_date   : chr NA
- $ set_by     : chr &quot;synthetic&quot;
- $ source     : chr &quot;provisional&quot;</code></pre>
-</div>
-</div>
-<p>A <strong>pathway</strong> is one route out of EL status. A <strong>term</strong> is one criterion within a pathway: a component, a measure, an operator and a value.</p>
+<section id="the-exit-rule-and-who-decides" class="level3">
+<h3 class="anchored" data-anchor-id="the-exit-rule-and-who-decides">The exit rule, and who decides</h3>
+<p>The printout’s <code>exit</code> line, under <a href="#run-it">Run it</a>, is the rule as the documents print it, with its Type in brackets. In the spec the rule is <code>exit</code>: the minimum level on each score, named by component, <code>c(overall = 4.5)</code> in the simulated spec. A composite with a floor is two entries, <code>c(overall = 4.2, written = 3.9)</code> in the Massachusetts example. The package fixes the rest of the rule’s shape for every state: each criterion is on a score’s <em>level</em>, read as “at or above”, and a student must meet every criterion. There is one route to exit.</p>
+<p>So the spec does not record everything Prep 1 asks about. Put in your notes:</p>
 <ul>
-<li><code>RULE</code> is the display string the documents will print.</li>
-<li><code>COMBINE</code> says whether a pathway’s terms must all be met (<code>all</code>) or any one of them (<code>any</code>). <code>combination</code> says the same across pathways.</li>
-<li><code>AUTHORITY</code> records who makes the call: automatic on the score report, or a committee, or a person.</li>
-<li><code>DISCRETIONARY</code> flags a pathway that rests on judgment rather than a score.</li>
-<li><code>EXEMPT_IF_ABSENT</code> matters for rules on several domains. A student excused from a domain has no score for it, and this flag says that a missing score should not count as a failed criterion.</li>
-<li><code>set_date</code> and <code>set_by</code> record when the rule was set and by whom.</li>
+<li><strong>Who makes the call</strong>: automatic on the score report, a committee, or a person.</li>
+<li><strong>Any discretionary route</strong>, such as a committee review, an appeal or a teacher’s judgment. The spec cannot hold a second route to exit, so the analyses read the score rule alone; a student who exits through judgment appears in the data as an exit like any other.</li>
+<li><strong>Any part of the rule the spec cannot hold</strong>: a criterion from another source (an academic score, say), a criterion on a scale score, an “any one of” choice, or a compensatory combination. Write the part the spec can hold, and treat every result that depends on the rule as describing that simplified rule.</li>
+<li><strong>When the rule was set, and by whom.</strong></li>
 </ul>
-<p>The simulated rule has one automatic pathway with one term: a level of 4.5 or higher on the Overall Composite.</p>
-<p>The validator checks that every term names a real component and a measure that component reports. It never evaluates the rule against student data. It also does not check that <code>rule</code> and <code>terms</code> say the same thing. The documents print <code>rule</code>, while the validator and the Type-gated checks read <code>terms</code>, so keep the two in agreement by hand.</p>
+<p><code>el_spec()</code> checks that each criterion names a real component and a level inside <code>elp$levels</code>, and that a single criterion is on <code>elp$score</code>. It never evaluates the rule against student data.</p>
 </section>
 <section id="exit-criteria-type" class="level3">
 <h3 class="anchored" data-anchor-id="exit-criteria-type">Exit-criteria Type</h3>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>typology <span class="ot">&lt;-</span> <span class="fu">el_exit_typology</span>()</span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">TYPE      =</span> <span class="fu">names</span>(typology),</span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">STRUCTURE =</span> <span class="fu">unname</span>(typology),</span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">DECLARED  =</span> <span class="fu">as.integer</span>(<span class="fu">names</span>(typology)) <span class="sc">%in%</span> <span class="fu">spec_exit_types</span>(spec)</span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>typology <span class="ot">&lt;-</span> <span class="fu">el_exit_typology</span>()</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">TYPE      =</span> <span class="fu">names</span>(typology),</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">STRUCTURE =</span> <span class="fu">unname</span>(typology),</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">THIS_RULE =</span> <span class="fu">as.integer</span>(<span class="fu">names</span>(typology)) <span class="sc">%in%</span> <span class="fu">spec_exit_types</span>(spec)</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <thead>
 <tr class="header">
 <th style="text-align: left;">TYPE</th>
 <th style="text-align: left;">STRUCTURE</th>
-<th style="text-align: left;">DECLARED</th>
+<th style="text-align: left;">THIS_RULE</th>
 </tr>
 </thead>
 <tbody>
@@ -3640,190 +3467,141 @@ Not yet built
 </tbody>
 </table>
 </div>
-<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 1</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] FALSE</code></pre>
 </div>
 </div>
-<p><code>policy$exit$types</code> declares which of the six structures your rule has. A state can declare more than one, for example a composite with a domain floor and a separate committee route. The simulated spec declares Type 1, a single overall composite. See the <a href="#additional-checks-for-multi-criterion-exit-rules">Additional checks section</a> for why this choice matters.</p>
+<p>The spec does not declare a Type: the package reads it from the shape of <code>exit</code>. One criterion is Type 1. Criteria on the domains alone are Type 6, a domain profile. Any other rule with two or more criteria is Type 2, a composite plus a floor. Types 3, 4 and 5 cannot be written in the spec yet. The simulated spec is Type 1, a single overall composite. See the <a href="#additional-checks-for-multi-criterion-exit-rules">Additional checks section</a> for why this matters.</p>
 </section>
-<section id="timelines-growth-and-the-other-policy-entries" class="level3">
-<h3 class="anchored" data-anchor-id="timelines-growth-and-the-other-policy-entries">Timelines, growth and the other policy entries</h3>
+<section id="timelines-and-the-other-fields" class="level3">
+<h3 class="anchored" data-anchor-id="timelines-and-the-other-fields">Timelines and the other fields</h3>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_max_years</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_max_years</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 6</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_essa_years</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_essa_years</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 5</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="fu">str</span>(spec<span class="sc">$</span>policy<span class="sc">$</span>timelines)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_min_cell</span>(spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>List of 8
- $ max_years_to_exit  : int 6
- $ essa_timeline_years: int 5
- $ on_time_rule       :List of 3
-  ..$ default_years  : int 5
-  ..$ by_start_grade : NULL
-  ..$ by_initial_band: NULL
- $ lt_el_definition   : chr &quot;Current EL in year 6 or later of status.&quot;
- $ lt_el_years        : int 6
- $ exit_dating        : chr &quot;first_former_year&quot;
- $ initial_elp_source : chr &quot;first_annual&quot;
- $ source             : chr &quot;provisional&quot;</code></pre>
+<pre><code>[1] 10</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="fu">str</span>(spec<span class="sc">$</span>policy<span class="sc">$</span>growth)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>List of 4
- $ annual_target_levels: num 0.4
- $ met_indicator       : chr &quot;ELP_GROWTH_TARGET_MET&quot;
- $ how_set             : chr &quot;Modelling choice in the generator; no policy basis.&quot;
- $ source              : chr &quot;provisional&quot;</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="fu">str</span>(spec<span class="sc">$</span>policy<span class="sc">$</span>accountability_indicator)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The long-term EL year has no accessor of its own. <code>add_lt_el()</code> applies it: here, to current ELs in years 4 to 8 of status.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>lt <span class="ot">&lt;-</span> <span class="fu">add_lt_el</span>(<span class="fu">data.frame</span>(<span class="at">EL_STATUS =</span> <span class="st">&quot;current&quot;</span>, <span class="at">YEAR_IN_STATUS =</span> <span class="dv">4</span><span class="sc">:</span><span class="dv">8</span>), spec)</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>lt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>List of 3
- $ name       : chr &quot;Progress toward English language proficiency&quot;
- $ description: chr &quot;Out of scope for the eight stages; recorded for Prep 1.&quot;
- $ source     : chr &quot;provisional&quot;</code></pre>
+<pre><code>  EL_STATUS YEAR_IN_STATUS LT_EL
+1   current              4 FALSE
+2   current              5 FALSE
+3   current              6  TRUE
+4   current              7  TRUE
+5   current              8  TRUE</code></pre>
 </div>
 </div>
 <p>These values feed the later stages in specific ways:</p>
 <table class="caption-top table">
-<colgroup>
-<col style="width: 50%">
-<col style="width: 50%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Spec entry</th>
+<th>Spec field</th>
 <th>What it controls downstream</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>timelines$max_years_to_exit</code></td>
+<td><code>timelines$max</code></td>
 <td>Which entry cohorts (students who entered EL status in the same grade and year) qualify for Check 1, since each needs this many years of follow-up plus one, and the <code>EXIT_MAX</code> flag in Checks 1 and 2</td>
 </tr>
 <tr class="even">
-<td><code>timelines$on_time_rule</code></td>
-<td>Each student’s on-time timeline (<code>ON_TIME_YEARS</code>) and the <code>EXIT_ONTIME</code> flag. <code>default_years</code> applies to everyone; <code>by_start_grade</code> and <code>by_initial_band</code> override it</td>
+<td><code>timelines$on_time</code></td>
+<td>Each student’s on-time timeline (<code>ON_TIME_YEARS</code>) and the <code>EXIT_ONTIME</code> flag in Checks 1 and 2: one number for every student. Without it, the maximum</td>
 </tr>
 <tr class="odd">
-<td><code>timelines$essa_timeline_years</code></td>
-<td>The fallback on-time timeline when <code>on_time_rule$default_years</code> is absent</td>
-</tr>
-<tr class="even">
-<td><code>timelines$lt_el_years</code></td>
+<td><code>timelines$lt_el</code></td>
 <td>Prep 2’s time-in-status view and long-term share, and the <code>LT_EL</code> flag from <code>add_lt_el()</code></td>
 </tr>
+<tr class="even">
+<td><code>exit</code></td>
+<td>The current threshold Checks 3 and 4 mark, and the Type that gates every Additional check</td>
+</tr>
 <tr class="odd">
-<td><code>timelines$lt_el_definition</code></td>
-<td>Text only: recorded and displayed, never computed from</td>
+<td><code>elp$bands</code></td>
+<td>The ELP bands in Prep 2 and Checks 2 to 4</td>
 </tr>
 <tr class="even">
-<td><code>timelines$initial_elp_source</code></td>
-<td>How the initial ELP band is found in Prep 2 and Checks 1 and 2</td>
-</tr>
-<tr class="odd">
-<td><code>timelines$exit_dating</code></td>
-<td>The exit-dating convention (see below)</td>
-</tr>
-<tr class="even">
-<td><code>growth</code>, <code>accountability_indicator</code></td>
-<td>Recorded for Prep 1 only. No built stage computes from them yet</td>
-</tr>
-<tr class="odd">
-<td><code>suppression$min_cell</code></td>
+<td><code>min_cell</code></td>
 <td>The minimum cell size. Smaller counts are blanked to <code>NA</code>, never dropped, in every stage</td>
 </tr>
+<tr class="odd">
+<td><code>academic</code></td>
+<td>Each subject’s tested grades and proficient cut, read by Checks 1 to 4 (see <a href="setup.html#the-academic-block">Setup</a>)</td>
+</tr>
 <tr class="even">
-<td><code>academic_benchmark$proficient_level</code></td>
-<td>Which academic level counts as proficient in Checks 2, 3 and 4</td>
+<td><code>district_sizes</code></td>
+<td>The district-size groups in Prep 2 and Check 2</td>
 </tr>
 <tr class="odd">
-<td><code>district_size_bands</code></td>
-<td>The district-size bins in Prep 2 and Check 2</td>
-</tr>
-<tr class="even">
-<td><code>program</code>, <code>error_tolerance</code></td>
-<td>Prep 3’s inventory (not yet built). Check 4 already reads <code>error_tolerance</code></td>
+<td><code>costlier_error</code></td>
+<td>Prep 3’s answer (not yet built). Check 4 already reads it</td>
 </tr>
 </tbody>
 </table>
 <p>In the simulated spec, the maximum timeline is 6 years and the on-time timeline is 5 years. A student counts as LTEL from year 6 in status. All of these are modeling choices for a synthetic state, not anyone’s rule.</p>
 </section>
-<section id="initial-elp-source-and-exit-dating" class="level3">
-<h3 class="anchored" data-anchor-id="initial-elp-source-and-exit-dating">Initial ELP source and exit dating</h3>
-<p><code>initial_elp_source</code> says which score counts as a student’s starting ELP. Today only <code>&quot;first_annual&quot;</code>, the student’s first annual test, is fully supported. Checks 1 and 2 stop with an error on any other value (Check 2 takes its initial band from Check 1’s derivation), and Prep 2 reads any other value as “the entry year’s score only”. Screener-based initial ELP is recorded as a later addition.</p>
-<p><code>exit_dating</code> must be <code>&quot;first_former_year&quot;</code>. The validator rejects anything else:</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>check <span class="ot">&lt;-</span> spec</span>
-<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>check<span class="sc">$</span>policy<span class="sc">$</span>timelines<span class="sc">$</span>exit_dating <span class="ot">&lt;-</span> <span class="st">&quot;last_current_year&quot;</span></span>
-<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a><span class="fu">tryCatch</span>(<span class="fu">validate_el_spec</span>(check), <span class="at">error =</span> <span class="cf">function</span>(e) <span class="fu">cat</span>(<span class="fu">conditionMessage</span>(e)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Invalid el_spec:
-  - `policy$timelines$exit_dating` must be &quot;first_former_year&quot;. The package dates exit to the first year observed as former (the deck&#39;s A-J convention); a delivery using another convention is translated at the boundary, not here.</code></pre>
-</div>
-</div>
-<p>Under this convention, a student’s exit year is the first school year in which <code>EL_STATUS</code> is <code>former</code>, and that year counts as a year in status. So a student who is <code>current</code> for six years and first appears as <code>former</code> in the seventh has exited in year 7. That student is <strong>not</strong> within a six-year timeline. Your state may count the same student differently. That is the confirm question below.</p>
+<section id="initial-elp-and-exit-dating" class="level3">
+<h3 class="anchored" data-anchor-id="initial-elp-and-exit-dating">Initial ELP and exit dating</h3>
+<p>Two conventions are fixed by the package for every state, so the spec has no field for either. Record whether your state agrees.</p>
+<p><strong>Initial ELP</strong> is the student’s first annual test score. A state that places students with a screener has a different starting point; using the screener is recorded as a later addition.</p>
+<p><strong>Exit is dated to the first year a student appears as <code>former</code></strong>, and that year counts as a year in status. So a student who is <code>current</code> for six years and first appears as <code>former</code> in the seventh has exited in year 7. That student is <strong>not</strong> within a six-year timeline. Your state may count the same student differently. That is the confirm question below.</p>
 </section>
 </section>
 <section id="how-to-read-it" class="level2">
 <h2 class="anchored" data-anchor-id="how-to-read-it">How to read it</h2>
 <p><strong>Read it as the policy on paper.</strong> Prep 1 records the written rule. It does not test whether students actually exit when they meet it. The package does not compare who the rule says is eligible with who actually exits; that is recorded as a later addition. Prep 3 covers what exit changes on the ground, and Checks 1 and 2 show how exits actually unfold.</p>
-<p><strong>Treat every <code>[DERIVED — VERIFY]</code> as an open item, not an error.</strong> It means nobody has matched the value to an official document yet. That is fine while you build. It is not fine in anything you publish. Check 2’s sample statement, for instance, carries the mark next to the on-time timeline when <code>policy$timelines</code> is provisional.</p>
-<p><strong>Look hard at discretionary pathways.</strong> Any pathway that rests on a committee, an appeal or a teacher’s judgment should have <code>discretionary = TRUE</code> and a clear <code>authority</code> entry in the spec. The package’s design notes cite a review of Indiana’s system that found selection effects concentrated in such pathways. Students who exit through judgment may differ in ways the score does not show.</p>
-<p><strong>Check that the Type and the rule agree.</strong> If the validator objects to your declared Type, either the declaration or the terms are wrong. Fix whichever does not match the written policy. Do not change one just to quiet the other.</p>
+<p><strong>Treat every <code>[DERIVED — VERIFY]</code> as an open item, not an error.</strong> It means nobody has matched the value to an official document yet. That is fine while you build. It is not fine in anything you publish. Check 2’s sample statement, for instance, carries the mark next to the on-time timeline when <code>sources</code> does not name <code>timelines</code>.</p>
+<p><strong>Look hard at discretionary pathways.</strong> Any route that rests on a committee, an appeal or a teacher’s judgment belongs in your notes with who holds the authority. The package’s design notes cite a review of Indiana’s system that found selection effects concentrated in such pathways. Students who exit through judgment may differ in ways the score does not show, and the analyses cannot separate them from students who exited on the score.</p>
+<p><strong>Check that the spec and the written rule agree.</strong> Read the printout’s <code>exit</code> line against the policy document, and the Type beside it. If the Type is not what you expected, the criteria in <code>exit</code> do not match the policy: fix them, not your expectation.</p>
 </section>
 <section id="pitfalls" class="level2">
 <h2 class="anchored" data-anchor-id="pitfalls">Pitfalls</h2>
 <ul>
-<li><p><strong>Policy belongs under <code>policy</code>.</strong> The validator rejects a policy entry placed under <code>elp</code>, and any entry under <code>policy</code> outside <code>el_policy_fields()</code>. Vendor facts go in <code>elp</code>. Rules an agency can change go in <code>policy</code>.</p></li>
-<li><p><strong>Do not hard-code a component name in your own analysis code.</strong> Read it from the spec with <code>spec_components()</code> or <code>spec_headline()</code>, so the code works for any instrument.</p></li>
-<li><p><strong>A text-only LTEL definition is not enough.</strong> Set <code>lt_el_years</code> as well, or Prep 2 drops its time-in-status view and <code>LT_EL</code> is <code>NA</code>. The shipped template has only the text:</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>template <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_TEMPLATE_EL_Spec&quot;</span>)</span>
-<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>template<span class="sc">$</span>policy<span class="sc">$</span>timelines<span class="sc">$</span>lt_el_definition</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;TODO: the state long-term EL definition&quot;</code></pre>
-</div>
-<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="fu">is.null</span>(template<span class="sc">$</span>policy<span class="sc">$</span>timelines<span class="sc">$</span>lt_el_years)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] TRUE</code></pre>
-</div>
-</div></li>
-<li><p><strong>Do not confuse the two timelines.</strong> Exiting within the maximum timeline is not the same as exiting on time. <code>EXIT_ONTIME</code> is a subset of <code>EXIT_MAX</code>.</p></li>
-<li><p><strong>The on-time rule may be a choice, not a rule.</strong> If your state has no codified on-time timeline, the value you enter is a judgment. Keep it provisional and say so. (The simulated spec’s 5 years is such a choice.)</p></li>
-<li><p><strong>An on-time rule keyed by initial ELP band changes how Check 2 reads.</strong> Check 2’s crosstab also breaks the cohort down by initial band, so each band is then measured against its own deadline. A band given more years shows a higher on-time share even if its students exited no sooner. Check 2 adds a note pointing to <code>EXIT_MAX</code>, which uses one window for everyone. Such a rule also needs a delivered <code>INITIAL_ELP</code> column on the roster; without one, Checks 1 and 2 stop with an error.</p></li>
-<li><p><strong>Check when your roster records status.</strong> The package does not take exit from any delivered exit flag. It dates exit from <code>EL_STATUS</code> transitions. In the simulated data, the year a student meets the exit criterion is still a <code>current</code> row, and <code>former</code> starts the next school year. If your roster marks a student <code>former</code> in the same year they met the criterion, every exit lands a year earlier than the convention intends. The validator’s own message says the fix belongs in the delivery, not in <code>exit_dating</code>.</p></li>
-<li><p><strong>Pathways are not yet tracked in the data.</strong> The stage plan calls for Checks 1 and 2 to track a discretionary pathway separately. The data model has no column for the pathway a student exited through, though, so they do not yet split exits by pathway. Check 4 marks the current threshold from the first non-discretionary pathway with a term on the level of the score it plots.</p></li>
-<li><p><strong>No shipped spec is a real state’s policy.</strong> The simulated, template and ELPA21 specs are fixtures. Do not copy their values as if they were sourced. In anything you write, name the score as the state does (<code>spec_headline_label()</code>).</p></li>
+<li><strong>Do not hard-code a component name in your own analysis code.</strong> Read it from the spec with <code>spec_headline()</code> or <code>spec_components()</code>, so the code works for any instrument.</li>
+<li><strong>A text-only LTEL definition is not enough.</strong> Set <code>timelines$lt_el</code> as well, or Prep 2 drops its time-in-status view and <code>LT_EL</code> is <code>NA</code>.</li>
+<li><strong>Do not confuse the two timelines.</strong> Exiting within the maximum timeline is not the same as exiting on time. <code>EXIT_ONTIME</code> is a subset of <code>EXIT_MAX</code>.</li>
+<li><strong>The on-time timeline may be a choice, not a rule.</strong> If your state has no codified on-time timeline, the value you enter is a judgment. Leave <code>timelines</code> out of <code>sources</code> and say so in a comment. (The simulated spec’s 5 years is such a choice.)</li>
+<li><strong>An on-time rule that varies by start grade or initial ELP level cannot be written.</strong> The spec holds one on-time timeline for every student. If your state’s varies, record the rule in your notes and read Check 2’s <code>EXIT_MAX</code>, which uses one window for everyone, beside its <code>EXIT_ONTIME</code>.</li>
+<li><strong>A missing score fails its criterion.</strong> Under a multi-criterion rule, a student excused from a domain has no score for it, and the Type-gated checks count that as not meeting the criterion. The spec has no way to waive a criterion when the score is absent. If your state waives it, say so beside every Additional-check result.</li>
+<li><strong>Check when your roster records status.</strong> The package does not take exit from any delivered exit flag. It dates exit from <code>EL_STATUS</code> transitions. In the simulated data, the year a student meets the exit criterion is still a <code>current</code> row, and <code>former</code> starts the next school year. If your roster marks a student <code>former</code> in the same year they met the criterion, every exit lands a year earlier than the convention intends. The fix belongs in the delivery, not in the spec.</li>
+<li><strong>Pathways are not tracked in the data.</strong> The stage plan calls for Checks 1 and 2 to track a discretionary pathway separately. Neither the spec nor the data model records the pathway a student exited through, so they do not split exits by pathway.</li>
+<li><strong>Only one shipped value is a real state’s policy:</strong> the Massachusetts exit rule. The simulated, template and ELPA21 specs are fixtures, and every other Massachusetts value is a placeholder. Do not copy their values as if they were sourced. In anything you write, name the score as the state does (<code>spec_headline_label()</code>).</li>
 </ul>
 </section>
 <section id="decide-before-moving-on" class="level2">
 <h2 class="anchored" data-anchor-id="decide-before-moving-on">Decide before moving on</h2>
-<p>Settle these with the people who own the policy, and record each answer in the spec with its source:</p>
+<p>Settle these with the people who own the policy, and record each answer in the spec with its source, or in your Prep 1 notes:</p>
 <ol type="1">
 <li><strong>Is every value sourced, or knowingly provisional?</strong> For each <code>[DERIVED — VERIFY]</code>, who will verify it, and against which document?</li>
 <li><strong>Exit dating.</strong> The package counts the first year a student appears as <code>former</code> as a year in status. A student EL for six years and reclassified in the seventh is not within a six-year timeline. Does your state count it the same way? If not, the package’s timeline statistics will differ from the state’s own, and reports must say so.</li>
-<li><strong>Which Type or Types apply?</strong> Confirm the declaration against the written policy. It switches every Additional check downstream on or off.</li>
+<li><strong>Does the spec hold the whole rule?</strong> Confirm the printout’s <code>exit</code> line and its Type against the written policy. The Type switches every Additional check downstream on or off. List any part of the rule the spec cannot hold.</li>
 <li><strong>Which pathways are discretionary,</strong> who holds authority over each, and can the state supply data on which pathway each exiter used?</li>
-<li><strong>Which score do the analyses run on</strong> (<code>spec$elp$headline</code>), and what is its official name (<code>native_name</code>)?</li>
-<li><strong>What is the on-time timeline?</strong> Is it a codified rule keyed to start grade or initial ELP, or a single number chosen for this review?</li>
-<li><strong>What is the LTEL definition in years?</strong> Record it as <code>lt_el_years</code> as well as in words, or later stages cannot use it.</li>
+<li><strong>Which score do the analyses run on</strong> (<code>elp$score</code>), and what is its official name (<code>elp$label</code>)?</li>
+<li><strong>What is the on-time timeline?</strong> Is it a codified rule, perhaps keyed to start grade or initial ELP, or a single number chosen for this review?</li>
+<li><strong>What is the LTEL definition in years?</strong> Record it as <code>timelines$lt_el</code> as well as in words, or later stages cannot use it.</li>
 </ol>
 </section>
 <section id="additional-checks-for-multi-criterion-exit-rules" class="level2">
 <h2 class="anchored" data-anchor-id="additional-checks-for-multi-criterion-exit-rules">Additional checks for multi-criterion exit rules</h2>
-<p>Prep 1’s own Additional check is the Type identification above. It matters because <strong>every Additional check in later stages is gated on the declared Type</strong>. A Type 1 rule, like the simulated one, skips all of them, and their result slots are <code>NULL</code>:</p>
+<p>Prep 1’s own Additional check is the Type identification above. It matters because <strong>every Additional check in later stages is gated on the rule’s Type</strong>. A Type 1 rule, like the simulated one, skips all of them, and their result slots are <code>NULL</code>:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)   <span class="co"># FALSE for the simulated spec</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)   <span class="co"># FALSE for the simulated spec</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] FALSE</code></pre>
 </div>
@@ -3841,14 +3619,14 @@ Not yet built
 <tr class="odd">
 <td><a href="prep2.html">Prep 2</a></td>
 <td><code>$criteria_crosswalk</code>, <code>$blocked_groups</code>, <code>$contested_zone</code></td>
-<td>Types 2–6, and a pathway with two or more ELP terms</td>
+<td>Types 2–6: two or more ELP criteria</td>
 <td>built</td>
 </tr>
 <tr class="even">
 <td><a href="check1.html">Check 1</a></td>
 <td><code>$type3_covariate</code></td>
-<td>Type 3, with an academic term whose subject the data carry, and Model 2 fitted</td>
-<td>built</td>
+<td>Type 3, with an academic criterion the data carry, and Model 2 fitted</td>
+<td>built; the spec cannot hold a Type 3 rule, so <code>NULL</code> for any spec <code>el_spec()</code> builds</td>
 </tr>
 <tr class="odd">
 <td><a href="check2.html">Check 2</a></td>
@@ -3859,7 +3637,7 @@ Not yet built
 <tr class="even">
 <td><a href="check3.html">Check 3</a></td>
 <td><code>$contested_zone_models</code></td>
-<td>Types 2, 4, 5 or 6, with an academic table and a contested zone from Prep 2’s crosswalk</td>
+<td>Types 2 or 6 (4 and 5 cannot be written), with an academic table and a contested zone from Prep 2’s crosswalk</td>
 <td>built</td>
 </tr>
 <tr class="odd">
@@ -3876,179 +3654,65 @@ Not yet built
 </tr>
 </tbody>
 </table>
-<p><strong>How to tell from the spec.</strong> Call <code>spec_exit_types()</code> and <code>spec_has_type(spec, 2:6)</code>. The validator cross-checks the declaration against the shape of the pathways:</p>
-<ul>
-<li>Type 1 needs exactly one pathway with one term, on the score the analyses use.</li>
-<li>Type 2 needs a pathway with two or more terms.</li>
-<li>Type 3 needs a term with <code>from = &quot;academic&quot;</code>.</li>
-<li>Type 4 (compensatory) is accepted as declared. The spec cannot yet describe a compensatory schedule, so there is nothing to check.</li>
-<li>Type 5 needs two or more pathways, or one flagged <code>discretionary</code>.</li>
-<li>Type 6 needs at least two terms on domains, not a single term on the score the analyses use.</li>
-</ul>
-<p>Declaring a Type the rule does not have is an error:</p>
+<p><strong>How to tell from the spec.</strong> Call <code>spec_exit_types()</code> and <code>spec_has_type(spec, 2:6)</code>. Here is how a composite-plus-floor rule (Type 2) is written: the simulated rule with a floor of 4.0 on every domain. The floor values are <strong>illustrative, not any state’s rule</strong>:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>check <span class="ot">&lt;-</span> spec</span>
-<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>check<span class="sc">$</span>policy<span class="sc">$</span>exit<span class="sc">$</span>types <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">1</span>L, <span class="dv">2</span>L)</span>
-<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a><span class="fu">tryCatch</span>(<span class="fu">validate_el_spec</span>(check), <span class="at">error =</span> <span class="cf">function</span>(e) <span class="fu">cat</span>(<span class="fu">conditionMessage</span>(e)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>floor_spec <span class="ot">&lt;-</span> <span class="fu">el_spec</span>(</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">id     =</span> <span class="st">&quot;FLOOR&quot;</span>,</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">status =</span> <span class="st">&quot;synthetic&quot;</span>,</span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">elp    =</span> <span class="fu">list</span>(<span class="at">test =</span> <span class="st">&quot;WIDA ACCESS&quot;</span>, <span class="at">score =</span> <span class="st">&quot;overall&quot;</span>,</span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>                <span class="at">label =</span> <span class="st">&quot;Overall Composite&quot;</span>, <span class="at">levels =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">6</span>)),</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">exit   =</span> <span class="fu">c</span>(<span class="at">overall =</span> <span class="fl">4.5</span>, <span class="at">listening =</span> <span class="dv">4</span>, <span class="at">speaking =</span> <span class="dv">4</span>,</span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">reading =</span> <span class="dv">4</span>, <span class="at">writing =</span> <span class="dv">4</span>),</span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">timelines =</span> <span class="fu">list</span>(<span class="at">max =</span> <span class="dv">6</span>)</span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>floor_spec</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Invalid el_spec:
-  - Type 2 declared (composite-plus-floor), but no pathway carries two or more terms.</code></pre>
+<pre><code>&lt;el_spec&gt; FLOOR 
+  ELP test   : WIDA ACCESS -- Overall Composite (overall), levels 1-6  
+  exit       : Overall Composite level &gt;= 4.5 and listening domain level &gt;= 4 and speaking domain level &gt;= 4 and reading domain level &gt;= 4 and writing domain level &gt;= 4 [Type 2] 
+  timelines  : max 6 yrs; on time 6 yrs; long-term EL not set 
+  academic   : none
+  suppression: min_cell 10 
+  status     : synthetic 
+  [DERIVED - VERIFY]: exit, timelines, min_cell, district_sizes, costlier_error </code></pre>
 </div>
-</div>
-<p>Here is how a composite-plus-floor rule (Type 2) would be written. The floor values are <strong>illustrative, not any state’s rule</strong>:</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>floor_spec <span class="ot">&lt;-</span> spec</span>
-<span id="cb58-2"><a href="#cb58-2" aria-hidden="true" tabindex="-1"></a>floor_spec<span class="sc">$</span>policy<span class="sc">$</span>exit<span class="sc">$</span>pathways[[<span class="dv">1</span>]]<span class="sc">$</span>rule <span class="ot">&lt;-</span></span>
-<span id="cb58-3"><a href="#cb58-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;Overall composite level &gt;= 4.5 and every domain level &gt;= 4.0&quot;</span></span>
-<span id="cb58-4"><a href="#cb58-4" aria-hidden="true" tabindex="-1"></a>floor_spec<span class="sc">$</span>policy<span class="sc">$</span>exit<span class="sc">$</span>pathways[[<span class="dv">1</span>]]<span class="sc">$</span>terms <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
-<span id="cb58-5"><a href="#cb58-5" aria-hidden="true" tabindex="-1"></a>  floor_spec<span class="sc">$</span>policy<span class="sc">$</span>exit<span class="sc">$</span>pathways[[<span class="dv">1</span>]]<span class="sc">$</span>terms,</span>
-<span id="cb58-6"><a href="#cb58-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">lapply</span>(<span class="fu">spec_components</span>(floor_spec, <span class="at">kind =</span> <span class="st">&quot;domain&quot;</span>), <span class="cf">function</span>(d) {</span>
-<span id="cb58-7"><a href="#cb58-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">list</span>(<span class="at">component =</span> d, <span class="at">measure =</span> <span class="st">&quot;level&quot;</span>, <span class="at">op =</span> <span class="st">&quot;&gt;=&quot;</span>, <span class="at">value =</span> <span class="dv">4</span>)</span>
-<span id="cb58-8"><a href="#cb58-8" aria-hidden="true" tabindex="-1"></a>  })</span>
-<span id="cb58-9"><a href="#cb58-9" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb58-10"><a href="#cb58-10" aria-hidden="true" tabindex="-1"></a>floor_spec<span class="sc">$</span>policy<span class="sc">$</span>exit<span class="sc">$</span>types <span class="ot">&lt;-</span> <span class="dv">2</span>L</span>
-<span id="cb58-11"><a href="#cb58-11" aria-hidden="true" tabindex="-1"></a><span class="fu">validate_el_spec</span>(floor_spec)</span>
-<span id="cb58-12"><a href="#cb58-12" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(floor_spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_has_type</span>(floor_spec, <span class="dv">2</span><span class="sc">:</span><span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] TRUE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">term_table</span>(floor_spec))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<table class="caption-top table table-sm table-striped small">
-<colgroup>
-<col style="width: 26%">
-<col style="width: 7%">
-<col style="width: 14%">
-<col style="width: 11%">
-<col style="width: 4%">
-<col style="width: 8%">
-<col style="width: 25%">
-</colgroup>
-<thead>
-<tr class="header">
-<th style="text-align: left;">PATHWAY</th>
-<th style="text-align: left;">FROM</th>
-<th style="text-align: left;">COMPONENT</th>
-<th style="text-align: left;">MEASURE</th>
-<th style="text-align: left;">OP</th>
-<th style="text-align: left;">VALUE</th>
-<th style="text-align: left;">EXEMPT_IF_ABSENT</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">overall_composite</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">overall</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4.5</td>
-<td style="text-align: left;">FALSE</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">overall_composite</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">listening</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;">FALSE</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">overall_composite</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">speaking</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;">FALSE</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">overall_composite</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">reading</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;">FALSE</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">overall_composite</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">writing</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;">FALSE</td>
-</tr>
-</tbody>
-</table>
 </div>
-</div>
-<p>The shipped ELPA21 spec is a Type 6 example: a minimum level on each of the four domains. It shows <code>exempt_if_absent</code> in use. It is illustrative of that instrument’s structure, not any member state’s rule:</p>
+<p>The same four domain floors without the overall criterion are a domain profile, Type 6:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a>elpa21 <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_ELPA21_EL_Spec&quot;</span>)</span>
-<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(elpa21)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>profile_spec <span class="ot">&lt;-</span> <span class="fu">el_spec</span>(</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">id     =</span> <span class="st">&quot;PROFILE&quot;</span>,</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">status =</span> <span class="st">&quot;synthetic&quot;</span>,</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">elp    =</span> <span class="fu">list</span>(<span class="at">test =</span> <span class="st">&quot;WIDA ACCESS&quot;</span>, <span class="at">score =</span> <span class="st">&quot;overall&quot;</span>,</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>                <span class="at">label =</span> <span class="st">&quot;Overall Composite&quot;</span>, <span class="at">levels =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">6</span>)),</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">exit   =</span> <span class="fu">c</span>(<span class="at">listening =</span> <span class="dv">4</span>, <span class="at">speaking =</span> <span class="dv">4</span>, <span class="at">reading =</span> <span class="dv">4</span>, <span class="at">writing =</span> <span class="dv">4</span>),</span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">timelines =</span> <span class="fu">list</span>(<span class="at">max =</span> <span class="dv">6</span>)</span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(profile_spec)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 6</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_headline_label</span>(elpa21)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>[1] &quot;Overall Performance Determination&quot;</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">term_table</span>(elpa21))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output-display">
-<table class="caption-top table table-sm table-striped small">
-<thead>
-<tr class="header">
-<th style="text-align: left;">PATHWAY</th>
-<th style="text-align: left;">FROM</th>
-<th style="text-align: left;">COMPONENT</th>
-<th style="text-align: left;">MEASURE</th>
-<th style="text-align: left;">OP</th>
-<th style="text-align: left;">VALUE</th>
-<th style="text-align: left;">EXEMPT_IF_ABSENT</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">domain_profile</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">listening</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;">TRUE</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">domain_profile</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">speaking</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;">TRUE</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">domain_profile</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">reading</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;">TRUE</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">domain_profile</td>
-<td style="text-align: left;">elp</td>
-<td style="text-align: left;">writing</td>
-<td style="text-align: left;">level</td>
-<td style="text-align: left;">&gt;=</td>
-<td style="text-align: left;">4</td>
-<td style="text-align: left;">TRUE</td>
-</tr>
-</tbody>
-</table>
+<p>The shipped ELPA21 spec writes the consortium’s domain profile the way the vendor reports it: as one categorical determination, “Proficient” (level 3 of 3), so it is Type 1. Its file notes that the profile can also be written on the domains, as above. It is illustrative of that instrument’s structure, not any member state’s rule:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>elpa21 <span class="ot">&lt;-</span> <span class="fu">read_el_spec</span>(<span class="st">&quot;00_ELPA21_EL_Spec&quot;</span>)</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>elpa21</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>&lt;el_spec&gt; ELPA21 (ELPA21 (illustrative)) 
+  ELP test   : ELPA21 Summative -- Overall Performance Determination (determination), levels Emerging &lt; Progressing &lt; Proficient  
+  exit       : Overall Performance Determination level &gt;= 3 [Type 1] 
+  timelines  : max 5 yrs; on time 5 yrs; long-term EL not set 
+  academic   : none
+  suppression: min_cell 10 
+  status     : unverified 
+  [DERIVED - VERIFY]: exit, timelines, min_cell, district_sizes, costlier_error </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="fu">spec_exit_types</span>(elpa21)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 1</code></pre>
 </div>
 </div>
 </section>
@@ -4056,9 +3720,9 @@ Not yet built
 <h2 class="anchored" data-anchor-id="render-the-stage-report">Render the stage report</h2>
 <p>There is no Prep 1 document yet, so <code>render_step(&quot;prep1&quot;)</code> stops with “No document found”. When the stage is built, it will render like the others:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a><span class="fu">render_step</span>(<span class="st">&quot;prep1&quot;</span>)   <span class="co"># not available yet</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="fu">render_step</span>(<span class="st">&quot;prep1&quot;</span>)   <span class="co"># not available yet</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>Until then, keep the tables from this page with your spec as the Prep 1 record, and move on to <a href="prep2.html">Prep 2</a>.</p>
+<p>Until then, keep your spec file, its printout and your Prep 1 notes together as the Prep 1 record, and move on to <a href="prep2.html">Prep 2</a>.</p>
 <p><a href="index.html">Guide home</a> | Previous: <a href="setup.html">Setup: spec and data</a> | Next: <a href="prep2.html">Prep 2: Population analysis</a></p>
 </section>
 

@@ -94,9 +94,9 @@ and the stage report renders from it. Before you rely on it, know that:
   `[PROPOSED — CONFIRM]`: dating entry from delivered fields, the monitoring
   view, reading a multi-criterion rule as "all criteria must pass," and
   leaving true zeros unsuppressed.
-- The criteria crosswalk has run on a Type 2 variant of the simulated spec
-  and a small ELPA21-shaped test fixture, not yet on a real multi-criterion
-  state.
+- The criteria crosswalk has run on Type 2 variants of the simulated spec,
+  on the Massachusetts rule applied to the simulated tables, and on a small
+  test fixture; not yet on a real state's data.
 - `$profile$HERITAGE` is always `NULL`: no delivered field carries
   heritage-language status yet.
 
@@ -119,44 +119,46 @@ that needs it, and that slot comes back `NULL` rather than failing:
 |---|---|---|
 | Never-EL rows, with `SAMPLE_WEIGHT` | `$el_share` | `NULL`. With never-EL rows but no `SAMPLE_WEIGHT`, every row counts once |
 | `DISTRICT_ID` | `$by_district`, `$district_bins` | Both `NULL` |
-| `policy$district_size_bands` in the spec | `$district_bins` | `NULL`; districts are still ranked |
+| `district_sizes` in the spec | The groups `$district_bins` counts in | The deck's groups: fewer than 100 ELs, 100 to 999, 1,000 or more |
 | An entry field: `LEP_PROGRAM_START_DATE`, `COHORT_START_YEAR`, `YEAR_IN_STATUS` or `ENTRY_GRADE` | Entry dates for students already EL when the panel opens | Their entry is *unknown*: they leave the entry views, and the long-term share becomes a range |
 | Annual-form rows in the base table | Initial ELP bands; the coverage split | Entrants with no annual score form their own group |
-| `policy$timelines$lt_el_years` in the spec | `$time_in_status` and its profile table | `NULL` |
+| `timelines$lt_el` in the spec | `$time_in_status` and its profile table | `NULL` |
 | Former rows plus `EL_MONITOR_YEAR` or `EL_STATUS_DETAIL` | `$monitoring` | `NULL` |
 | Profile columns (`HOME_LANGUAGE`, `SERVICE_MODEL`, `IEP`, `SPED_CLASSIFICATION`, `GENDER`, `FRL`, `FRL_DETAIL`, `ELP_FORM`, `NEWCOMER_FLAG`, `SIFE_FLAG`, `IMMIGRANT_STATUS`, `MIGRANT_STATUS`) | One profile table each | That table is absent |
-| An exit rule of Type 2–6 with two or more ELP criteria in one pathway | `$criteria_crosswalk`, `$contested_zone`, `$blocked_groups` | All three `NULL` |
+| An exit rule with two or more criteria (Type 2 or 6) | `$criteria_crosswalk`, `$contested_zone`, `$blocked_groups` | All three `NULL` |
 
 ### Spec
 
-Check these spec fields before you run anything:
+Check these spec fields before you run anything. The printout shows most of
+them, and the accessors read them back:
 
 ```{r}
 spec <- read_el_spec("00_SIM_EL_Spec")
+spec
 
-spec$policy$suppression$min_cell                  # smallest reportable cell
-str(spec$policy$district_size_bands[c("breaks", "labels")])
-str(spec$policy$timelines[c("max_years_to_exit", "lt_el_years",
-                            "initial_elp_source")])
-spec$data$entry_date_rule                         # how start dates map to years
-spec_exit_types(spec)                             # exit-rule Type(s)
+spec_min_cell(spec)                    # smallest reportable cell
+spec_max_years(spec)                   # maximum years to exit
+spec_bands(spec)$labels                # the ELP bands
+spec_exit_types(spec)                  # exit-rule Type
 ```
 
 - **`min_cell`**: counts from 1 to `min_cell - 1` are hidden (`NA` in the
   results, a dash in the tables); the row stays.
-- **`max_years_to_exit`**: which cohorts are followed long enough to see the
+- **`timelines$max`**: which cohorts are followed long enough to see the
   full exit window.
-- **`lt_el_years`**: a long-term EL (LTEL) is a current EL in this year of
-  status or later.
-- **`initial_elp_source`**: `"first_annual"` takes the first annual score at
-  or after entry as the initial level; any other value, or none, uses the
-  entry year's score only. (Checks 1 and 2 accept only the first annual
-  score, so set `"first_annual"` explicitly if the stages are to agree.)
-- **`entry_date_rule`**: by default a start date from July on belongs to the
-  next spring's school year. The simulated data stamp the spring year itself,
-  hence `"calendar_year"`.
+- **`timelines$lt_el`**: a long-term EL (LTEL) is a current EL in this year
+  of status or later (the printout's "long-term EL at 6 yrs").
+- **`district_sizes`**: the district-size groups. The simulated spec leaves
+  it out, so the deck's groups apply: fewer than 100 ELs, 100 to 999, and
+  1,000 or more.
+- **`delivery$entry_date_rule`**: by default a start date from July on
+  belongs to the next spring's school year. The simulated data stamp the
+  spring year itself, so the simulated spec sets `"calendar_year"`.
 - **The exit-rule Type** gates the last section of this page. The simulated
   spec is Type 1: a single overall score.
+
+A student's initial ELP level is their first annual score at or after
+entry, for every spec, the same rule Checks 1 and 2 use.
 
 ## Run it
 
@@ -286,7 +288,8 @@ the small-district line. A real state will often show a long tail.
 Prep 2 dates each student's entry into EL status from the first of these
 fields that is delivered and filled for that student, in this order:
 `LEP_PROGRAM_START_DATE`, `COHORT_START_YEAR`, `YEAR_IN_STATUS`,
-`ENTRY_GRADE` (reorder with `spec$data$entry_sources`). A delivered year
+`ENTRY_GRADE` (reorder with `delivery$entry_sources` in your spec). A
+delivered year
 later than the student's first observed `current` year is pulled back to
 it.
 Without any of these fields, the panel can date only students who first turn
@@ -305,8 +308,8 @@ cat(paste0("- ", res$meta$notes$entry), sep = "\n")
 Read these notes (`$meta$notes$entry`) every run. They say whether
 `YEAR_IN_STATUS` codes a first year as 1 or 0 (detected, `[DERIVED —
 VERIFY]`) and how often delivered entry years agree with the panel. If
-agreement is low, check `entry_date_rule` and
-`spec$data$years_in_status_first_value`.
+agreement is low, check `delivery$entry_date_rule` and
+`delivery$years_in_status_first_value` in your spec.
 
 ```{r}
 plot_entry_grade(res$entry_grade)
@@ -340,7 +343,8 @@ holds `by_year` (`N`, `PCT_NEW`, `PCT_LT_MIN`, `PCT_LT_MAX`, `PCT_UNKNOWN`),
 `distribution` by grade, also for the latest year.
 
 The long-term share is a **range**. `PCT_LT_MIN` counts students dated, or
-observed as `current`, for `lt_el_years` or more; `PCT_LT_MAX` adds every
+observed as `current`, for `timelines$lt_el` years or more; `PCT_LT_MAX`
+adds every
 unknown-entry student who could still be long-term. Here every entry is
 dated, so the bounds meet. No mean time in status appears anywhere, by
 design: students enter at different grades and are observed for different
@@ -529,38 +533,52 @@ criteria disagree (some pass, some fail). Check 2 adds the
 blocked groups as comparison columns and Check 3 models the contested zone;
 both recompute them with `compute_criteria_crosswalk()`.
 
-To tell whether the check applies, look at the declared Types and the terms
-of each exit pathway:
+To tell whether the check applies, look at the rule's Type, which the
+package reads from the number and kind of criteria in the spec's `exit`:
 
 ```{r}
 spec_exit_types(spec)
 spec_has_type(spec, 2:6)
-length(spec$policy$exit$pathways[[1]]$terms)
 ```
 
-The simulated spec is Type 1 with one term, so `$criteria_crosswalk`,
-`$contested_zone` and `$blocked_groups` are `NULL`. The gate needs a declared
-Type of 2–6 *and* a pathway with two or more ELP terms. A Type 5 spec whose
-pathways have one term each opens the gate but still gets `NULL`, with the
-reason in `$meta$notes$crosswalk`.
+The simulated spec is Type 1, one criterion, so `$criteria_crosswalk`,
+`$contested_zone` and `$blocked_groups` are `NULL`. Any rule with two or
+more ELP criteria (Type 2 or 6) opens the gate.
 
 To show the output, the chunk below adds a **hypothetical** second criterion
-to the simulated rule, a Reading level of at least 4.0 (waived when the
-domain is absent). The package's tests use the same variant; it is not the
-simulated state's rule. With a Type 2–6 spec, `run_prep2()` fills these
-slots itself. Here the crosswalk is computed directly to avoid rerunning the
-stage.
+to the simulated rule: a reading domain level of at least 4.0. It is not
+the simulated state's rule. A student with no reading score that year does
+not meet it; the spec has no way to waive a criterion when the score is
+absent. The spec is built from the simulated spec's own arguments, written
+out as a list so the copy changes only `exit`:
 
 ```{r}
-spec_t2 <- spec
-spec_t2$policy$exit$pathways[[1]]$terms[[2]] <- list(
-  component = "reading", measure = "level", op = ">=", value = 4.0,
-  exempt_if_absent = TRUE)
-spec_t2$policy$exit$pathways[[1]]$rule <-
-  "Overall composite level >= 4.5 and reading level >= 4.0"
-spec_t2$policy$exit$types <- 2L
-validate_el_spec(spec_t2)
+sim <- list(
+  id     = "SIM",
+  name   = "Simulated state",
+  status = "synthetic",
+  elp = list(test = "WIDA ACCESS", score = "overall",
+             label = "Overall Composite", levels = c(1, 6),
+             bands = c(1, 2, 3, 4, 4.5, 5)),
+  exit      = c(overall = 4.5),
+  timelines = list(max = 6, on_time = 5, lt_el = 6),
+  academic  = list(
+    ELA  = list(grades = 3:11, proficient_cut = 750, proficient_level = 4),
+    Math = list(grades = 3:11, proficient_cut = 750, proficient_level = 4)),
+  min_cell = 10,
+  delivery = list(entry_date_rule = "calendar_year")
+)
+identical(do.call(el_spec, sim), spec)   # the list builds the shipped spec
 
+spec_t2 <- do.call(el_spec, modifyList(sim, list(
+  exit = c(overall = 4.5, reading = 4.0))))
+spec_t2
+```
+
+With a Type 2 or 6 spec, `run_prep2()` fills these slots itself. Here the
+crosswalk is computed directly, to avoid rerunning the stage:
+
+```{r}
 cw <- compute_criteria_crosswalk(bundle, spec_t2)
 res_t2 <- res
 res_t2$criteria_crosswalk <- cw$crosswalk          # aggregate tables only;
@@ -578,19 +596,19 @@ ft_prep2_crosswalk_pattern(res_t2)
 ft_prep2_crosswalk_blocked(res_t2)
 ```
 
-The window around the cut is `spec$policy$exit$zone_half_width` (0.5 levels
-by default). `ft_prep2_crosswalk_by_level(res_t2)` shows where the criteria
-disagree in 0.1-level bins across twice that window.
+The window around the cut is 0.5 levels either side of it; the spec has no
+field to change it. `ft_prep2_crosswalk_by_level(res_t2)` shows where the
+criteria disagree in 0.1-level bins across twice that window.
 
 The contested zone is where to ask whether the second criterion does
 independent work or restates the overall score; Check 3 asks it there. Only
 the "blocked by `READING_LEVEL` only" group is held back by the second
 criterion alone. A wide zone, or a large group blocked by one domain alone,
-is a question for Checks 2 and 3, not a finding. Three limits: the crosswalk uses the first
-pathway with two or more ELP terms; it assumes all criteria must pass; and
-it reads only ELP terms. A Type 3 rule's non-ELP criterion (an academic
-score, say) is never evaluated, so a rule with one ELP term plus an academic
-term gets no crosswalk at all.
+is a question for Checks 2 and 3, not a finding. Two limits: the crosswalk
+assumes every criterion must be met, the only kind of rule the spec can
+hold; and it reads only ELP criteria. If your state's written rule also has
+a non-ELP criterion (an academic score, say), the crosswalk describes the
+ELP part of the rule alone.
 
 ## Render the stage report
 
