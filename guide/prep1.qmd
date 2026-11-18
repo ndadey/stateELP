@@ -419,10 +419,13 @@ policy: fix them, not your expectation.
   1 and 2 to track a discretionary pathway separately. Neither the spec nor
   the data model records the pathway a student exited through, so they do
   not split exits by pathway.
-- **Only one shipped value is a real state's policy:** the Massachusetts
-  exit rule. The simulated, template and ELPA21 specs are fixtures, and
-  every other Massachusetts value is a placeholder. Do not copy their values
-  as if they were sourced. In anything you write, name the
+- **Only the sourced fields of two shipped specs are a real state's
+  policy:** the Massachusetts exit rule, and the four fields the Illinois
+  spec sources (its exit rule, timelines, academic cuts and suppression
+  minimum). The simulated, template and ELPA21 specs are fixtures, every
+  other Massachusetts value is a placeholder, and the Illinois district-size
+  bands and error-tolerance answer are package defaults. Do not copy their
+  values as if they were sourced. In anything you write, name the
   score as the state does (`spec_headline_label()`).
 
 ## Decide before moving on

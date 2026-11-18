@@ -163,7 +163,7 @@ shape, with its own values:
 cat(readLines(el_spec_path("00_SIM_EL_Spec")), sep = "\n")
 ```
 
-The package ships four specs. Read one by its id, or read your own by path.
+The package ships five specs. Read one by its id, or read your own by path.
 Reading a spec file runs `el_spec()`, which checks every field and builds
 the object every stage reads:
 
@@ -297,6 +297,22 @@ things it deliberately does not have: an `academic` block, because the
 source document carries no MCAS cuts and inventing them would attribute
 them to the state, and a `delivery` block, because no Massachusetts delivery
 has been seen.
+
+`00_IL_EL_Spec` is further along. Four of its fields are sourced to public
+Illinois documents, each cited in the file: the exit rule (an Overall
+Composite of 4.8, a single criterion, so Type 1), the timelines, the
+academic Proficient cuts by grade, and the suppression minimum. That makes it
+the one shipped real-state spec with academic cut scores. Its district-size
+bands and error-tolerance answer are package defaults, and the printout's
+last line lists them. Where the file turns the state's wording into the
+package's count of years, its header says so and marks the step
+`[PROPOSED — CONFIRM]`. It holds the rule for the 2017–2026 ACCESS
+administrations only.
+
+```{r}
+il <- read_el_spec("00_IL_EL_Spec")
+il
+```
 
 Copy whichever file fits into your own project, edit it, and read it back by
 path. Keep your spec out of the package's own `inst/specs/` folder: the

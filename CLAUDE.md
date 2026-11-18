@@ -1418,9 +1418,17 @@ them:
    gate or a Check 4 later pass. `test-spec.R` 272 → 318 passing, 0 failing;
    no other test reads `inst/specs/`. `devtools::check()` was **not** run: the
    staging export was blocked by the protected-data hook (a recursive copy in
-   the scratchpad read as a search from `C:`), so it is owed. Guide pages
+   the scratchpad read as a search from `C:`), so it is owed. ~~Guide pages
    that list the shipped specs (`guide/setup.qmd`, `guide/index.qmd`) are not
-   updated; that refresh is deferred with the guide's short-form rewrite.
+   updated; that refresh is deferred with the guide's short-form rewrite.~~
+   Done 2026-11-18, after the short-form guide merge (`394a3e5`), in the
+   commit carrying this sentence. `guide/setup.qmd` counts five specs and
+   gains an Illinois paragraph with its printout. `guide/prep1.qmd`'s
+   "only one shipped value is a real state's policy" bullet now names both
+   real-state specs' sourced fields. The index, setup and prep1 pages were
+   re-rendered on R 4.4.2 from a clean export of `394a3e5` plus those two
+   sources (no `R/`, `inst/` or `dev/` change), and the disclosure scan was
+   clean.
 
 ## 6. Per-stage blocks
 
