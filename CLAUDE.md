@@ -116,7 +116,7 @@ Maintain this table. It starts as the shell inventory.
 | Package skeleton, `DESCRIPTION`, `renv` | **built** | `renv::init()`, explicit snapshot — which pins `Imports`/`Depends`/`LinkingTo` only (`renv/settings.json`), so no `Suggests` is in `renv.lock` (75 entries); `officer` and `tidyr` are there only because `flextable` pulls them in. `officer` and `openxlsx` joined `Suggests` (edited 2026-10-09, committed with this file) for `test-disclosure.R` (their absence was the one `check()` WARNING in `4f402c3`); `openxlsx` is not in the project library, so that file's `.xlsx` case skips here — `renv::install("openxlsx")` runs it. `NAMESPACE`/`man` generated |
 | `data-raw/el_long_sim.R` + `sim_contract.md` | **written, RUN** | contract **v0.4.0**; every `[FILL IN]` filled from the 2026-09-16 build; values verified identical to the 0.2.0 build after renaming (§2.1) |
 | `data/` (three `.rda`) | **built** | `el_long_sim` (base) / `el_roster_sim` / `academic_long_sim`, 6.84 MB, `sim_contract_version` 0.4.0; `elp_components_sim` retired; regenerate, don't hand-edit |
-| `R/spec.R` + four specs | **built; short form 2026-11-11 (built on branch `simplify-spec`, merged into `main` 2026-11-18)** | Specs are now written in the **short form** `el_spec()` takes (§5, the note at its top): `id`, `status`, `elp` (test, score, levels, optional label / bands / level_labels), `exit` (named minimum levels), `timelines` (max, on_time, lt_el), `academic` (grades + `proficient_cut` per subject), `min_cell`, and optional `district_sizes`, `costlier_error`, `sources`, `delivery`. `el_spec()` expands it into the full internal list the rest of this section and §5 describe (`.el_spec_full()`), so stage code reads the same shape. SIM (Type 1) / TEMPLATE (Type 1, every optional field) / ELPA21 (**Type 1 now**: the Proficient determination) / MA (Type 2). No `demographics_spec`: display labels live in `inst/lookups/Display_Labels.R`. MA is the only spec carrying a real state's exit rule — its `sources` names `exit` and nothing else |
+| `R/spec.R` + five specs | **built; short form 2026-11-11 (built on branch `simplify-spec`, merged into `main` 2026-11-18)** | Specs are now written in the **short form** `el_spec()` takes (§5, the note at its top): `id`, `status`, `elp` (test, score, levels, optional label / bands / level_labels), `exit` (named minimum levels), `timelines` (max, on_time, lt_el), `academic` (grades + `proficient_cut` per subject), `min_cell`, and optional `district_sizes`, `costlier_error`, `sources`, `delivery`. `el_spec()` expands it into the full internal list the rest of this section and §5 describe (`.el_spec_full()`), so stage code reads the same shape. SIM (Type 1) / TEMPLATE (Type 1, every optional field) / ELPA21 (**Type 1 now**: the Proficient determination) / MA (Type 2) / IL (Type 1, added 2026-11-18). No `demographics_spec`: display labels live in `inst/lookups/Display_Labels.R`. MA and IL are the two specs carrying a real state's exit rule — MA's `sources` names `exit` and nothing else; IL's names `exit`, `timelines`, `academic` and `min_cell` (§5 item 5) |
 | `R/el_data.R` (bundle, adapter, coverage) | **built** | `as_el_data()` (separate objects, merged single file), `as_el_data_sgp()`, `as_academic_long()`, `elp_headline()`, coverage table |
 | `R/utils.R` (shared derivations) | **built** | suppression, banding, weighting, `YEAR_IN_STATUS`, `LT_EL`, spans / exit dating, exit flags, cohorts — all ALL CAPS |
 | `R/render_step.R` + `dev/render_step.R` | **built** | smoke-tested to docx and html on the v0.4.0 bundle; see the Dropbox note below. `render_step()` renders a copy in `tempdir()` and copies only the finished files to `out_dir` (default `reports/`) — since the dev-loop commit `3356ad8` (2026-09-15; environment fact 3). Since `d63e2eb` (2026-10-09): `save_results` writes to `results_dir` (default `results/`, gitignored, never `out_dir`); `results_file` reaches RDS mode; `check_disclosure` scans every output for student ids and errors on a hit (§9). Dev helpers in `dev/render_step.R`: `rs()`, `rs_all()`, `rs_site()` (example reports into `docs/`), `rs_site_index()` (`docs/index.md` from the README), `rs_guide()` (guide pages into `docs/guide/`, disclosure-scanned). Known gaps in this path are under "Known issues" below |
@@ -1268,7 +1268,7 @@ on it:
 | `data$columns` | `data$columns` | extended: roster, per-component entries, academic table |
 | `as_assessment_spec()` | `el_spec()` | shell constructor; shape stays acceptable to stateSpecs later (`as_assessment_spec()` is a local, unpublished draft, not an old field; §9) |
 
-**Four instantiations** under `inst/specs/`, all through `test-spec.R` — whose
+**Five instantiations** under `inst/specs/`, all through `test-spec.R` — whose
 shipped-spec test is driven off `el_spec_files()` with a `setequal` on the
 roster (2026-10-14), so a spec added without a test of its own is still
 validated — and nothing else in that directory, because `el_spec_files()`
@@ -1309,7 +1309,7 @@ them:
    it now exercises the typology as well as the component abstraction, and it
    is the guardrail against WIDA assumptions leaking into `spec.R` or any
    `compute_*()`. Do not pre-enumerate other instruments.
-4. `00_MA_EL_Spec.R` — **Massachusetts; the first and only shipped spec that
+4. `00_MA_EL_Spec.R` — **Massachusetts; the first shipped spec that
    carries a real state's exit rule** (added 2026-10-14, the user's decision
    that it ships publicly). **Type 2**, composite plus floor: Overall
    Composite level `>= 4.2` **and** Literacy (`written`) level `>= 3.9`,
@@ -1365,6 +1365,44 @@ them:
    2's `$blocked_groups` fills with both directions
    (`OVERALL_LEVEL only` / `WRITTEN_LEVEL only`). Until this spec those paths
    were exercised only by the synthetic `make_check3_type2_spec()` fixture.
+5. `00_IL_EL_Spec.R` — **Illinois, the 2017–2026 ACCESS administrations**
+   (added 2026-11-18, the user's decision that it ships publicly; written in
+   the short form). **Type 1**: Overall Composite level `>= 4.8`, K–12,
+   automatic in the state's SIS, no committee route. WIDA-shaped, no data,
+   no `delivery` crosswalk, `verification$status = "provisional"`.
+
+   **Four policy fields are sourced**, each to public ISBE, Illinois
+   Administrative Code or USED documents listed (with URLs, checked online
+   2026-11-17) at the foot of the file: `exit`, `timelines`,
+   `academic_benchmark` (the 13 August 2025 Proficient cuts by grade for
+   grades 3–8, `proficient_level = 3`) and `suppression` (`min_cell` 10).
+   `district_size_bands` and `error_tolerance` are package defaults and read
+   `[DERIVED — VERIFY]`. Where the file converts the state's wording into the
+   package's count it says so `[PROPOSED — CONFIRM]`: the five-year ESSA
+   target "commencing in first grade" becomes `max = on_time = 8` years in
+   status for a K entrant (7 from grade 1, which the short form cannot hold),
+   and the Report Card's long-term EL becomes `lt_el = 8`. Its header also
+   records the earlier rules (≤ 2013, 2014–2016), the 2026 rescaling, the
+   2027+ review and the absence of an Alternate ACCESS exit rule: **do not
+   apply it to other test years.**
+
+   **The first real-state spec with an inline academic block**, so the first
+   whose Checks 3–4 run on a real state's cuts. Grade 11 (SAT, then ACT) is
+   declared with no cut and falls back to the delivered level `>= 3`
+   (`.academic_proficiency()`). Bands keep the deck's scheme, so 4.8 sits
+   inside `4.5-4.9`, the same call MA makes `[PROPOSED — CONFIRM]`.
+
+   *Verified 2026-11-18* on the sim's tables (same component keys): every
+   built stage runs without error — Prep 2 15/18 slots, Check 1 13/14 (the
+   K-2015 cohort; three usable K cohorts, not five, because `max = 8` needs a
+   longer panel), Check 2 6/7, Check 3 7/8 (all 14 panels; grade 11's
+   `PROFICIENCY_BASIS` is `"level"`), Check 4 3/6; every `NULL` is a Type 1
+   gate or a Check 4 later pass. `test-spec.R` 272 → 318 passing, 0 failing;
+   no other test reads `inst/specs/`. `devtools::check()` was **not** run: the
+   staging export was blocked by the protected-data hook (a recursive copy in
+   the scratchpad read as a search from `C:`), so it is owed. Guide pages
+   that list the shipped specs (`guide/setup.qmd`, `guide/index.qmd`) are not
+   updated; that refresh is deferred with the guide's short-form rewrite.
 
 ## 6. Per-stage blocks
 
@@ -2038,7 +2076,7 @@ The shell is built across **nine scoped sessions** — the foundation session (`
    separate-objects form and the SGP-long fixture with identical output;
    `as_academic_long()` tested against a stateSummative-shaped fixture.
 4. `test-spec.R`: every spec `el_spec_files()` lists passes (three at the
-   shell, four since 2026-10-14); every policy field carries a
+   shell, four from 2026-10-14, five since 2026-11-18); every policy field carries a
    `source` (per field, not per scalar, §5); `types` validates against
    `terms`; ELPA21 (Type 6) constructs.
 5. **All eight `.qmd` render to docx and html** against the sim + SIM spec,

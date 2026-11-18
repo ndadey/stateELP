@@ -1,4 +1,4 @@
-# Spec layer: constructor, validator, the four shipped instantiations, and the
+# Spec layer: constructor, validator, the five shipped instantiations, and the
 # guardrail that keeps component names out of the rest of the package.
 
 # ---- the shipped specs -------------------------------------------------------
@@ -10,7 +10,8 @@ test_that("every shipped spec constructs and validates", {
   # roster so an addition is a decision rather than a drift.
   ids <- el_spec_files()
   expect_setequal(ids, c("00_SIM_EL_Spec", "00_TEMPLATE_EL_Spec",
-                         "00_ELPA21_EL_Spec", "00_MA_EL_Spec"))
+                         "00_ELPA21_EL_Spec", "00_MA_EL_Spec",
+                         "00_IL_EL_Spec"))
   for (id in ids) {
     spec <- read_el_spec(id)
     expect_s3_class(spec, "el_spec")
@@ -177,6 +178,63 @@ test_that("MA is the first shipped spec whose Type gate opens on a real rule", {
   # must appear, or the second criterion is doing no independent work.
   expect_gt(nrow(cw$blocked_groups), 0L)
   expect_length(unique(cw$blocked_groups$BLOCKED_BY), 2L)
+})
+
+test_that("IL spec carries its four sourced fields and marks the rest", {
+  # Pinned against the documents the file's header cites, so a later edit
+  # cannot drift them: an Overall Composite of 4.8 from the 2017 ACCESS, and
+  # the 13 August 2025 Proficient cuts by grade.
+  spec <- read_el_spec("00_IL_EL_Spec")
+
+  expect_identical(spec$program$short_name, "IL")
+  expect_identical(spec$program$state, "Illinois")
+  expect_identical(spec_headline(spec), "overall")
+  expect_identical(spec_headline_label(spec), "Overall Composite")
+
+  # Type 1: one criterion on the score, no floor, no discretionary route.
+  expect_identical(spec_exit_types(spec), 1L)
+  expect_false(spec_has_type(spec, 2:6))
+  p <- spec$policy$exit$pathways
+  expect_length(p, 1L)
+  expect_false(p[[1]]$discretionary)
+  expect_identical(p[[1]]$terms[[1]],
+                   list(component = "overall", measure = "level", op = ">=",
+                        value = 4.8))
+
+  # The timelines are converted to the package's count of years in status,
+  # a K entrant's target; the header shows the arithmetic.
+  tl <- spec$policy$timelines
+  expect_identical(spec_max_years(spec), 8L)
+  expect_identical(tl$on_time_rule$default_years, 8L)
+  expect_identical(tl$lt_el_years, 8L)
+  expect_identical(spec_min_cell(spec), 10L)
+
+  # Grades 3-8 read the 2025 Proficient cut; grade 11 (SAT, then ACT) has
+  # none and falls back to the delivered level >= 3.
+  expect_identical(spec_academic_subjects(spec), c("ELA", "Math"))
+  ela <- c(735, 737, 739, 741, 743, 745)
+  math <- c(732, 740, 740, 742, 745, 745)
+  for (i in seq_along(3:8)) {
+    g <- as.character((3:8)[i])
+    expect_identical(spec_proficient_cut(spec, "ELA", g), ela[i], info = g)
+    expect_identical(spec_proficient_cut(spec, "Math", g), math[i], info = g)
+  }
+  expect_true("11" %in% spec_academic_grades(spec, "ELA"))
+  expect_true(is.na(spec_proficient_cut(spec, "ELA", "11")))
+  expect_true(is.na(spec_proficient_cut(spec, "Math", "11")))
+  expect_identical(spec_proficient_level(spec), 3L)
+
+  # Sourced: exit, timelines, suppression, academic. Everything else is a
+  # package default and reads [DERIVED - VERIFY].
+  sourced <- c("exit", "timelines", "suppression", "academic_benchmark")
+  for (nm in sourced) {
+    expect_false(identical(spec$policy[[nm]]$source, "provisional"), info = nm)
+  }
+  expect_match(spec$policy$exit$source, "overall composite of 4\\.8")
+  for (nm in setdiff(names(spec$policy), sourced)) {
+    expect_identical(spec$policy[[nm]]$source, "provisional", info = nm)
+  }
+  expect_identical(spec$verification$status, "provisional")
 })
 
 # ---- the short form el_spec() takes ------------------------------------------

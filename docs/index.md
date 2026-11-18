@@ -332,14 +332,15 @@ column crosswalk and value maps for a state's own files), `district_sizes`,
 the document it is written in; every field it does not name renders as
 **`[DERIVED — VERIFY]`**.
 
-Four specs ship in `inst/specs/`:
+Five specs ship in `inst/specs/`:
 
 | Spec | Instrument | Exit type | Purpose |
 |---|---|---|---|
 | `00_SIM_EL_Spec` | WIDA-shaped | Type 1 | Matches the simulated data |
 | `00_TEMPLATE_EL_Spec` | WIDA ACCESS | Type 1 | **Starting point for a real state spec written by hand.** Shows every optional field: cut scores by grade, the performance-level names, and a `delivery` block with a non-identity column crosswalk and value maps. Every value is a placeholder and describes no state. No data |
 | `00_ELPA21_EL_Spec` | ELPA21 | Type 1 | Guardrail against WIDA assumptions: a categorical score with no scale score and no declared bands; exit is the Proficient determination. Illustrative values, no data |
-| `00_MA_EL_Spec` | WIDA ACCESS | Type 2 | **Massachusetts.** The only shipped spec with a real state's exit rule, and the only one whose Type gate opens on one: Overall Composite ≥ 4.2 **and** Literacy ≥ 3.9, cited to a public DESE document in `sources`. Every other value is a placeholder. No data |
+| `00_MA_EL_Spec` | WIDA ACCESS | Type 2 | **Massachusetts.** A real state's exit rule, and the only shipped spec whose Type gate opens on one: Overall Composite ≥ 4.2 **and** Literacy ≥ 3.9, cited to a public DESE document in `sources`. Every other value is a placeholder. No data |
+| `00_IL_EL_Spec` | WIDA ACCESS | Type 1 | **Illinois, 2017–2026 ACCESS.** Four fields sourced to public ISBE, Illinois Administrative Code and U.S. Department of Education documents: exit at Overall Composite ≥ 4.8, the timelines (converted to the package's count of years), the grade 3–8 academic Proficient cuts, and the suppression minimum. The only shipped real-state spec with academic cut scores. No data |
 
 ```r
 el_spec_files()                         # list shipped specs
@@ -361,15 +362,21 @@ spec_intake_form("XX_spec_intake_form.md")       # the form, to send out
 my_spec <- build_el_spec("specs/XX_EL_Spec.R")   # its questions, at the console
 ```
 
-**One shipped spec describes a real state's exit criteria, and only that
-part of it is real.** `00_MA_EL_Spec` carries Massachusetts' ACCESS exit
-rule because it is stated in a public DESE document, which is cited in the
-file. Nothing else in that spec is Massachusetts policy: the maximum
-timeline and the suppression minimum are placeholders rendered as
-`[DERIVED — VERIFY]`, the on-time timeline and the long-term-EL year are
-left out, and the spec's own `status` is `provisional` rather than
-`verified`. It ships without data, without academic cut scores and without a
-column crosswalk. Read the file's header before using any number in it.
+**Two shipped specs describe real states, and only their sourced fields are
+real.** `00_MA_EL_Spec` carries Massachusetts' ACCESS exit rule because it
+is stated in a public DESE document, which is cited in the file. Nothing
+else in that spec is Massachusetts policy: the maximum timeline and the
+suppression minimum are placeholders rendered as `[DERIVED — VERIFY]`, the
+on-time timeline and the long-term-EL year are left out, and it ships
+without academic cut scores. `00_IL_EL_Spec` sources four fields to public
+Illinois documents, each cited in the file; its district-size bands and
+error-tolerance answer are package defaults. Where it converts Illinois's
+wording into the package's counting (the timelines, the reading of grade 11
+without a cut) its header says so and marks the step
+`[PROPOSED — CONFIRM]`, and it holds the rule for the 2017–2026 ACCESS
+administrations only. Both have `status` `provisional` rather than
+`verified`, and neither ships with data or a column crosswalk. Read a
+file's header before using any number in it.
 
 ### Exit-criteria typology
 
