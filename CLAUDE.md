@@ -132,7 +132,7 @@ Maintain this table. It starts as the shell inventory.
 | `R/disclosure.R` | **built 2026-10-09** (`d63e2eb`) | `scan_output_for_ids()` (tokenizes the output once and checks every id against it, never a sample; `.docx`/`.xlsx` scanned as unzipped XML) and `check_output_disclosure()`. The rule, decided 2026-10-09: student-level rows may sit on disk in results objects but never reach a `.docx`, `.html` or `.xlsx` (§9) |
 | `README.md` | **written** (`28a0626`, `5f4c86f`; Check 4 and guide sections edited 2026-10-09, committed with this file) | the public summary. Its stage-status table, "What the built stages produce", minimum viable delivery and example-report table mirror this section and §4 — change them together. Its Check 4 sample reads "Check 3's cross-section, limited to current ELs with both a same-year ELP level and a content score" (2026-10-13; it said "Same as Check 3"), matching §6. Source of `docs/index.md` |
 | `docs/` (GitHub Pages) | **live 2026-10-09 for Prep 2 and Checks 1–3** (`934fa12`, `f4b2e41`); the Check 4 report and `guide/` ship with this commit | https://ndadey.github.io/stateELP/. Example reports (html + docx): Prep 2 and Checks 1–3 rendered from a clean export of `5f4c86f`, Check 4 from `f4b2e41`; `index.md` generated from the README, never hand-edited; `guide/` pages. Every report and guide page scanned: no simulated student id appears. `.Rbuildignore`d. `docs/index.md` regenerated from the current README 2026-10-13 and committed with this file. Every `docs/` output (example reports and guide pages) was scanned with `check_output_disclosure()` against `el_roster_sim` before that commit |
-| `guide/` → `docs/guide/` | **10 pages, re-rendered 2026-10-13** | the walkthrough guide (§1): `index`, `setup`, one page per stage. Drafted and adversarially reviewed page by page against the code (2026-10-09), then a cross-page consistency pass (2026-10-13, prose only); all ten re-rendered after it from a clean export of `f4b2e41` (no `R/` change since, so it equals the committed code), every code chunk executed. `.Rbuildignore`d. Refresh with `rs_guide()` from the repo root, everything committed (it `load_all()`s the working tree and disclosure-scans each page). *2026-10-14:* `index` gains "Run every stage at once", which executes `dev/run_all_stages.R` verbatim (`#| code: !expr readLines(...)` on `params$pkg_path`), so the page and the script cannot drift; `decision` points to it. Both re-rendered from a clean export of `abe2960` plus the script |
+| `guide/` → `docs/guide/` | **10 pages, short form; all re-rendered 2026-11-18** | the walkthrough guide (§1): `index`, `setup`, one page per stage. Drafted and adversarially reviewed page by page against the code (2026-10-09), then a cross-page consistency pass (2026-10-13, prose only); all ten re-rendered after it from a clean export of `f4b2e41` (no `R/` change since, so it equals the committed code), every code chunk executed. `.Rbuildignore`d. Refresh with `rs_guide()` from the repo root, everything committed (it `load_all()`s the working tree and disclosure-scans each page). *2026-10-14:* `index` gains "Run every stage at once", which executes `dev/run_all_stages.R` verbatim (`#| code: !expr readLines(...)` on `params$pkg_path`), so the page and the script cannot drift; `decision` points to it. Both re-rendered from a clean export of `abe2960` plus the script. *2026-11-18:* all ten rewritten to the short-form spec (`3b6e8f1`) — the 2026-11-11 edits for the state test run, never rendered until now, ride along. Pages show the short form a state writes (setup prints the SIM file in full) and read values only through the `spec_*()` accessors, `print()`, `add_lt_el()` or a stage's `$meta`, never the expanded list; variants (a Type 2 floor, `costlier_error` answers, SGP value maps, a crosswalk) are built with `el_spec()` from the SIM spec's arguments written out as `sim`, each page asserting `identical(do.call(el_spec, sim), spec)` (TRUE on all five). Prep 1 and Prep 3 now say what goes in the analyst's notes rather than the spec (authority, discretionary routes, growth, the program inventory, who answered the error-tolerance question). Re-rendered from clean exports, every chunk executed: nine pages from `3b6e8f1`, and `setup` from `7bfd8a4`, after the scan stopped it on `el_data_format()`'s example id (Known issues); the nine pages' sources are byte-identical in both commits. All ten then scanned together against `el_roster_sim`: no id. No exported accessor reads the exit rule, `timelines$lt_el`, `costlier_error`, `sources`/`status` or `delivery`; whether to add some is open `[PROPOSED — CONFIRM]` |
 | `dev/run_all_stages.R` | **written 2026-10-14** | copy-and-edit template that fills every per-stage results list: builds the bundle once, runs each stage whose `run_<stage>()` exists into one named list `results` (all eight `stage_ids()`, unbuilt stages `NULL`, picked up with no edit once built; Prep 1/3 get `run(spec)`, Decision `run(results, spec)`), saves `results/<stage>_results.rds` (the `render_step()` file name, so any one feeds `results_file`), and builds `slot_report` (`STAGE`, `SLOT`, `FILLED`, `DETAIL`: a filled slot's size, or why it is `NULL` — `$meta$pending`, an unmet Type gate read from the spec, the stage's own `<slot>_note`, or no input). On the sim: 43 of 52 built-stage slots filled, ~76 s. Not part of the package (`^dev$`); the guide's `index` page runs it as written, so copy it rather than edit it in place |
 | `dev/bootstrap_sandbox.sh` | **written 2026-09-20, untracked until 2026-10-10** | R + Quarto for a Claude cloud sandbox only; refuses to run outside a root Linux container with `/mnt/user-data` (environment fact 6) |
 | `dev/prompts/stage_session_template_fast.md` | **written 2026-09-21, untracked until 2026-10-10** | deadline variant: no `devtools::check()`, Word only (§14) |
@@ -422,6 +422,20 @@ commit's hash and date, as §13 does for built items — never deletes it.
   take the deck default. The same `MA_MCAS` pointer is also the one spec id
   `read_el_spec()` would fail on, because no such file exists — nothing
   resolves it, so nothing tries (§5).
+- *`prep2_` (found 2026-11-18 by the guide session).* The Type 1 branch of
+  `prep2_population.qmd` (`:399`) still tells the reader to "Declare the
+  additional criteria in `spec$policy$exit$pathways` and set `types`" —
+  long-form paths the short form replaced with a second entry in `exit`
+  (the Type is derived). Reader-facing; a one-line fix for a `prep2_`
+  session.
+- *`el_data_check.R` (found 2026-11-18 by `rs_guide()`'s disclosure scan).*
+  `el_data_format()` gives `"S000123"` as the example `STUDENT_ID`
+  (`R/el_data_check.R:39, 102, 128`), and that string is a simulated
+  student's id, so any page that prints the format table's `EXAMPLE`
+  column fails the scan. `guide/setup.qmd` replaces the example before
+  printing; the real fix is an example outside the sim's id space (the
+  sim's ids are a letter and six digits, e.g. `N000001`). Owner: whoever
+  owns `el_data_check.R` (the state-test-run file, §3).
 - *Roxygen (foundation owner, found 2026-10-14).* `devtools::document()`
   prints `✖ stateELP-package.R:17: Block must have a @name` under roxygen2
   8.1.0: the `NULL` block carrying `@importFrom rlang .data .env` and its
@@ -759,10 +773,14 @@ SGP fixtures' value maps and ACCESS level names moved from the SIM spec into
 files, `renv` dropped): **0 errors, 0 warnings, 3 NOTEs** (the known three),
 25m 18s, tests 569 s — run before the last edit, `print.el_spec()`'s grade
 runs (`.grade_runs()`, "3-8, 11" not "3-11"), after which `test-spec.R` was
-rerun and passes. **Not done:** the walkthrough guide
-(`guide/setup`, `prep1`, `check3`, `check4`, `decision`) still describes and
-reads the long form — several chunks read fields the short form drops — and
-`docs/` is not re-rendered; `docs/index.md` is regenerated from the README.
+rerun and passes. At the merge the walkthrough guide still described and
+read the long form, and `docs/` was not re-rendered (`docs/index.md` was
+regenerated from the README). **The guide is done** (2026-11-18,
+`3b6e8f1`, `7bfd8a4` and the commit carrying this sentence): all ten pages
+rewritten to the short form and `docs/guide/` re-rendered from clean
+exports of those commits (§3 table, guide row). **Still not done:** the example stage reports in `docs/`
+are not re-rendered from short-form code, so their rule string and pairing
+note show the pre-short-form wording (above).
 
 **Concurrent-session note (2026-09-21).** Check 1's Model 1 pass and Check 2's
 completion were built in two sessions running at the same time, which is worth
@@ -1910,8 +1928,11 @@ guardrail and reads correctly for any instrument. Introduce it once per
 document, then use the short form. A test in `test-render.R` greps every
 stage `.qmd` in `inst/templates/` for the word and fails on it — not R
 code (a reader-facing note in `R/` slipped through: §3 Known issues) and not
-the guide, which names the spec field `spec$elp$headline` and its accessors
-as code for analysts (32 occurrences); whether the guide's *prose* should be
+the guide, which names the accessors `spec_headline()`,
+`spec_headline_label()` and `elp_headline()` as code for analysts (26
+occurrences, 2026-11-18; it said `spec$elp$headline` too until the
+short-form rewrite, and a spec writes the field as `elp$score`); whether the
+guide's *prose* should be
 held to the rule is open `[PROPOSED — CONFIRM]`. The abstraction keeps its
 name in code, roxygen and this file.
 
