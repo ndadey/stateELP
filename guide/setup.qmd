@@ -70,9 +70,10 @@ The work runs in this order:
 **Status.** Everything on this page is built and tested, with three gaps.
 The package does not ingest raw state files: you shape the tables yourself,
 against the format check. It does not accept one wide student-year table with
-a column per ELP score. And it accepts, but does not resolve, an academic
-block that points to another spec by `spec_id` (see
-[The academic block](#the-academic-block)).
+a column per ELP score. And a spec can hold only an exit rule of minimum
+levels that a student must all meet: a rule with a scale-score criterion, an
+"any one of" choice, a committee route or a second route to exit cannot be
+written yet (see [Exit-criteria Types](#exit-criteria-types)).
 
 Every guide page uses the same names for your own objects: `my_spec` for your
 spec, `my_bundle` for your bundle, and `my_base`, `my_roster` and
@@ -131,25 +132,40 @@ renders both Word and HTML.
 
 ### What a spec holds
 
-A spec is a named list with class `el_spec`. It has seven blocks. The split
-between `elp`, `policy` and `data` follows who can change a value:
+A spec is one call to `el_spec()`, kept in an R file of its own. It holds
+what your state has to tell the package, and nothing else:
 
-| Block | What it holds | Who changes it |
-|---|---|---|
-| `program` | The ELP assessment program the spec describes: `name`, `short_name`, `state`, `vendor`, `administration_year` | |
-| `elp` | The ELP instrument, its components, the component the exit rule uses (`headline`), the level scale, the ELP bands | The test vendor |
-| `policy` | The exit rule, timelines, growth targets, suppression, the academic benchmark, district-size bands, the inventory of what EL status gates (`policy$program`, not the `program` block), error tolerance | The agency or legislature |
-| `academic` | Content subjects, tested grades, proficiency cuts | The content-assessment program |
-| `data` | The column crosswalk (a map from your column names to the package's) and value maps for your files | Whoever delivers the files |
-| `verification` | How far the spec has been checked | You |
-| `source_documents` | Citations for the values | You |
+| Field | What it holds |
+|---|---|
+| `id`, `name` | A short id, which the bundle and every results object record as `$meta$spec_id`, and the state's name for display |
+| `status` | How far the values can be trusted: `"verified"`, `"unverified"`, `"provisional"` or `"synthetic"` |
+| `elp` | The ELP test: its name (`test`), the score every stage runs on (`score`) and its level range (`levels`). Optionally the state's own name for the score (`label`), the reporting bands (`bands`) and the level names (`level_labels`) |
+| `exit` | The exit rule: the minimum level on each score, named by component |
+| `timelines` | Years in EL status: the maximum timeline to exit (`max`, required), the on-time timeline (`on_time`) and the year from which a current EL is long-term (`lt_el`) |
+| `academic` | Optional. The state academic tests, by subject: the tested `grades` and the proficient cut (`proficient_cut`), plus optional `proficient_level` and `level_labels` |
+| `min_cell` | The suppression minimum, the smallest count a report shows. Default 10 |
+| `district_sizes` | Optional. The lower edge of each district-size group |
+| `costlier_error` | Optional. Prep 3's answer on which classification error is costlier. Default `"unknown"` |
+| `sources` | Optional. Where each sourced value is written down |
+| `delivery` | Optional. How your files differ from the package's tables: column crosswalks, value maps, and Prep 2's entry-dating settings |
 
-A **component** is one score the ELP assessment reports. A **domain** is a
-component measured directly (listening, speaking, reading, writing). A
-**composite** combines domains, such as WIDA's Overall Composite.
+Some things are not fields, because the package fixes them for every state:
+each criterion of the exit rule is a score's *level*, read as "at or above";
+a student must meet every criterion; there is one route to exit; exit is
+dated to the first year a student appears as former; and a student's initial
+ELP is their first annual score.
+
+Here is the simulated spec's file in full. A state's spec has the same
+shape, with its own values:
+
+```{r}
+#| comment: ""
+cat(readLines(el_spec_path("00_SIM_EL_Spec")), sep = "\n")
+```
 
 The package ships four specs. Read one by its id, or read your own by path.
-Reading a spec file also validates it.
+Reading a spec file runs `el_spec()`, which checks every field and builds
+the object every stage reads:
 
 ```{r}
 el_spec_files()
@@ -157,15 +173,55 @@ spec <- read_el_spec("00_SIM_EL_Spec")
 spec
 ```
 
-The printout summarizes the spec: the instrument, the number of components
-and which one the exit rule uses, the declared exit-criteria Type, the
-timelines (the maximum years to exit, and the ESSA timeline: the time to
-proficiency the state set under the federal Every Student Succeeds Act,
-which Check 2 uses to define on-time exit), the suppression minimum and the
-verification status. The last
-line lists the policy entries still marked provisional. In the simulated
-spec that is all of them, by design. The simulated state calls its score
-the "`r spec_headline_label(spec)`", and every stage report uses that name.
+The printout summarizes the spec: the ELP test, the score the stages use
+with its level range and bands, the exit rule and the Type the package reads
+from it, the timelines, the academic tests, the suppression minimum and the
+status. The timelines are the maximum years to exit, the on-time timeline
+(the package calls it the ESSA timeline, after the time to proficiency a
+state sets under the federal Every Student Succeeds Act; Check 2 uses it to
+define on-time exit), and the long-term EL year. The last line lists the
+fields that have no source yet. In the simulated spec that is all of them,
+by design. The simulated state calls its score the
+"`r spec_headline_label(spec)`", and every stage report uses that name.
+
+The object `el_spec()` returns is the package's own expanded form, not what
+you wrote. Read values back through the `spec_*()` accessors rather than
+from inside it:
+
+```{r}
+spec_headline(spec)                       # the score every stage runs on
+spec_headline_label(spec)                 # what the reports call it
+spec_bands(spec)$labels
+c(max = spec_max_years(spec), on_time = spec_essa_years(spec),
+  min_cell = spec_min_cell(spec))
+```
+
+### The ELP score and its components
+
+A **component** is one score the ELP test reports. A **domain** is measured
+directly (listening, speaking, reading, writing). A **composite** combines
+domains, such as WIDA's Overall Composite. Component names come from a fixed
+vocabulary:
+
+```{r}
+el_component_vocabulary()
+```
+
+`elp$score` and the names in `exit` are keys from this list. Map your test
+onto it; never invent a name for something the vocabulary covers. WIDA's
+Overall Composite is `overall` and its Literacy composite is `written`.
+`elp$label` gives your state's own name, so the reports say "Overall
+Composite" rather than `overall`. To name a second exit criterion as well,
+key the labels by component, as the Massachusetts example below does:
+`label = c(overall = "Overall Composite", written = "Literacy")`.
+
+`elp$levels` is the level range, `c(1, 6)` for WIDA ACCESS, or the level
+names in order for a test that reports categories (a categorical score is
+taken to have no scale score). `elp$bands` gives the lower edge of each
+reporting band: `c(1, 2, 3, 4, 4.5, 5)` gives the six bands above, from
+`1.0-1.9` to `5.0+`. Without `bands`, each level is its own band.
+`elp$level_labels` names the whole levels of a numeric range, and is needed
+only when a delivery reports levels as names.
 
 ### Answer the questions: `build_el_spec()`
 
@@ -198,18 +254,21 @@ Choosing WIDA ACCESS or ELPA21 fills in what every state using the test
 shares (the publisher, the scores, the level scale) and offers the test's
 usual exit rule to confirm; the WIDA exit cut is never pre-filled, because it
 differs by state. Academic cut scores are asked grade by grade when they
-differ by grade. A rule with more than one route to exit (Type 5) needs its
-extra pathways added to the file by hand.
+differ by grade. A rule the spec cannot hold (see
+[Exit-criteria Types](#exit-criteria-types)) stops the build and names the
+answer to change. Answers the spec has no field for, such as who makes the
+exit decision, growth targets and the program inventory, are kept in the
+answers file the builder saves beside the spec
+(`specs/XX_EL_Spec_answers.rds`), for your Prep 1 and Prep 3 records.
 
 ### Or start from the template
 
 `00_TEMPLATE_EL_Spec` is the starting point for writing a spec by hand. It
-has the published WIDA ACCESS component structure, a six-level scale, a
-column crosswalk that renames vendor-style column names, an academic block
-with cut scores by grade, the long-term EL year and the value maps. It is
-complete: filling it in gives a whole spec. **Every policy value in it is a
-placeholder that describes no state.** The simulated spec, `00_SIM_EL_Spec`,
-is a complete worked example.
+shows every optional field: a WIDA ACCESS score with its level names, cut
+scores by grade with the performance-level names, the long-term EL year, and
+a `delivery` block that renames vendor-style columns and maps grade and
+subject codes. **Every value in it is a placeholder that describes no
+state.** The simulated spec above is a complete worked example.
 
 ```{r}
 template <- read_el_spec("00_TEMPLATE_EL_Spec")
@@ -219,24 +278,25 @@ template
 `00_MA_EL_Spec` is what a part-finished state spec looks like. Its exit rule
 is real — Massachusetts exits ACCESS at an Overall Composite of 4.2 together
 with a Literacy floor of 3.9, cited in the file to a public DESE document —
-and everything else under `policy` is a placeholder. That is the normal state
-of a spec early on, and the `source` field is how the difference stays
-visible: the exit block carries the citation, every other block carries
-`provisional`, and the last line of the printout lists exactly which ones.
+and everything else is a placeholder. That is the normal state of a spec
+early on, and `sources` is how the difference stays visible: it names `exit`
+with its citation, and the last line of the printout lists every other
+field.
 
 ```{r}
 ma <- read_el_spec("00_MA_EL_Spec")
 ma
 ```
 
-It is also the only shipped spec that declares a Type other than 1 against a
-real rule, so it is the one to read if you want to see what the Type-gated
-Additional checks are for: a composite-plus-floor rule is the case where
-Prep 2's criteria crosswalk, Check 2's blocked-by-one-criterion groups and
-Check 3's contested-zone models all have something to say. Two things it
-deliberately does not have: an academic block, because the source document
-carries no MCAS cuts and inventing them would attribute them to the state,
-and a column crosswalk, because no Massachusetts delivery has been seen.
+It is also the only shipped spec whose real rule has more than one
+criterion (Type 2), so it is the one to read if you want to see what the
+Type-gated Additional checks are for: a composite-plus-floor rule is the
+case where Prep 2's criteria crosswalk, Check 2's blocked-by-one-criterion
+groups and Check 3's contested-zone models all have something to say. Two
+things it deliberately does not have: an `academic` block, because the
+source document carries no MCAS cuts and inventing them would attribute
+them to the state, and a `delivery` block, because no Massachusetts delivery
+has been seen.
 
 Copy whichever file fits into your own project, edit it, and read it back by
 path. Keep your spec out of the package's own `inst/specs/` folder: the
@@ -252,75 +312,103 @@ my_spec <- read_el_spec("specs/XX_EL_Spec.R")
 
 The file must define exactly one `el_spec` object. Renaming the template's
 `TEMPLATE_EL_Spec` object is optional but avoids confusion. Then work
-through the blocks:
+through the fields:
 
-- **`program`.** Set `short_name`. The bundle and every results object
-  record it as `$meta$spec_id`. It is a label, not the file id you pass to
+- **`id` and `name`.** The bundle and every results object record `id` as
+  `$meta$spec_id`. It is a label, not the file id you pass to
   `read_el_spec()`. Do not use `"SIM"`: the stage reports treat that id as
   the simulated data and say so in their captions.
-- **`elp`.** Keep the components your instrument reports and give each its
-  `native_name`, the name your state uses. Component names come from a fixed
-  vocabulary, shown below. Map your instrument onto it; never invent a new
-  name for something the vocabulary covers. Set `headline` to the component
-  your exit rule uses. Check `level_scale` and `bands`.
-- **`policy`.** Replace every placeholder with your state's rule and give
-  each entry a `source`. [Prep 1](prep1.html) walks through every policy
-  entry and what it controls downstream.
-- **`academic`.** Replace the placeholder subjects, grades, level labels and
-  cut scores with your state's (see [The academic block](#the-academic-block)).
-- **`data`.** Map your file's column names (see
+- **`elp`.** Set `score` to the component your exit rule is written on and
+  `label` to your state's name for it. Check `levels` and `bands`.
+- **`exit`, `timelines` and `min_cell`.** Replace every placeholder with your
+  state's rule. [Prep 1](prep1.html) walks through each field and what it
+  controls downstream.
+- **`academic`.** Replace the placeholder subjects, grades and cut scores
+  with your state's (see [The academic block](#the-academic-block)).
+- **`delivery`.** Map your files' column names and codes (see
   [The data crosswalk](#the-data-crosswalk)).
-- **`verification`.** Set `status` to `"verified"`, `"unverified"`,
-  `"provisional"` or `"synthetic"`, and record who checked it and when.
-
-```{r}
-el_component_vocabulary()
-```
+- **`sources` and `status`.** Say where each sourced value is written down
+  (next section), and set `status`.
 
 A long-term EL is a student who stays in EL status for many years;
-`policy$timelines$lt_el_years` is the year in status from which the state
-counts a current EL as long-term, the structured form of the text in
-`lt_el_definition`. Without it, the package cannot flag long-term ELs: the
-`LT_EL` flag is `NA` throughout, Prep 2's time-in-status view
+`timelines$lt_el` is the year in status from which the state counts a
+current EL as long-term. Without it, the package cannot flag long-term ELs:
+the `LT_EL` flag is `NA` throughout, Prep 2's time-in-status view
 (`$time_in_status`) is `NULL`, and its profile of current ELs loses the new
-versus long-term split. The template carries a placeholder for it.
+versus long-term split. The template carries a placeholder for it; the
+Massachusetts example leaves it out, so the printout says "long-term EL not
+set".
 
-`elp$alternate` records the state's alternate ELP test (such as WIDA
-Alternate ACCESS) for Prep 1's policy documentation: its name, who takes it,
-how its students exit. **No stage reads it**, and a `level_scale` given there
-changes no result. Students who take the alternate test are handled through
-`ELP_FORM = "alternate"` in the data (see [Alternate-test rows](#alternate-test-rows)):
-they stay out of the ELP bands and the exit-rule analyses and are reported
-as a group. Fill it in as far as it helps Prep 1, and no further.
+The spec has no field for the state's alternate ELP test (such as WIDA
+Alternate ACCESS). Students who take it are handled through
+`ELP_FORM = "alternate"` in the data (see
+[Alternate-test rows](#alternate-test-rows)): they stay out of the ELP bands
+and the exit-rule analyses and are reported as a group. Record the alternate
+test, and how its students exit, with your Prep 1 notes.
 
 ### Sources and `[DERIVED — VERIFY]`
 
-Only a fixed list of entries may appear under `policy`:
+`sources` is a named character vector: for each field you took from an
+official document, where it is written down. It can name `exit`,
+`timelines`, `academic`, `min_cell`, `district_sizes` and `costlier_error`.
+For example:
 
 ```{r}
-el_policy_fields()
+#| eval: false
+sources = c(exit      = "State regulation 1.23 (2019), section 4",
+            timelines = "State EL guidance (2022), page 7")
 ```
 
-`exit`, `timelines` and `suppression` are required. Every policy entry must
-carry a `source` string that says where its values came from. Use
-`source = "provisional"` for anything not yet taken from an official
-document. The spec's printout lists provisional entries on its
-**`[DERIVED - VERIFY]`** line, and the stage reports flag the provisional
-values they rely on the same way (Check 2's on-time timeline, for example),
-so a reader can see what still needs checking.
+A field `sources` does not name is provisional. The printout lists it on
+its **`[DERIVED - VERIFY]`** line, and the stage reports flag the
+provisional values they rely on the same way (Check 2's on-time timeline,
+for example), so a reader can see what still needs checking.
 
-The validator rejects an entry with no source. It reports every problem at
-once, so you can fix a spec in one pass:
+The source is recorded per field, not per value. If some of a field's values
+are verified and others are not, leave the field out of `sources` and say
+which in a comment.
+
+`el_spec()` checks every field and reports every problem at once, so you can
+fix a spec in one pass. To show it, here are the simulated spec's arguments
+written out as a list, `sim`, so that a copy can change one field at a time.
+Built with `el_spec()`, the list gives exactly the spec its file builds:
 
 ```{r}
-no_source <- spec
-no_source$policy$growth$source <- NULL
-tryCatch(validate_el_spec(no_source), error = function(e) cat(conditionMessage(e)))
+sim <- list(
+  id     = "SIM",
+  name   = "Simulated state",
+  status = "synthetic",
+  elp = list(test = "WIDA ACCESS", score = "overall",
+             label = "Overall Composite", levels = c(1, 6),
+             bands = c(1, 2, 3, 4, 4.5, 5)),
+  exit      = c(overall = 4.5),
+  timelines = list(max = 6, on_time = 5, lt_el = 6),
+  academic  = list(
+    ELA  = list(grades = 3:11, proficient_cut = 750, proficient_level = 4),
+    Math = list(grades = 3:11, proficient_cut = 750, proficient_level = 4)),
+  min_cell = 10,
+  delivery = list(entry_date_rule = "calendar_year")
+)
+identical(do.call(el_spec, sim), spec)
 ```
 
-The source is recorded per entry, not per value. If some values in an entry
-are verified and others are not, keep the entry provisional and say which in
-a comment.
+A copy with three mistakes fails with all three listed:
+
+```{r}
+bad <- modifyList(sim, list(status    = "draft",
+                            exit      = c(overall = 7),
+                            timelines = list(max = 6.5)))
+tryCatch(do.call(el_spec, bad), error = function(e) cat(conditionMessage(e)))
+```
+
+A field `el_spec()` does not take is named rather than ignored. That is what
+a spec written for an older version of the package, with blocks such as
+`policy` or `verification`, gets:
+
+```{r}
+tryCatch(el_spec(id = "XX", status = "provisional", policy = list()),
+         error = function(e) cat(conditionMessage(e)))
+```
 
 ### Exit-criteria Types
 
@@ -331,130 +419,134 @@ typology <- el_exit_typology()
 knitr::kable(tibble::tibble(TYPE = names(typology), STRUCTURE = unname(typology)))
 ```
 
-Declare the Types your rule has in `policy$exit$types`. A state can declare
-more than one. The declaration matters: several stages carry **Additional
-checks** for multi-criterion rules, and each one runs only when the spec
-declares a relevant Type. For a Type 1 state they are all `NULL`.
+You do not declare the Type: the package reads it from the shape of `exit`.
+One criterion, which must be on `elp$score`, is Type 1. Criteria on the
+domains alone are Type 6, a domain profile. Any other rule with two or more
+criteria is Type 2, a composite plus a floor. The Type matters: several
+stages carry **Additional checks** for multi-criterion rules, and each one
+runs only for a relevant Type. For a Type 1 state they are all `NULL`.
 
 ```{r}
 spec_exit_types(spec)
 spec_has_type(spec, 2:6)
+spec_exit_types(ma)          # the Overall Composite plus a Literacy floor
+profile <- modifyList(sim, list(exit = c(listening = 4, speaking = 4,
+                                         reading = 4, writing = 4)))
+spec_exit_types(do.call(el_spec, profile))
 ```
 
-The validator checks the declaration against the shape of the rule's
-`terms`, the structured criteria behind the display `rule`. A Type 6 (domain
-profile) declaration on a single composite term, for example, is an error:
+`el_spec()` checks that each criterion names a component, that its level
+lies within `elp$levels`, and that a single criterion is on `elp$score`. On
+a categorical scale a level is its position: the ELPA21 example's
+`c(determination = 3)` means its third level, "Proficient". It never
+evaluates the rule against student data.
 
-```{r}
-wrong_type <- spec
-wrong_type$policy$exit$types <- 6L
-tryCatch(validate_el_spec(wrong_type), error = function(e) cat(conditionMessage(e)))
-```
-
-The validator checks Types 1, 2, 3, 5 and 6 against the rule's structure. It
-accepts a Type 4 (compensatory) declaration as written. It never evaluates
-the exit rule against student data.
+The spec cannot yet hold a Type 3 rule (a criterion from another source,
+such as an academic score), a Type 4 rule (a compensatory combination) or a
+Type 5 rule (more than one route to exit, or a committee route), nor a
+criterion on a scale score or an "any one of" choice. If your state's rule
+has one of these, write the part the spec can hold, record the rest in your
+Prep 1 notes, and treat every result that depends on the rule as describing
+that simplified rule.
 
 ### The academic block
 
 Content-area (academic) results feed Check 2's academic summary, Check 1's
-Model 2, and Checks 3 and 4. Those stages read the subjects, tested grades
-and proficiency cuts from `spec$academic`. The simulated spec writes the
-block inline:
+Model 2, and Checks 3 and 4. Those stages read each subject's tested grades
+and proficient cut from `academic`:
 
 ```{r}
 spec_academic_subjects(spec)
-str(spec$academic$ELA)
-spec$policy$academic_benchmark$proficient_level
+spec_academic_grades(spec, "ELA")
+spec_proficient_cut(spec, "ELA", "5")
+spec_proficient_level(spec)
 ```
 
-- `grades` lists the tested grades as character. Use `NULL` for an
-  end-of-course subject; the tested grade then comes from the data.
-- `level_labels` are the performance levels, lowest first, exactly as the
-  academic file's `ACHIEVEMENT_LEVEL` holds them (`c("BB", "B", "P", "A")`, or
-  `c("1", "2", "3", "4")` for a file of numbers). Labels are translated to
-  1, 2, ... on intake.
-- `cuts` are the **minimum** scale score of each level above the first, read
-  with `op = ">="`. A score exactly at a cut belongs to the higher level. The
-  validator rejects any other operator. Give **one vector** when the cuts are
-  the same in every grade, as the simulated spec does, or **a list named by
-  grade** when they differ, which is the usual case:
+- `grades` lists the tested grades. Use `NULL` for an end-of-course subject;
+  the tested grade then comes from the data.
+- `proficient_cut` is the lowest proficient scale score, read as "at or
+  above": a score exactly at the cut is proficient. Give **one number** when
+  it is the same in every grade, as the simulated spec does, or **numbers
+  named by grade** when it differs, which is the usual case. The template
+  does the second:
 
 ```{r}
-str(template$academic$ELA$cuts[1:2])
 spec_proficient_cut(template, "ELA", "3")
 spec_proficient_cut(template, "ELA", "4")
 ```
 
-- `policy$academic_benchmark$proficient_level` says which level counts as
-  proficient: its position in `level_labels`, lowest = 1. The simulated spec
-  uses level `r spec$policy$academic_benchmark$proficient_level` of
-  `r length(spec$academic$ELA$level_labels)`. Once `academic` names a
-  subject, it must be a whole number; the validator says so when the spec is
-  read.
+- `proficient_level` (optional) is the position of the lowest proficient
+  performance level, lowest = 1. Check 2's academic summary reads
+  proficiency from the academic file's own `ACHIEVEMENT_LEVEL` against it,
+  and Checks 3 and 4 do so for a grade with no cut. It must be the same in
+  every subject. The simulated spec uses level
+  `r spec_proficient_level(spec)`.
+- `level_labels` (optional) are the performance levels, lowest first,
+  exactly as the academic file's `ACHIEVEMENT_LEVEL` holds them
+  (`c("BB", "B", "P", "A")`). Labels are translated to 1, 2, ... on intake.
+  Leave it out when the file already carries numbers.
 
 Each grade's results in Checks 3 and 4 are read against that grade's cut.
-Where the spec gives no cut for a grade (no entry in the list, or
-`cuts = NULL`), those checks read proficiency from the academic file's own
-`ACHIEVEMENT_LEVEL` at or above `proficient_level` instead, draw no cut line,
-and say so in the report. Entering the cut scores is still better: the
-red line, and every comparison against a scale score, needs them.
+Where the spec gives no cut for a grade (no entry for it, or no
+`proficient_cut` at all), those checks read proficiency from the academic
+file's own `ACHIEVEMENT_LEVEL` at or above `proficient_level` instead, draw
+no cut line, and say so in the report. Entering the cut scores is still
+better: the red line, and every comparison against a scale score, needs
+them.
 
-A spec may instead point to another spec by `spec_id`, as the ELPA21 and
-Massachusetts examples do:
+A spec with no `academic` block, like the ELPA21 and Massachusetts examples,
+names no subjects:
 
 ```{r}
-elpa21_example <- read_el_spec("00_ELPA21_EL_Spec")
-elpa21_example$academic
-spec_academic_subjects(elpa21_example)
+spec_academic_subjects(ma)
 ```
 
-The package does not resolve that pointer, so such a spec names no
-subjects. The stages that need them do not degrade to `NULL` slots, either.
-With an academic table in the bundle, `run_check2()` and `run_check3()` stop
-with the error "subscript out of bounds", and so does `run_check1()` when
-the delivery also carries the scale score. `run_check4()` returns `NULL`
-slots, and its `$meta$note` says the spec declares no academic subject.
-Write the block inline for your state, using the subject names your
-academic table carries in `SUBJECT` after the value map.
+The stages that need subjects do not all degrade to `NULL` slots. With an
+academic table in the bundle, `run_check2()` and `run_check3()` stop with
+the error "subscript out of bounds", and so does `run_check1()` when the
+delivery also carries the scale score. `run_check4()` returns `NULL` slots,
+and its `$meta$note` says the spec declares no academic subject. Write the
+block for your state, using the subject names your academic table carries
+in `SUBJECT` after the value map.
 
 The exit threshold Check 3 marks on its band axis is read from the exit
-rule's term on the component the exit rule mainly uses, wherever that term
-sits in the rule. The order of the terms does not matter.
+criterion on `elp$score`, wherever it sits in `exit`. The order of the
+criteria does not matter.
 
 ### The data crosswalk
 
-Your files will not use the package's column names. `data$columns` maps
-them. Each entry is a named character vector, **canonical name = delivered
-name**, with one vector per table (`roster`, `base`, `academic`). A column
-the crosswalk does not mention keeps its own name. The template renames two
-roster columns:
+Your files will not use the package's column names. `delivery` maps them:
+`roster`, `base` and `academic` are each a named character vector,
+**canonical name = delivered name**. A column the crosswalk does not mention
+keeps its own name. `delivery$value_maps` maps delivered *values*. The
+template's block, as written in its file:
 
 ```{r}
-template$data$columns$roster
-```
-
-`data$columns$value_maps` maps delivered *values*:
-
-```{r}
-str(spec$data$columns$value_maps)
+#| eval: false
+delivery = list(
+  roster = c(STUDENT_ID = "Student_UID", YEAR = "school_year"),
+  base   = c(STUDENT_ID = "Student_UID", YEAR = "school_year"),
+  value_maps = list(
+    GRADE = c("0" = "K"),            # kindergarten must arrive as "K"
+    CONTENT_AREA = list(
+      academic = c(READING = "ELA", MATHEMATICS = "Math")
+    )
+  )
+)
 ```
 
 - `CONTENT_AREA$base` maps the content-area codes in an SGP LONG_DATA file
-  to ELP components. `CONTENT_AREA$academic` maps them to academic subjects.
-  The simulated spec maps `READING` to `overall`. That is correct for some
-  states' WIDA files and wrong for others, where `READING` is the reading
-  domain. The package never guesses from a label.
+  to ELP components; `CONTENT_AREA$academic` maps academic codes to the
+  spec's subject names. In some states' WIDA files `READING` is the Overall
+  Composite, and in others it is the reading domain. The package never
+  guesses from a label: map it.
 - `GRADE` recodes grade values, such as `"0"` to `"K"`.
 
-The template also carries per-component column names under
-`data$columns$components`. The validator checks them against the component
-model, but `as_el_data()` does not read them: deliver ELP scores long, one
-row per component, as described next.
-
-Prep 2 also reads a few optional `data` fields, such as `entry_date_rule`,
-which says how to turn a program start date into a school year. See
-[Prep 2](prep2.html).
+The simulated spec needs no crosswalk, because the simulated tables already
+use the package's names. Its one `delivery` field is for Prep 2:
+`entry_date_rule`, which says how to turn a program start date into a
+school year. Prep 2 also reads `entry_sources` and
+`years_in_status_first_value`; see [Prep 2](prep2.html).
 
 ## The data: three long tables
 
@@ -506,8 +598,8 @@ deliveries:
   data.
 - **`ELP_FORM` is `annual` or `alternate`.** Only `annual` rows give the main
   ELP score. A vendor label such as `"general"` stops the bundle build.
-- **Kindergarten is `"K"`.** Map any other code in `value_maps$GRADE`, or
-  Check 1 finds no kindergarten cohort.
+- **Kindergarten is `"K"`.** Map any other code in
+  `delivery$value_maps$GRADE`, or Check 1 finds no kindergarten cohort.
 - **The ELP level is a number.** Alternate-test codes such as `"P2"` are not;
   see [Alternate-test rows](#alternate-test-rows).
 
@@ -539,9 +631,7 @@ messy_base <- tibble::tibble(
   STUDENT_ID = c("A", "A"), YEAR = c(2023, 2025),
   COMPONENT = spec_headline(spec), ELP_FORM = "general",
   SCALE_SCORE = c(300, NA), ACHIEVEMENT_LEVEL = c("2.1", "P2"))
-messy_spec <- spec
-messy_spec$data$columns$value_maps$GRADE <- NULL
-check_el_delivery(messy_base, roster = messy_roster, spec = messy_spec)
+check_el_delivery(messy_base, roster = messy_roster, spec = spec)
 ```
 
 **Errors** stop `as_el_data()`, or leave every stage that reads the column
@@ -738,7 +828,19 @@ ELP files in it. These files use `ID`, `CONTENT_AREA`, `"YYYY_YYYY"` years
 and a `VALID_CASE` flag.
 `as_el_data_sgp()` recodes them and hands them to `as_el_data()`. It keeps
 only `VALID_CASE` rows, maps `CONTENT_AREA` values to components through the
-spec's value map, and recodes grades. A small invented example:
+spec's value map, and recodes grades. The map is required. The simulated
+spec has none, so this example adds one to a copy of it, as a state whose
+`READING` code holds the Overall Composite would write it:
+
+```{r}
+sgp_spec <- do.call(el_spec, modifyList(sim, list(delivery = list(
+  value_maps = list(
+    GRADE        = c("0" = "K"),
+    CONTENT_AREA = list(base     = c(READING = "overall"),
+                        academic = c(ELA = "ELA", MATHEMATICS = "Math")))))))
+```
+
+A small invented delivery:
 
 ```{r}
 long_data <- tibble::tibble(
@@ -764,7 +866,7 @@ academic_sgp <- tibble::tibble(
   ACHIEVEMENT_LEVEL = c(2L, 2L)
 )
 
-sgp_bundle <- as_el_data_sgp(long_data, spec, academic = academic_sgp)
+sgp_bundle <- as_el_data_sgp(long_data, sgp_spec, academic = academic_sgp)
 sgp_bundle
 table(el_roster(sgp_bundle)$GRADE)
 unique(el_base(sgp_bundle)$COMPONENT)
@@ -782,7 +884,7 @@ warns:
 ```{r}
 whole_levels <- long_data
 whole_levels$ACHIEVEMENT_LEVEL <- floor(whole_levels$ACHIEVEMENT_LEVEL)
-tryCatch(as_el_data_sgp(whole_levels, spec),
+tryCatch(as_el_data_sgp(whole_levels, sgp_spec),
          warning = function(w) cat(conditionMessage(w)))
 ```
 
@@ -792,10 +894,11 @@ leaves a file already in the package's shape (ReportR's
 renames and recodes an SGP-shaped one. `as_el_data_sgp()` calls it for you.
 
 `as_el_data()` calls it too, on the academic table you pass, after the
-column crosswalk: subject codes in `value_maps$CONTENT_AREA$academic` become
-the spec's subject names (here
+column crosswalk: subject codes in `delivery$value_maps$CONTENT_AREA$academic`
+become the spec's subject names (here
 `r paste(spec_academic_subjects(spec), collapse = " and ")`), and labels
-such as BB / B / P / A become 1 to 4 through each subject's `level_labels`.
+such as BB / B / P / A become 1 to 4 through each subject's
+`level_labels`.
 With a value map, it stops on any code that is neither in the map nor a
 subject name. A table you have already passed through `as_academic_long()`
 comes back unchanged.
@@ -803,16 +906,16 @@ comes back unchanged.
 ### Renaming through the crosswalk
 
 Here the 200-student extract is renamed to the template's vendor-style
-names, and a copy of the spec maps them back:
+names, and a copy of the simulated spec maps them back with the template's
+`delivery` crosswalk:
 
 ```{r}
 roster_d <- dplyr::rename(roster_s, Student_UID = STUDENT_ID, school_year = YEAR)
 base_d   <- dplyr::rename(base_s,   Student_UID = STUDENT_ID, school_year = YEAR)
 
-spec_x <- spec
-spec_x$data$columns$roster <- c(STUDENT_ID = "Student_UID", YEAR = "school_year")
-spec_x$data$columns$base   <- c(STUDENT_ID = "Student_UID", YEAR = "school_year")
-validate_el_spec(spec_x)
+spec_x <- do.call(el_spec, modifyList(sim, list(delivery = list(
+  roster = c(STUDENT_ID = "Student_UID", YEAR = "school_year"),
+  base   = c(STUDENT_ID = "Student_UID", YEAR = "school_year")))))
 
 renamed <- as_el_data(base_d, roster = roster_d, spec = spec_x)
 names(el_roster(renamed))[1:4]
@@ -884,11 +987,12 @@ pass it directly, for example a subset of the roster.
 ## The ELP score the exit rule uses
 
 Your ELP assessment reports several components. The exit rule and the
-analyses use one of them, named in `spec$elp$headline`. Every stage reads it
-through a single accessor, `elp_headline()`. The accessor filters the base
-table to that component on the annual form, keeps student-years on the
-roster, and assigns each score an ELP band from `spec$elp$bands`. Never
-filter the base table yourself to get this score.
+analyses use one of them, the spec's `elp$score` (`spec_headline()` reads it
+back). Every stage reads that score through a single accessor,
+`elp_headline()`. The accessor filters the base table to that component on
+the annual form, keeps student-years on the roster, and assigns each score
+an ELP band from the spec's bands. Never filter the base table yourself to
+get this score.
 
 The result is one row per student-year, so look at its size and its bands,
 not its rows:
@@ -928,12 +1032,14 @@ with no scale score, and no bands are declared:
 
 ```{r}
 elpa21 <- read_el_spec("00_ELPA21_EL_Spec")
+elpa21
 spec_headline_label(elpa21)
-elpa21$elp$level_scale$levels
 is.null(spec_bands(elpa21))
 ```
 
-With no bands declared, each level is its own band. Such an instrument has
+Its `elp$levels` names the three categories in order, and its exit rule,
+`c(determination = 3)`, is the third of them. With no bands declared, each
+level is its own band. Such an instrument has
 no scale score on that component, so the analyses that use one stay `NULL`:
 Check 1's model with the entry score and its Model 2, and Check 3's logistic
 models.
@@ -1134,7 +1240,7 @@ file and a vector of identifiers.
   the vendor's score file. `check_el_delivery()` and `as_el_data_sgp()`
   warn about this; `as_el_data()` does not.
 - **Guessing `CONTENT_AREA`.** Map every code by value in
-  `data$columns$value_maps`. The same label means different components in
+  `delivery$value_maps`. The same label means different components in
   different states' files.
 - **Delivered derived columns.** The package recomputes year in status, exit
   dates, censoring and the exit flags from `EL_STATUS` transitions. (A
@@ -1147,36 +1253,37 @@ file and a vector of identifiers.
   reads entry fields such as `LEP_PROGRAM_START_DATE` and `YEAR_IN_STATUS`
   to date entry for students the data cannot see enter, and reports where
   they disagree with the data.
-  Exit is dated to the first year a student is `former`; if you set
-  `policy$timelines$exit_dating`, it must be `"first_former_year"`. A file
-  that flags exit on the last `current` year is one year earlier than this
-  convention.
+  Exit is dated to the first year a student is `former`, for every state;
+  the spec has no setting for it. A file that flags exit on the last
+  `current` year is one year earlier than this convention.
 - **"Fixing" designed gaps.** Do not add base rows for former students, fill
   absent domain rows, or create empty 2020 academic rows.
-- **Making cells appear.** Counts from 1 to
-  `policy$suppression$min_cell - 1` are blanked to `NA`; a true zero is
+- **Making cells appear.** Counts from 1 to `min_cell - 1` are blanked to
+  `NA`; a true zero is
   shown as 0. Do not lower `min_cell`, or pool grades, to fill a table. A
   large `min_cell` blanks small counts everywhere, including Prep 2's entry
   counts by grade and the late rows of Check 1's life table once fewer
   students remain at risk.
 - **Grades and keys.** `GRADE` is character and kindergarten is `"K"`. Map
-  `"0"` in `value_maps$GRADE`. Keep `COMPONENT` on the base table and
+  `"0"` in `delivery$value_maps$GRADE`. Keep `COMPONENT` on the base table and
   `SUBJECT` on the academic table; WIDA's reading domain and a Reading
   subject would otherwise mix in a join.
-- **Treating the template as a rule.** Every policy value in
+- **Treating the template as a rule.** Every value in
   `00_TEMPLATE_EL_Spec` is a placeholder. Nothing in it describes your state
   until you replace it and cite the source.
-- **The academic pointer.** Write `spec$academic` inline. A `spec_id`
-  pointer leaves the stages with no subjects, and with an academic table in
-  the bundle Checks 2 and 3 stop with an error rather than returning `NULL`
-  slots.
+- **No academic block.** A spec without `academic` names no subjects, and
+  with an academic table in the bundle Checks 1, 2 and 3 stop with an error
+  rather than returning `NULL` slots. Write the block.
 - **Subject codes that do not match.** Map your codes in
-  `value_maps$CONTENT_AREA$academic`; `as_el_data()` applies the map. A
-  subject that still matches nothing in the spec is warned about, and no
-  stage reads it.
-- **One set of cut scores for every grade.** If your state's cut scores
-  differ by grade, give `cuts` as a list by grade. A single vector is read
-  as the cut for every grade.
+  `delivery$value_maps$CONTENT_AREA$academic`; `as_el_data()` applies the
+  map. A subject that still matches nothing in the spec is warned about, and
+  no stage reads it.
+- **One cut score for every grade.** If your state's cut scores differ by
+  grade, give `proficient_cut` one number per grade, named by grade. A single
+  number is read as the cut for every grade.
+- **Editing the spec object.** Change the spec file and read it again. The
+  object `el_spec()` returns is the package's expanded form; edits made to
+  it in R skip the checks and are lost the next time the file is read.
 - **Choosing the cohort.** Checks 1 and 2 default to the cohort with the
   longest follow-up. If its years do not overlap your academic data, choose
   another with `entry_year` and pass the same value to both
@@ -1186,12 +1293,13 @@ file and a vector of identifiers.
 
 Confirm each of these before starting Prep 1:
 
-1. **The spec validates**, and each policy entry is either sourced or
-   deliberately left `provisional`. The printout's `[DERIVED - VERIFY]` line
-   is your to-do list.
-2. **The declared Types match the rule.** They decide which Additional
-   checks run in every later stage. Prep 1 is where you confirm them with
-   the state.
+1. **The spec reads without error**, and each field is either named in
+   `sources` or deliberately left provisional. The printout's
+   `[DERIVED - VERIFY]` line is your to-do list.
+2. **The Type the package reads from your rule is the right one.** It
+   decides which Additional checks run in every later stage. Prep 1 is where
+   you confirm the rule with the state, including any part the spec cannot
+   hold.
 3. **The component the exit rule uses is right**, and
    `spec_headline_label()` returns the name your state uses for it.
 4. **`check_el_delivery()` reports no errors**, you have read its warnings,

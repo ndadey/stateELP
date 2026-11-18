@@ -65,11 +65,10 @@ toward calling everyone "not ready". J weights the two kinds of error equally
 *as rates*, however common each group is.
 
 **Why the level, not the scale score.** The exit rule is written on the
-level, so the rule and the J optimum can share one axis. The spec declares a
-range only for the level scale; it has no map from scale scores to levels
-(`elp$cuts` is `NULL`). Scale scores depend on grade, so a scale-score
-optimum would not compare across grades. And some instruments report only a
-level.
+level, so the rule and the J optimum can share one axis. The spec gives a
+range only for the level scale (`elp$levels`); it has no map from scale
+scores to levels. Scale scores depend on grade, so a scale-score optimum
+would not compare across grades. And some instruments report only a level.
 
 [Check 3](check3.html) shows content scores by ELP band. Check 4 turns the
 same pairing into a yes/no classification. The two are read together.
@@ -78,9 +77,9 @@ same pairing into a yes/no classification. The two are read together.
 
 **Cross-sectional: every current EL in one grade and one year with both a
 same-year annual ELP level and a same-year content score in one subject.**
-The level is on the component the spec names for every stage
-(`spec$elp$headline`): the "Overall Composite" in the simulated spec, which
-is also what the exit rule is written on.
+The level is on the component the spec names for every stage (its
+`elp$score`, read back with `spec_headline()`): the "Overall Composite" in
+the simulated spec, which is also what the exit rule is written on.
 
 This is the current-EL part of Check 3's paired cross-section, **not** the
 entry cohort of Checks 1 and 2 (students who entered EL status in the same
@@ -120,7 +119,8 @@ What this means for you:
   for others; "How to read it" loops over grades.
 - **The candidate region is yours to write for now**, by hand.
 - **Prep 3 is not built**, so the error-tolerance answer is read straight
-  from `spec$policy$error_tolerance`. The simulated spec says `"unknown"`.
+  from the spec's `costlier_error`. The simulated spec leaves it at its
+  default, `"unknown"`.
 - **Some choices await confirmation** in the package's build notes: the
   suppression rule, tie-breaking (lowest tied cut wins), the per-student
   reading of error tolerance, and the comparison with Check 3.
@@ -132,17 +132,15 @@ You need:
 - **An `el_data` bundle with an academic table** (see [Setup](setup.html)).
 - **Decimal ELP levels** if your instrument reports them. The candidate cuts
   are the distinct levels the delivery carries, so whole numbers give few.
-- **A spec that declares** the level scale and bands (`elp$level_scale`,
-  `elp$bands`); the exit rule as structured terms (`policy$exit`); the
-  academic subjects, grades and cut scores (`academic`, cut scores by grade
-  where they differ) with the proficient level
-  (`policy$academic_benchmark$proficient_level`). Each panel classifies
-  content proficiency against its own grade's cut; with no cut for the
-  grade, against the delivered `ACHIEVEMENT_LEVEL` at or above the proficient
-  level, and the report says so. The suppression
-  minimum (`policy$suppression$min_cell`), the smallest group a published
-  number may describe; and Prep 3's answer (`policy$error_tolerance`), or
-  `"unknown"`.
+- **A spec that gives** the level range and bands (`elp$levels`,
+  `elp$bands`); the exit rule (`exit`); the academic subjects, grades and
+  proficient cuts (`academic`, with cuts by grade where they differ) and the
+  proficient level (`proficient_level`). Each panel classifies content
+  proficiency against its own grade's cut; with no cut for the grade,
+  against the delivered `ACHIEVEMENT_LEVEL` at or above the proficient
+  level, and the report says so. The suppression minimum (`min_cell`), the
+  smallest group a published number may describe; and Prep 3's answer
+  (`costlier_error`), which defaults to `"unknown"`.
 - **Check 3's results at hand.** Check 4 does not need them to run, but you
   read the two together.
 
@@ -153,12 +151,16 @@ spec <- read_el_spec("00_SIM_EL_Spec")
 bundle <- as_el_data(el_long_sim, roster = el_roster_sim,
                      academic = academic_long_sim, spec = spec)
 
+spec                                   # level range, exit rule, min_cell
 spec_headline_label(spec)              # the ELP component the stages use
-spec$elp$level_scale$range             # the level scale the cuts live on
-spec$policy$exit$pathways[[1]]$rule    # the current rule, as written
-spec$policy$error_tolerance$costlier_error
+spec_bands(spec)$labels                # the bands Check 3 draws
 spec_min_cell(spec)
 ```
+
+The printout's `exit` line is the current rule, which the stage marks on
+its curve, and `levels 1-6` is the scale the candidate cuts live on. The
+error-tolerance answer is not on the printout; the stage copies it into its
+results as `res$meta$costlier_error`, below.
 
 Then check which panel the stage will draw, and how many students it can
 draw on:
@@ -179,8 +181,8 @@ in the subject.
 
 **What degrades to `NULL`.** The stage never crashes on a missing input; it
 empties the slot and says why in `res$meta$note`. With no academic table, or
-a spec that declares no academic subject (the shipped ELPA21 example points
-to a separate academic spec), every slot is `NULL`. So is a panel that
+a spec with no `academic` block (the shipped ELPA21 and Massachusetts
+examples have none), every slot is `NULL`. So is a panel that
 cannot be derived; the R error is kept in `res$meta$panel_error`. With no
 proficiency cut, or no student with both scores, the curves are `NULL`. If
 the exit rule has no term on the component's own level, the curves are
@@ -433,14 +435,38 @@ reported J optimum it points to:
   than `R` times as costly. Prep 3 does not record how much, so `LEAN` is `NA`
   unless the base rate is at least one half (`R` at most 1).
 
-Trying each answer on a copy of the spec (hypothetical answers, not anything
-a state said):
+The stage records the answer it read:
 
 ```{r}
+res$meta$costlier_error
+```
+
+To try each answer, build copies of the spec that differ only in
+`costlier_error`. These are hypothetical answers, not anything a state said.
+The copies start from the simulated spec's own arguments, written out as a
+list:
+
+```{r}
+sim <- list(
+  id     = "SIM",
+  name   = "Simulated state",
+  status = "synthetic",
+  elp = list(test = "WIDA ACCESS", score = "overall",
+             label = "Overall Composite", levels = c(1, 6),
+             bands = c(1, 2, 3, 4, 4.5, 5)),
+  exit      = c(overall = 4.5),
+  timelines = list(max = 6, on_time = 5, lt_el = 6),
+  academic  = list(
+    ELA  = list(grades = 3:11, proficient_cut = 750, proficient_level = 4),
+    Math = list(grades = 3:11, proficient_cut = 750, proficient_level = 4)),
+  min_cell = 10,
+  delivery = list(entry_date_rule = "calendar_year")
+)
+identical(do.call(el_spec, sim), spec)   # the list builds the shipped spec
+
 answers <- c("premature_exit", "equal", "prolonged_retention")
 vapply(answers, function(a) {
-  s <- spec
-  s$policy$error_tolerance$costlier_error <- a
+  s <- do.call(el_spec, modifyList(sim, list(costlier_error = a)))
   compute_j_optimal(res$youden_j, s)$LEAN
 }, character(1))
 ```
@@ -449,8 +475,10 @@ With `"unknown"`, `LEAN` is `NA` and the note says the question is open. A
 stated asymmetry is a documented reason to land above or below the J
 optimum: a values input, not a departure from the evidence. This
 per-student reading awaits confirmation. To record a real answer, set
-`costlier_error`, `asked_of`, `asked_date`, `rationale` and `source` under
-`policy$error_tolerance` in your spec.
+`costlier_error` in your spec and name where the answer is written down in
+`sources` (`costlier_error = "..."`). Who was asked, when, and why they
+answered as they did belong in your Prep 3 notes; the spec has no field for
+them.
 
 ### Across grades
 
@@ -503,7 +531,7 @@ agreement curve, and both against J.
 - **Whole-number levels against a fractional rule** (such as 4.5) trigger a
   `check4_coarse_levels` warning and a report callout. Ask for decimal
   levels.
-- **Do not type the threshold.** It is read from `policy$exit`.
+- **Do not type the threshold.** It is read from the spec's `exit`.
 - **Do not place Check 3's logistic crossing on this axis.** It is a scale
   score; Check 4's cuts are levels.
 - **Read the cuts at and above the exit level with care.** They rest on
@@ -530,15 +558,15 @@ discount and why, and where the current rule sits.
 
 ## Additional checks for multi-criterion exit rules
 
-The spec declares the exit-criteria Types in `policy$exit$types` (Prep 1,
-not yet built, is where the state confirms them). Type 1 is a single overall
-composite score. Types 2–6 bring in more than one criterion: a composite
-plus a floor, a composite plus another source, a compensatory combination,
-tiered or discretionary pathways (a **pathway** is one route to exit), or a
-domain profile. For those, `$policy_as_whole` would feed the whole rule's
-pass/fail outcome through the same consistency and J analysis. Which
-criterion drives the result comes from Prep 2's crosswalk and Check 3's
-contested zone.
+The package reads the rule's exit-criteria Type from the criteria in the
+spec's `exit` (Prep 1, not yet built, is where the state confirms the rule).
+Type 1 is a single overall composite score. Types 2–6 bring in more than one
+criterion: a composite plus a floor, a composite plus another source, a
+compensatory combination, tiered or discretionary pathways (a **pathway** is
+one route to exit), or a domain profile; the spec can hold Types 2 and 6.
+For those, `$policy_as_whole` would feed the whole rule's pass/fail outcome
+through the same consistency and J analysis. Which criterion drives the
+result comes from Prep 2's crosswalk and Check 3's contested zone.
 
 ```{r}
 spec_exit_types(spec)
@@ -553,12 +581,12 @@ cat(res$meta$policy_as_whole_note)
 The simulated spec is Type 1, so the slot is `NULL` and does not apply.
 **Under Types 2–6 it is also `NULL` today**: it applies but is not built,
 and `res$meta$pending` lists it. Two `$j_optimal` flags already help there;
-both are `FALSE` unless the spec declares a Type from 2 to 6.
-`RULE_IS_TERM` is `TRUE` when the marked threshold is one term of a pathway
-that also requires another criterion. `RULE_IS_ROUTE` is `TRUE` when another
-pathway, or another term of an "any" pathway, lets students below it exit.
-Either way the marked line is one piece of the rule, and the figure's legend
-says so.
+both are `FALSE` for a Type 1 rule. `RULE_IS_TERM` is `TRUE` when the marked
+threshold is one criterion of a rule that also requires another; the marked
+line is then one piece of the rule, and the figure's legend says so.
+`RULE_IS_ROUTE` would be `TRUE` when another route to exit, or an "any one
+of" choice, lets students below the line exit; the spec cannot hold either
+yet, so it is `FALSE` for every spec `el_spec()` builds.
 
 ## Render the stage report
 

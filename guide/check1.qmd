@@ -81,7 +81,7 @@ excluded, because their time in status cannot be measured.
 
 Check 1 analyzes **one** cohort. By default it is the candidate with the
 longest follow-up that clears the **minimum cell size**, the smallest count
-the spec allows in a reported cell (`policy$suppression$min_cell`). Follow-up
+the spec allows in a reported cell (its `min_cell`). Follow-up
 shrinks with each later entry year, so this is always the earliest candidate
 that clears it: the one with the least of its path cut off by the end of the
 data. You can choose another with `entry_year` (see
@@ -115,16 +115,18 @@ You need a spec and a data bundle, covered on the [setup page](setup.html).
 
 **From the spec**, Check 1 reads:
 
-- `policy$timelines$max_years_to_exit`, the maximum timeline. It decides which
-  entry years qualify.
-- `policy$timelines$essa_timeline_years` and `on_time_rule`, the timeline the
-  state set under the Every Student Succeeds Act (ESSA). Together they set the
-  "on time" row of the timeline table.
-- `policy$timelines$initial_elp_source`, which must be `"first_annual"` or
-  absent. Any other value stops the stage with an error.
-- `elp$headline` and `elp$bands`: the ELP component the analyses use (the
-  Overall Composite in the simulated spec) and its bands.
-- `policy$suppression$min_cell`, the minimum cell size.
+- `timelines$max`, the maximum timeline (`spec_max_years()`). It decides
+  which entry years qualify.
+- `timelines$on_time`, the timeline the state set under the Every Student
+  Succeeds Act (ESSA) (`spec_essa_years()`). It sets the "on time" row of
+  the timeline table; without it, that row uses the maximum.
+- `elp$score` and `elp$bands`: the ELP component the analyses use (the
+  Overall Composite in the simulated spec, `spec_headline_label()`) and its
+  bands (`spec_bands()`).
+- `min_cell`, the minimum cell size (`spec_min_cell()`).
+
+A student's initial ELP level is always their first annual score; the spec
+has no setting for it.
 
 **From the data:**
 
@@ -149,7 +151,7 @@ ignored. A slot that cannot be computed is `NULL`, with a note in `res$meta`:
 | The ELP component is a level only, with no scale score | `$model1_baseline` and `$model2` are `NULL`; `res$meta$model1_note` explains. Everything else still runs |
 | No academic table | `$model2` is `NULL` and the selection-strength value is `NA`; `res$meta$model2_note` explains |
 | The cohort has no observed exits | The fitted models are `NULL`, with a note |
-| The spec does not declare Type 3 | `$type3_covariate` is `NULL` |
+| The exit rule is not Type 3 (the spec cannot hold a Type 3 rule yet) | `$type3_covariate` is `NULL` |
 
 ## Run it
 
@@ -609,7 +611,8 @@ prolonged exiters.
 ## Additional checks for multi-criterion exit rules
 
 Check 1 has one Type-gated check, for **Type 3** rules: an overall composite
-plus another, non-ELP source. Look at the spec's declared types:
+plus another, non-ELP source. Look at the rule's Type, which the package
+reads from the spec's `exit`:
 
 ```{r}
 spec_exit_types(spec)
@@ -617,24 +620,25 @@ spec_has_type(spec, 3)
 el_exit_typology()
 ```
 
-`$type3_covariate` is filled only when:
+`$type3_covariate` is filled only when the rule is Type 3, with a criterion
+on an academic subject that the academic table carries. Model 2 is then
+refit with that subject's same-year score as an extra covariate, to ask
+whether the non-ELP criterion predicts exit timing independent of ELP. The
+slot holds `criterion_subject`, the refit `model` and a `caption`. The
+caption warns that if the criterion is an achievement measure in the exit
+rule, agreement with it in Checks 3 and 4 is partly circular.
 
-1. the spec declares Type 3 in `policy$exit$types`;
-2. an exit pathway has a term with `from = "academic"`, whose `component`
-   names a content subject (the first such term is used); and
-3. the academic table carries that subject.
-
-Model 2 is then refit with that subject's same-year score as an extra
-covariate, to ask whether the non-ELP criterion predicts exit timing
-independent of ELP. The slot holds `criterion_subject`, the refit `model` and a
-`caption`. The caption warns that if the criterion is an achievement measure in
-the exit rule, agreement with it in Checks 3 and 4 is partly circular.
-
-The simulated spec is Type 1, so the slot is empty:
+**The spec cannot hold a Type 3 rule yet**: `exit` takes minimum levels on
+ELP scores only. So the slot is empty for every spec `el_spec()` builds,
+including the simulated one:
 
 ```{r}
 is.null(res$type3_covariate)
 ```
+
+If your state's rule does include an academic criterion, the spec holds its
+ELP part only. Say so wherever Check 1's results are read, and read Checks 3
+and 4 with the circularity above in mind.
 
 ## Render the stage report
 

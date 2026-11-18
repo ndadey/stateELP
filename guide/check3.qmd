@@ -118,47 +118,68 @@ table. Check 3 reads these parts of the spec:
 | Spec field | What Check 3 uses it for |
 |---|---|
 | `academic$<subject>$grades` | Which grades get a panel. A subject with `grades = NULL` (an end-of-course test) takes its grades from the data. |
-| `academic$<subject>$cuts` and `policy$academic_benchmark$proficient_level` | The proficiency cut for each grade: the red line, the share at or above it, and the logistic outcome. Without a cut for a grade, the delivered `ACHIEVEMENT_LEVEL` at or above the proficient level stands in. |
+| `academic$<subject>$proficient_cut` and `proficient_level` | The proficiency cut for each grade: the red line, the share at or above it, and the logistic outcome. Without a cut for a grade, the delivered `ACHIEVEMENT_LEVEL` at or above the proficient level stands in. |
 | `elp$bands` | The band columns and their order. |
-| `elp$administration_window` | The note on how the two tests are paired in time. |
-| `policy$exit` | The band the exit threshold falls in, and the rule's Type. |
-| `policy$suppression$min_cell` | The smallest group whose statistics are shown. |
+| `exit` | The band the exit threshold falls in, and the rule's Type. |
+| `min_cell` | The smallest group whose statistics are shown. |
+
+Read each back with its accessor:
 
 ```{r}
 spec <- read_el_spec("00_SIM_EL_Spec")
 
 spec_academic_subjects(spec)
 spec_academic_grades(spec, "ELA")
-spec$academic$ELA$cuts                        # minimum score of levels 2 to 5
-spec$policy$academic_benchmark$proficient_level
+spec_proficient_cut(spec, "ELA", "3")         # lowest proficient scale score
+spec_proficient_level(spec)                   # lowest proficient level
 spec_headline_label(spec)                     # the ELP score the exit rule uses
-spec$elp$administration_window
+spec_bands(spec)$labels
 spec_min_cell(spec)
 ```
 
-Here the cut is level 4's minimum, `r spec_proficient_cut(spec, "ELA", "3")`,
-the same in every grade: the simulated test is on a vertical scale, so its
-cuts are one vector. The simulated cuts carry `source = "provisional"`, the
-spec's form of `[DERIVED — VERIFY]`. For a real state, take them from an
-official table.
+Here the cut is `r spec_proficient_cut(spec, "ELA", "3")`, the same in
+every grade: the simulated test is on a vertical scale, so its spec gives
+one number. The simulated spec does not name `academic` in `sources`, so the
+cut is `[DERIVED — VERIFY]`. For a real state, take it from an official
+table and cite it.
 
 ### Cut scores that differ by grade
 
-Most state tests set cut scores grade by grade. Give `cuts` as a list named
-by grade, and each grade's panel is read against its own cut:
+Most state tests set cut scores grade by grade. Give `proficient_cut` one
+number per grade, named by grade, and each grade's panel is read against its
+own cut. For example, in a spec file:
 
 ```{r}
-by_grade <- spec
-by_grade$academic$ELA$cuts <- list(
-  "3" = c(690, 725, 740, 780),
-  "4" = c(700, 735, 750, 790))          # ... one entry per tested grade
-spec_proficient_cut(by_grade, "ELA", "3")
-spec_proficient_cut(by_grade, "ELA", "4")
-spec_proficient_cut(by_grade, "ELA", "5")   # no entry for grade 5
+#| eval: false
+academic = list(
+  ELA = list(grades = 3:8,
+             proficient_cut = c("3" = 740, "4" = 750, "5" = 755,
+                                "6" = 760, "7" = 765, "8" = 770),
+             proficient_level = 4)
+)
 ```
 
-A grade with no entry has no cut. For that grade, and for every grade when
-`cuts` is `NULL`, Checks 3 and 4 read proficiency from the academic file's
+A grade the list leaves out has no cut. Here is a spec, written for
+illustration, that names cuts for grades 3 and 4 only:
+
+```{r}
+by_grade <- el_spec(
+  id     = "BYGRADE",
+  status = "synthetic",
+  elp    = list(test = "WIDA ACCESS", score = "overall", levels = c(1, 6)),
+  exit   = c(overall = 4.5),
+  timelines = list(max = 6),
+  academic  = list(ELA = list(grades = 3:5,
+                              proficient_cut = c("3" = 740, "4" = 750),
+                              proficient_level = 4))
+)
+spec_proficient_cut(by_grade, "ELA", "3")
+spec_proficient_cut(by_grade, "ELA", "4")
+spec_proficient_cut(by_grade, "ELA", "5")   # no cut for grade 5
+```
+
+For a grade with no cut, and for every grade when a subject has no
+`proficient_cut`, Checks 3 and 4 read proficiency from the academic file's
 own `ACHIEVEMENT_LEVEL`, at or above `proficient_level`. The share, the
 logistic and Check 4's classification are then on the delivered level, no
 cut line is drawn, and `res$meta$proficiency_note` and the report say which
@@ -188,7 +209,7 @@ empty:
 | A scale score on the ELP component the exit rule uses (ELPA21's determination, for example, is level-only) | `$logistic` and `$fairness_logistic` are `NULL`. Box plots and the landing band still work, because bands come from levels. |
 | `FRL` on the roster | `$fairness_boxes` is `NULL`. |
 | English-only students on the roster | No English-only column; `$fairness_logistic` is `NULL`. |
-| A Type 2, 4, 5 or 6 declaration in `policy$exit$types` | `$contested_zone_models` is `NULL`. It is also `NULL` when the zone holds fewer than `min_cell` students. |
+| An exit rule with two or more criteria (Type 2 or 6) | `$contested_zone_models` is `NULL`. It is also `NULL` when the zone holds fewer than `min_cell` students. |
 
 ## Run it
 
@@ -568,9 +589,8 @@ stage. Check 3 does not resolve it.
   or draw several panels on one axis. Use the selectors.
 - **A cross-section is not growth.** A band describes this year's students,
   not a path anyone took.
-- **Same year is not same time.** The ELP test
-  (`r spec$elp$administration_window` here) comes before the content test, at
-  an interval no one controls.
+- **Same year is not same time.** The ELP test is given in its own window,
+  usually before the content test, at an interval no one controls.
 - **2020 is missing, not zero.** Never report it as a year with no
   proficient students.
 - **Keep the join direction.** If you rebuild anything, start from the
@@ -585,7 +605,8 @@ stage. Check 3 does not resolve it.
   fitted curve; report it as lying outside the observed scores, not as a
   score students reach.
 - **Use official cuts.** Any cut not from an official table is
-  `[DERIVED — VERIFY]` until checked.
+  `[DERIVED — VERIFY]` until checked; name the table in the spec's `sources`
+  under `academic` once it is.
 - **The filtered English-only group is crude.** One lunch flag narrows the
   comparison; it does not make the groups comparable.
 - **Simulated gaps are by construction.** Every EL and English-only gap here
@@ -618,7 +639,8 @@ the grades you trust here are the ones to read there.
 The package names six Types of exit rule: 1 a single overall composite, 2 a
 composite plus a floor, 3 a composite plus another source, 4 compensatory,
 5 tiered or discretionary, and 6 a domain profile. Check 3's additional check
-runs for Types 2, 4, 5 and 6. Check your spec's declaration:
+runs for Types 2, 4, 5 and 6; of those, the spec can hold Types 2 and 6. The
+package reads the Type from the criteria in the spec's `exit`:
 
 ```{r}
 spec_exit_types(spec)
@@ -644,7 +666,8 @@ whether the second criterion does independent work or restates the first.
   a cleared-the-other-criteria indicator and their interaction, and the two
   predicted curves it implies.
 - `$source`: where the per-criterion outcomes came from.
-  `compute_criterion_pass()` derives them from the spec's exit terms, and a
+  `compute_criterion_pass()` derives them from the criteria in the spec's
+  `exit`, and a
   package test requires them to reproduce Prep 2's own list of students
   blocked by exactly one criterion.
 
@@ -652,18 +675,33 @@ whether the second criterion does independent work or restates the first.
 subject, pass a panel: `compute_contested_models(bundle, spec,
 compute_panel(bundle, spec, subject = "Math", grade = "8"))`.
 
-To show the shape, this code adds a hypothetical domain floor to the
-simulated rule, as the package's tests do. **It is an illustration, not any
-state's rule.** For a real state, declare the rule in its spec file.
+To show the shape, this code adds a hypothetical listening floor of 3.5 to
+the simulated rule, as the package's tests do. **It is an illustration, not
+any state's rule.** For a real state, write the rule in its spec file's
+`exit`. The copy is built from the simulated spec's own arguments, written
+out as a list so that only `exit` changes:
 
 ```{r}
-spec_t2 <- spec
-spec_t2$policy$exit$types <- 2L
-spec_t2$policy$exit$pathways[[1]]$terms <- c(
-  spec_t2$policy$exit$pathways[[1]]$terms,
-  list(list(component = "listening", measure = "level", op = ">=",
-            value = 3.5, exempt_if_absent = FALSE)))
-spec_t2 <- validate_el_spec(spec_t2)
+sim <- list(
+  id     = "SIM",
+  name   = "Simulated state",
+  status = "synthetic",
+  elp = list(test = "WIDA ACCESS", score = "overall",
+             label = "Overall Composite", levels = c(1, 6),
+             bands = c(1, 2, 3, 4, 4.5, 5)),
+  exit      = c(overall = 4.5),
+  timelines = list(max = 6, on_time = 5, lt_el = 6),
+  academic  = list(
+    ELA  = list(grades = 3:11, proficient_cut = 750, proficient_level = 4),
+    Math = list(grades = 3:11, proficient_cut = 750, proficient_level = 4)),
+  min_cell = 10,
+  delivery = list(entry_date_rule = "calendar_year")
+)
+identical(do.call(el_spec, sim), spec)   # the list builds the shipped spec
+
+spec_t2 <- do.call(el_spec, modifyList(sim, list(
+  exit = c(overall = 4.5, listening = 3.5))))
+spec_exit_types(spec_t2)
 
 cz <- compute_contested_models(bundle, spec_t2)
 cz$criteria
